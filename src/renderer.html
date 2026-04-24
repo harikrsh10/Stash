@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Stash</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0a;
+      --surface: #111;
+      --surface2: #1a1a1a;
+      --border: #222;
+      --border2: #2f2f2f;
+      --text: #e8e8e8;
+      --muted: #666;
+      --muted2: #444;
+      --font-sans: 'IBM Plex Sans', -apple-system, sans-serif;
+      --font-mono: 'IBM Plex Mono', monospace;
+    }
+
+    html, body {
+      height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      overflow: hidden;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    .app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* drag region lets the user move the window by the title bar */
+    .titlebar {
+      -webkit-app-region: drag;
+      height: 38px;
+      padding: 0 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .title {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .close-btn {
+      -webkit-app-region: no-drag;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 14px;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 3px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .close-btn:hover { color: var(--text); background: var(--surface2); }
+
+    .controls {
+      padding: 14px 18px 10px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .search-input {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 7px 10px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .search-input::placeholder { color: var(--muted2); }
+    .search-input:focus { border-color: var(--border2); }
+
+    .filters {
+      display: flex;
+      gap: 6px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+    .pill {
+      font-size: 10px;
+      font-family: var(--font-mono);
+      letter-spacing: 0.04em;
+      padding: 4px 10px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .pill:hover { color: var(--text); }
+    .pill.active { background: var(--surface2); border-color: var(--border2); color: var(--text); }
+
+    .list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 0;
+    }
+    .list::-webkit-scrollbar { width: 3px; }
+    .list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+    .list::-webkit-scrollbar-track { background: transparent; }
+
+    .empty {
+      padding: 40px 18px;
+      text-align: center;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.8;
+    }
+    .empty .hotkey {
+      display: inline-block;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 3px;
+      padding: 1px 6px;
+      font-size: 10px;
+      margin: 0 2px;
+    }
+
+    .item {
+      padding: 10px 18px;
+      border-bottom: 1px solid var(--border);
+      cursor: grab;
+      transition: background 0.12s;
+      position: relative;
+    }
+    .item:hover { background: var(--surface2); }
+    .item.dragging { opacity: 0.4; cursor: grabbing; }
+    .item.new { animation: pop 0.4s ease; }
+
+    @keyframes pop {
+      0% { background: #1e2a1e; }
+      100% { background: transparent; }
+    }
+
+    .item-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 5px;
+    }
+    .type-badge {
+      font-size: 9px;
+      font-family: var(--font-mono);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 2px;
+    }
+    .type-badge.text { color: #888; background: #1e1e1e; border: 1px solid #2a2a2a; }
+    .type-badge.code { color: #a0a0ff; background: #161625; border: 1px solid #2a2a44; }
+    .type-badge.url  { color: #6dbf8c; background: #0f1f14; border: 1px solid #1a3322; }
+    .type-badge.img  { color: #d4a06a; background: #1f160a; border: 1px solid #3a2510; }
+
+    .item-time {
+      font-size: 10px;
+      color: var(--muted2);
+      font-family: var(--font-mono);
+    }
+    .item-body {
+      font-size: 11px;
+      line-height: 1.5;
+      color: #aaa;
+      font-family: var(--font-mono);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .item-body.multi {
+      white-space: pre-wrap;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .item-body img {
+      max-width: 100%;
+      max-height: 90px;
+      border-radius: 3px;
+      display: block;
+      margin-top: 4px;
+    }
+
+    .actions {
+      position: absolute;
+      right: 12px;
+      top: 10px;
+      display: none;
+      gap: 6px;
+    }
+    .item:hover .actions { display: flex; }
+    .act-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 3px;
+      color: var(--muted);
+      font-size: 10px;
+      font-family: var(--font-mono);
+      padding: 3px 8px;
+      cursor: pointer;
+      transition: color 0.12s, border-color 0.12s;
+    }
+    .act-btn:hover { color: var(--text); border-color: #555; }
+
+    .footer {
+      padding: 10px 18px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .footer-info {
+      font-size: 10px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+    }
+    .clear-btn {
+      font-size: 10px;
+      font-family: var(--font-mono);
+      color: var(--muted);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      transition: color 0.12s;
+    }
+    .clear-btn:hover { color: #c46a6a; }
+
+    .toast {
+      position: fixed;
+      bottom: 50px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e1e1e;
+      border: 1px solid #333;
+      color: #aaa;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 6px 14px;
+      border-radius: 3px;
+      letter-spacing: 0.06em;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; }
+
+    .skip-pulse {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #5a8a5a;
+      margin-right: 6px;
+      vertical-align: middle;
+      opacity: 0;
+      transition: opacity 0.4s;
+    }
+    .skip-pulse.on { opacity: 1; }
+
+    /* pause toggle in titlebar */
+    .pause-btn {
+      -webkit-app-region: no-drag;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      cursor: pointer;
+      padding: 3px 8px;
+      border-radius: 3px;
+      margin-right: 4px;
+      transition: color 0.15s, background 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .pause-btn:hover { color: var(--text); background: var(--surface2); }
+    .pause-btn .dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: #5a8a5a;
+      transition: background 0.2s;
+    }
+    .pause-btn.paused .dot { background: #c49a3a; }
+
+    .titlebar-right {
+      -webkit-app-region: no-drag;
+      display: flex;
+      align-items: center;
+    }
+
+    /* dim the list when paused */
+    body.paused .list { opacity: 0.4; pointer-events: none; }
+    body.paused .controls { opacity: 0.5; }
+    .paused-banner {
+      display: none;
+      padding: 8px 18px;
+      background: #1a1508;
+      border-bottom: 1px solid #2a2210;
+      color: #c49a3a;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-align: center;
+    }
+    body.paused .paused-banner { display: block; }
+
+    /* promote-on-recopy: flash the item when bumped to top */
+    .item.promoted { animation: promote 0.7s ease; }
+    @keyframes promote {
+      0%   { background: #2a1f08; }
+      50%  { background: #1e1a0a; }
+      100% { background: transparent; }
+    }
+
+    /* pinned section */
+    .section-label {
+      padding: 10px 18px 6px;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.14em;
+      color: var(--muted2);
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      user-select: none;
+      transition: color 0.12s;
+    }
+    .section-label:hover { color: var(--muted); }
+    .section-label-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .section-label .chevron {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-right: 1px solid currentColor;
+      border-bottom: 1px solid currentColor;
+      transform: rotate(45deg);
+      transition: transform 0.18s ease;
+      margin-right: 2px;
+      margin-top: -2px;
+    }
+    .section-label.collapsed .chevron {
+      transform: rotate(-45deg);
+      margin-top: 0;
+    }
+    .section-label .count {
+      color: var(--muted2);
+      font-weight: 400;
+    }
+    .section-label .pin-icon {
+      width: 8px; height: 8px;
+      display: inline-block;
+    }
+    .pinned-section {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 6px;
+    }
+    .pinned-section .item {
+      background: rgba(255, 215, 140, 0.02);
+    }
+    .section-content.collapsed {
+      display: none;
+    }
+
+    /* pin button — little star/dot on each item */
+    .pin-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 3px;
+      color: var(--muted);
+      font-size: 11px;
+      font-family: var(--font-mono);
+      padding: 3px 7px;
+      cursor: pointer;
+      transition: color 0.12s, border-color 0.12s, background 0.12s;
+      line-height: 1;
+    }
+    .pin-btn:hover { color: #d4a06a; border-color: #3a2510; }
+    .pin-btn.pinned {
+      color: #d4a06a;
+      border-color: #3a2510;
+      background: #1f160a;
+    }
+    .pin-btn.pinned:hover { color: #ecb57d; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="titlebar">
+      <span class="title">stash</span>
+      <div class="titlebar-right">
+        <button class="pause-btn" id="pauseBtn" title="pause clipboard capture">
+          <span class="dot"></span>
+          <span id="pauseLabel">live</span>
+        </button>
+        <button class="close-btn" id="closeBtn" title="hide (⌘⇧V)">×</button>
+      </div>
+    </div>
+
+    <div class="paused-banner">clipboard capture paused</div>
+
+    <div class="controls">
+      <input class="search-input" id="search" placeholder="search clipboard..." />
+      <div class="filters">
+        <button class="pill active" data-type="all">all</button>
+        <button class="pill" data-type="pinned">pinned</button>
+        <button class="pill" data-type="text">text</button>
+        <button class="pill" data-type="code">code</button>
+        <button class="pill" data-type="url">url</button>
+        <button class="pill" data-type="img">image</button>
+      </div>
+    </div>
+
+    <div class="list" id="list">
+      <div class="empty">
+        nothing stashed yet<br>
+        copy something to get started<br><br>
+        <span class="hotkey">⌘</span><span class="hotkey">⇧</span><span class="hotkey">V</span> to toggle
+      </div>
+    </div>
+
+    <div class="footer">
+      <span class="footer-info"><span class="skip-pulse" id="skipPulse" title="a secret-looking item was skipped"></span><span id="footerInfo">0 items</span></span>
+      <button class="clear-btn" id="clearBtn">clear all</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let history = [];
+    let pinned = [];
+    let activeFilter = 'all';
+    let searchQuery = '';
+    // Section collapse state — in-memory only, resets on app restart
+    let collapsed = { pinned: false, recent: false };
+
+    const listEl = document.getElementById('list');
+    const footerEl = document.getElementById('footerInfo');
+    const searchEl = document.getElementById('search');
+    const toastEl = document.getElementById('toast');
+
+    function esc(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function timeAgo(ts) {
+      const s = Math.floor((Date.now() - ts) / 1000);
+      if (s < 10) return 'just now';
+      if (s < 60) return s + 's ago';
+      const m = Math.floor(s / 60);
+      if (m < 60) return m + 'm ago';
+      const h = Math.floor(m / 60);
+      if (h < 24) return h + 'h ago';
+      return Math.floor(h / 24) + 'd ago';
+    }
+
+    function itemMatchesFilter(c, isPinned) {
+      if (activeFilter === 'pinned') return isPinned;
+      if (activeFilter !== 'all' && c.type !== activeFilter) return false;
+      if (searchQuery && !c.content.toLowerCase().includes(searchQuery)) return false;
+      return true;
+    }
+
+    function buildItemEl(c, isPinned) {
+      const el = document.createElement('div');
+      let cls = 'item';
+      if (c._new) cls += ' new';
+      if (c._promoted) cls += ' promoted';
+      el.className = cls;
+      el.draggable = true;
+      el.dataset.id = c.id;
+
+      let bodyHtml;
+      if (c.type === 'img') {
+        bodyHtml = `<div class="item-body">${esc(c.meta || 'image')}<img src="${c.dataUrl}" alt=""/></div>`;
+      } else {
+        const multi = c.content.includes('\n') || c.type === 'code';
+        bodyHtml = `<div class="item-body${multi ? ' multi' : ''}">${esc(c.content)}</div>`;
+      }
+
+      const timeLabel = isPinned ? 'pinned' : timeAgo(c.ts);
+
+      el.innerHTML = `
+        <div class="item-header">
+          <span class="type-badge ${c.type}">${c.type}</span>
+          <span class="item-time">${timeLabel}</span>
+        </div>
+        ${bodyHtml}
+        <div class="actions">
+          <button class="pin-btn ${isPinned ? 'pinned' : ''}" data-act="pin" title="${isPinned ? 'unpin' : 'pin'}">${isPinned ? '★' : '☆'}</button>
+          <button class="act-btn" data-act="copy">copy</button>
+          <button class="act-btn" data-act="del">del</button>
+        </div>
+      `;
+
+      // native drag-out
+      el.addEventListener('dragstart', (e) => {
+        e.preventDefault();
+        el.classList.add('dragging');
+        window.api.startDrag(c);
+      });
+      el.addEventListener('dragend', () => el.classList.remove('dragging'));
+
+      el.querySelector('[data-act="copy"]').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await window.api.write(c);
+        toast('copied — paste with ⌘V');
+      });
+
+      el.querySelector('[data-act="del"]').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await window.api.delete(c.id);
+        if (isPinned) pinned = pinned.filter(p => p.id !== c.id);
+        else history = history.filter(h => h.id !== c.id);
+        render();
+      });
+
+      el.querySelector('[data-act="pin"]').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (isPinned) {
+          await window.api.unpin(c.id);
+          toast('unpinned');
+        } else {
+          await window.api.pin(c.id);
+          toast('pinned — kept across restarts');
+        }
+        // state:updated from main will refresh us
+      });
+
+      // click anywhere else re-copies
+      el.addEventListener('click', async () => {
+        await window.api.write(c);
+        toast('copied — paste with ⌘V');
+      });
+
+      if (c._new) setTimeout(() => { c._new = false; }, 400);
+      if (c._promoted) setTimeout(() => { c._promoted = false; }, 800);
+
+      return el;
+    }
+
+    function buildSectionLabel(key, iconHtml, labelText, count) {
+      const label = document.createElement('div');
+      const isCollapsed = collapsed[key];
+      label.className = 'section-label' + (isCollapsed ? ' collapsed' : '');
+      label.dataset.section = key;
+      label.innerHTML = `
+        <span class="section-label-left">
+          <span class="chevron"></span>
+          ${iconHtml ? `<span>${iconHtml}</span>` : ''}
+          <span>${labelText}</span>
+        </span>
+        <span class="count">${count}</span>
+      `;
+      label.addEventListener('click', () => {
+        collapsed[key] = !collapsed[key];
+        render();
+      });
+      return label;
+    }
+
+    function render() {
+      const visiblePinned = pinned.filter(c => itemMatchesFilter(c, true));
+      const visibleHistory = activeFilter === 'pinned'
+        ? []
+        : history.filter(c => itemMatchesFilter(c, false));
+
+      // Auto-expand on active search if matches exist in the hidden section.
+      // Without this, typing a query that only matches pinned/recent in a
+      // collapsed section silently returns nothing — feels broken.
+      if (searchQuery) {
+        if (collapsed.pinned && visiblePinned.length > 0) collapsed.pinned = false;
+        if (collapsed.recent && visibleHistory.length > 0) collapsed.recent = false;
+      }
+
+      const totalVisible = visiblePinned.length + visibleHistory.length;
+      const totalItems = history.length + pinned.length;
+      footerEl.textContent = `${totalVisible} of ${totalItems} items${pinned.length ? ` · ${pinned.length} pinned` : ''}`;
+
+      if (totalVisible === 0) {
+        if (totalItems === 0) {
+          listEl.innerHTML = `<div class="empty">nothing stashed yet<br>copy something to get started<br><br><span class="hotkey">⌘</span><span class="hotkey">⇧</span><span class="hotkey">V</span> to toggle</div>`;
+        } else {
+          listEl.innerHTML = `<div class="empty">no matches</div>`;
+        }
+        return;
+      }
+
+      listEl.innerHTML = '';
+
+      // Pinned section
+      if (visiblePinned.length > 0) {
+        const section = document.createElement('div');
+        section.className = 'pinned-section';
+        section.appendChild(buildSectionLabel('pinned', '★', 'pinned', visiblePinned.length));
+        const content = document.createElement('div');
+        content.className = 'section-content' + (collapsed.pinned ? ' collapsed' : '');
+        visiblePinned.forEach(c => content.appendChild(buildItemEl(c, true)));
+        section.appendChild(content);
+        listEl.appendChild(section);
+      }
+
+      // Recent section
+      if (visibleHistory.length > 0) {
+        // Only show the "recent" header when there's also a pinned section above it
+        // (otherwise the drawer has one section and the label is visual noise)
+        if (visiblePinned.length > 0) {
+          listEl.appendChild(buildSectionLabel('recent', '', 'recent', visibleHistory.length));
+          const content = document.createElement('div');
+          content.className = 'section-content' + (collapsed.recent ? ' collapsed' : '');
+          visibleHistory.forEach(c => content.appendChild(buildItemEl(c, false)));
+          listEl.appendChild(content);
+        } else {
+          visibleHistory.forEach(c => listEl.appendChild(buildItemEl(c, false)));
+        }
+      }
+    }
+
+    let toastTimer;
+    function toast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1500);
+    }
+
+    // filters
+    document.querySelectorAll('.pill').forEach(p => {
+      p.addEventListener('click', () => {
+        document.querySelectorAll('.pill').forEach(x => x.classList.remove('active'));
+        p.classList.add('active');
+        activeFilter = p.dataset.type;
+        render();
+      });
+    });
+
+    // search
+    searchEl.addEventListener('input', (e) => {
+      searchQuery = e.target.value.toLowerCase();
+      render();
+    });
+
+    // clear
+    document.getElementById('clearBtn').addEventListener('click', async () => {
+      if (history.length === 0) return;
+      await window.api.clear();
+      history = [];
+      render();
+    });
+
+    // close/hide
+    document.getElementById('closeBtn').addEventListener('click', () => window.api.hide());
+
+    // escape to hide
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') window.api.hide();
+      // cmd/ctrl+f focuses search
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault();
+        searchEl.focus();
+      }
+    });
+
+    // listen for new clips from main
+    window.api.onNewClip((entry) => {
+      entry._new = true;
+      history = history.filter(h => h.id !== entry.id);
+      history.unshift(entry);
+      render();
+    });
+
+    // listen for promoted (re-copied) clips — bump to top with flash animation
+    window.api.onPromoted((entry) => {
+      // check if it's in pinned or history
+      const pinnedIdx = pinned.findIndex(p => p.id === entry.id);
+      if (pinnedIdx > -1) {
+        pinned.splice(pinnedIdx, 1);
+        entry._promoted = true;
+        pinned.unshift(entry);
+      } else {
+        history = history.filter(h => h.id !== entry.id);
+        entry._promoted = true;
+        history.unshift(entry);
+      }
+      render();
+    });
+
+    // listen for skipped (secret-looking) clips — pulse the footer dot briefly
+    const skipPulse = document.getElementById('skipPulse');
+    let skipTimer;
+    window.api.onSkipped(() => {
+      skipPulse.classList.add('on');
+      clearTimeout(skipTimer);
+      skipTimer = setTimeout(() => skipPulse.classList.remove('on'), 2500);
+    });
+
+    // pause state
+    const pauseBtn = document.getElementById('pauseBtn');
+    const pauseLabel = document.getElementById('pauseLabel');
+    function applyPausedState(paused) {
+      document.body.classList.toggle('paused', paused);
+      pauseBtn.classList.toggle('paused', paused);
+      pauseLabel.textContent = paused ? 'paused' : 'live';
+      pauseBtn.title = paused ? 'resume clipboard capture' : 'pause clipboard capture';
+    }
+    pauseBtn.addEventListener('click', async () => {
+      const current = await window.api.getPaused();
+      await window.api.setPaused(!current);
+      // applyPausedState will be called via onPauseChanged
+    });
+    window.api.onPauseChanged((v) => applyPausedState(v));
+
+    // listen for history cleared from tray menu
+    window.api.onHistoryCleared(() => {
+      history = [];
+      render();
+    });
+
+    // listen for state updates (pin/unpin actions from main)
+    window.api.onStateUpdated((state) => {
+      history = state.history || [];
+      pinned = state.pinned || [];
+      render();
+    });
+
+    // initial load
+    (async () => {
+      const state = await window.api.getHistory();
+      history = state.history || [];
+      pinned = state.pinned || [];
+      const paused = await window.api.getPaused();
+      applyPausedState(paused);
+      render();
+      setInterval(render, 30000);
+    })();
+  </script>
+</body>
+</html>

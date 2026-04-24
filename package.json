@@ -1,0 +1,31 @@
+{
+  "name": "stash",
+  "version": "0.1.0",
+  "description": "Minimal clipboard history with drag-and-drop to any app",
+  "main": "src/main.js",
+  "author": "HariKrish",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.harikrish.stash",
+    "productName": "Stash",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": "dmg"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ]
+  }
+}
