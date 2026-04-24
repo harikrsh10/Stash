@@ -4,25 +4,18 @@ A minimal clipboard history manager with drag-and-drop to any app. Mac / Windows
 
 Everything you copy, quietly kept. Drag it back out into anything.
 
-## Download
-
-- [Download Stash for Windows and Mac](https://github.com/harikrsh10/Stash/releases/latest)
-
-Open the latest release and choose the installer for your system:
-
-- Windows: `Stash-win-x64.exe`
-- Mac Apple Silicon: `Stash-mac-arm64.dmg`
-- Mac Intel: `Stash-mac-x64.dmg`
-
 ## What it does
 
 - Monitors your system clipboard in the background
 - Keeps the last 100 items (text, code, URLs, images)
 - Lives in your **menu bar / system tray** — click the S icon to toggle the drawer, right-click for a menu
-- Press **⌘⇧V** (Cmd+Shift+V on Mac, Ctrl+Shift+V on Win/Linux) to slide the drawer in from the right edge of your primary display
+- Two ways to access your clips:
+  - **Drawer** — Press **⌘⇧V** (Cmd+Shift+V / Ctrl+Shift+V) to slide the full drawer in from the right edge. Use this to browse, search, filter, and manage.
+  - **Dock** — Press **⌘⇧Space** (Cmd+Shift+Space / Ctrl+Shift+Space) to pop a small popover open at your cursor position, showing the last 5 items. Use this for quick paste while you're working.
 - Drag any entry from the drawer into any other app — Notion, VS Code, Figma, Finder, browser address bar, anywhere that accepts file or text drops
 - Click an entry to re-copy it (then ⌘V elsewhere as normal)
 - **Pin items** (★) to keep them across restarts — pinned clips are the only thing Stash writes to disk, live in their own section at the top, and don't count toward the 100-item cap
+- **Auto-paste from dock** (optional, off by default) — when enabled, picking an item from the dock automatically pastes it into the focused app. Requires Accessibility permission on macOS
 - Search, filter by type (including "pinned"), delete individual items or clear all
 - **Pause capture** — toggle the live/paused indicator in the titlebar (or from the tray menu) when you're copying sensitive stuff you don't want recorded
 - **Re-copy promotion** — if you copy the same thing again, it flashes and bumps to the top instead of being dropped as a duplicate

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Stash Dock</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: rgba(20, 20, 20, 0.92);
+      --surface: #1a1a1a;
+      --surface2: #222;
+      --border: #2a2a2a;
+      --border2: #333;
+      --text: #e8e8e8;
+      --muted: #888;
+      --muted2: #555;
+      --font-sans: 'IBM Plex Sans', -apple-system, sans-serif;
+      --font-mono: 'IBM Plex Mono', monospace;
+    }
+
+    html, body {
+      height: 100vh;
+      background: transparent;
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      overflow: hidden;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    .dock {
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      backdrop-filter: blur(40px) saturate(1.4);
+      -webkit-backdrop-filter: blur(40px) saturate(1.4);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+    }
+
+    .dock-header {
+      padding: 10px 14px 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.14em;
+      color: var(--muted2);
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+
+    .item-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 6px;
+    }
+    .item-list::-webkit-scrollbar { width: 2px; }
+    .item-list::-webkit-scrollbar-thumb { background: var(--border2); }
+
+    .dock-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 10px;
+      border-radius: 8px;
+      cursor: grab;
+      transition: background 0.12s;
+      position: relative;
+    }
+    .dock-item:active { cursor: grabbing; }
+    .dock-item.dragging { opacity: 0.4; cursor: grabbing; }
+    .dock-item:hover,
+    .dock-item.active { background: var(--surface2); }
+
+    .dock-item .icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .dock-item .icon.text { background: #2a2a2a; color: #aaa; }
+    .dock-item .icon.code { background: #20202e; color: #a0a0ff; }
+    .dock-item .icon.url  { background: #142015; color: #6dbf8c; }
+    .dock-item .icon.img  { background: #20180c; color: #d4a06a; }
+
+    .dock-item .label {
+      flex: 1;
+      min-width: 0;
+      font-size: 12px;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-family: var(--font-mono);
+    }
+
+    .dock-item .thumb {
+      width: 38px;
+      height: 38px;
+      border-radius: 5px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
+    .dock-item .pinned-marker {
+      position: absolute;
+      left: 3px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 9px;
+      color: #d4a06a;
+      opacity: 0.7;
+    }
+
+    .dock-item .shortcut {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--muted2);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 1px 5px;
+      border-radius: 3px;
+      flex-shrink: 0;
+      min-width: 16px;
+      text-align: center;
+    }
+    .dock-item:hover .shortcut,
+    .dock-item.active .shortcut { color: var(--text); border-color: var(--border2); }
+
+    .empty {
+      padding: 40px 18px;
+      text-align: center;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      line-height: 1.8;
+    }
+
+    .dock-footer {
+      border-top: 1px solid var(--border);
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .open-app-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      cursor: pointer;
+      padding: 3px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: color 0.12s;
+    }
+    .open-app-btn:hover { color: var(--text); }
+    .open-app-btn .arrow {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-top: 1px solid currentColor;
+      border-right: 1px solid currentColor;
+      transform: rotate(45deg);
+    }
+    .hint {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--muted2);
+      letter-spacing: 0.04em;
+    }
+  </style>
+</head>
+<body>
+  <div class="dock">
+    <div class="dock-header">
+      <span>recent</span>
+      <span class="hint">drag or ⏎</span>
+    </div>
+    <div class="item-list" id="list">
+      <div class="empty">nothing copied yet</div>
+    </div>
+    <div class="dock-footer">
+      <button class="open-app-btn" id="openAppBtn">
+        <span>open full stash</span>
+        <span class="arrow"></span>
+      </button>
+      <span class="hint" id="modeHint">⏎ copy</span>
+    </div>
+  </div>
+
+  <script>
+    let items = [];
+    let activeIndex = 0;
+    let autoPaste = false;
+
+    const listEl = document.getElementById('list');
+    const openAppBtn = document.getElementById('openAppBtn');
+    const modeHintEl = document.getElementById('modeHint');
+
+    function typeGlyph(type) {
+      return { text: 'T', code: '{}', url: '→', img: '◨' }[type] || '·';
+    }
+
+    function render() {
+      if (!items || items.length === 0) {
+        listEl.innerHTML = '<div class="empty">nothing copied yet<br>copy something first</div>';
+        return;
+      }
+      listEl.innerHTML = '';
+      items.forEach((c, i) => {
+        const el = document.createElement('div');
+        el.className = 'dock-item' + (i === activeIndex ? ' active' : '');
+        el.dataset.index = i;
+        el.draggable = true;
+
+        const isPinned = c.pinnedAt != null;
+        let thumbHtml = '';
+        if (c.type === 'img' && c.dataUrl) {
+          thumbHtml = `<img class="thumb" src="${c.dataUrl}" alt=""/>`;
+        }
+
+        // Truncate label for display
+        let labelText;
+        if (c.type === 'img') {
+          labelText = c.meta || 'image';
+        } else {
+          labelText = (c.content || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+        }
+
+        el.innerHTML = `
+          ${isPinned ? '<span class="pinned-marker">★</span>' : ''}
+          <span class="icon ${c.type}">${typeGlyph(c.type)}</span>
+          <span class="label">${escHtml(labelText)}</span>
+          ${thumbHtml}
+          <span class="shortcut">${i + 1}</span>
+        `;
+
+        el.addEventListener('click', () => pick(i));
+        el.addEventListener('mouseenter', () => {
+          activeIndex = i;
+          updateActive();
+        });
+
+        // Native drag-out. We tell main that a drag started so it suppresses
+        // the blur-hide handler (otherwise the dock vanishes the moment the
+        // drag transfers focus to the target app).
+        el.addEventListener('dragstart', (e) => {
+          e.preventDefault();
+          el.classList.add('dragging');
+          window.api.dockDragStart();
+          window.api.startDrag(c);
+        });
+        el.addEventListener('dragend', () => {
+          el.classList.remove('dragging');
+          window.api.dockDragEnd();
+        });
+
+        listEl.appendChild(el);
+      });
+    }
+
+    function updateActive() {
+      document.querySelectorAll('.dock-item').forEach((el, i) => {
+        el.classList.toggle('active', i === activeIndex);
+      });
+    }
+
+    function escHtml(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    async function pick(i) {
+      if (i < 0 || i >= items.length) return;
+      await window.api.dockPick(items[i]);
+    }
+
+    // keyboard nav
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        window.api.dockHide();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (activeIndex < items.length - 1) { activeIndex++; updateActive(); }
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (activeIndex > 0) { activeIndex--; updateActive(); }
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        pick(activeIndex);
+      } else if (/^[1-9]$/.test(e.key)) {
+        const idx = parseInt(e.key, 10) - 1;
+        if (idx < items.length) pick(idx);
+      }
+    });
+
+    openAppBtn.addEventListener('click', () => window.api.dockOpenMain());
+
+    // receive items from main
+    window.api.onDockItems((newItems) => {
+      items = newItems || [];
+      activeIndex = 0;
+      render();
+    });
+
+    // read the auto-paste setting to show appropriate footer hint
+    (async () => {
+      const s = await window.api.getSettings();
+      autoPaste = !!(s && s.autoPasteFromDock);
+      modeHintEl.textContent = autoPaste ? '⏎ paste' : '⏎ copy';
+    })();
+  </script>
+</body>
+</html>
