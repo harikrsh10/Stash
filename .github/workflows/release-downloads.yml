@@ -1,8 +1,12 @@
 name: Release downloads
 
 on:
+  push:
+    tags:
+      - "v*"
   release:
     types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -49,3 +53,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.files }}
+          generate_release_notes: true
+          make_latest: true
