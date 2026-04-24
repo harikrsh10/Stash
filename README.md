@@ -6,11 +6,13 @@ Everything you copy, quietly kept. Drag it back out into anything.
 
 ## Download
 
-- [Download for Windows](https://github.com/harikrsh10/Stash/releases/latest/download/Stash-win-x64.exe)
-- [Download for Mac Apple Silicon](https://github.com/harikrsh10/Stash/releases/latest/download/Stash-mac-arm64.dmg)
-- [Download for Mac Intel](https://github.com/harikrsh10/Stash/releases/latest/download/Stash-mac-x64.dmg)
+- [Download Stash for Windows and Mac](https://github.com/harikrsh10/Stash/releases/latest)
 
-All downloads are attached to the [latest GitHub release](https://github.com/harikrsh10/Stash/releases/latest).
+Open the latest release and choose the installer for your system:
+
+- Windows: `Stash-win-x64.exe`
+- Mac Apple Silicon: `Stash-mac-arm64.dmg`
+- Mac Intel: `Stash-mac-x64.dmg`
 
 ## What it does
 
