@@ -1,6 +1,6 @@
 {
   "name": "stash",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Minimal clipboard history with drag-and-drop to any app",
   "main": "src/main.js",
   "author": "HariKrish",
@@ -10,8 +10,8 @@
     "dev": "electron . --dev",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "dist:mac": "electron-builder --mac --x64 --arm64",
-    "dist:win": "electron-builder --win --x64"
+    "dist:mac": "electron-builder --mac --x64 --arm64 --publish never",
+    "dist:win": "electron-builder --win --x64 --publish never"
   },
   "devDependencies": {
     "electron": "^31.0.0",
