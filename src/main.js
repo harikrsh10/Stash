@@ -32,14 +32,14 @@ if (!gotLock) {
 
 // ---------- window ----------
 function createWindow() {
-  const { width: screenW, height: screenH } = screen.getPrimaryDisplay().workAreaSize;
+  const { workArea } = screen.getPrimaryDisplay();
   const drawerW = 340;
 
   mainWindow = new BrowserWindow({
     width: drawerW,
-    height: screenH,
-    x: screenW - drawerW,
-    y: 0,
+    height: workArea.height,
+    x: workArea.x + workArea.width - drawerW,
+    y: workArea.y,
     frame: false,
     transparent: false,
     resizable: false,
@@ -187,8 +187,10 @@ function sniffType(text) {
 function looksSecret(text) {
   if (!text) return false;
   const t = text.trim();
-  if (/\s/.test(t)) return false;
   if (/^\d{6,8}$/.test(t)) return true;
+  const digitsOnly = t.replace(/[\s-]/g, '');
+  if (/^\d{13,19}$/.test(digitsOnly) && luhnCheck(digitsOnly)) return true;
+  if (/\s/.test(t)) return false;
   if (t.length < 8) return false;
   if (t.length > 500) return false;
 
@@ -220,8 +222,6 @@ function looksSecret(text) {
     const classes = [hasLower, hasUpper, hasDigit].filter(Boolean).length;
     if (classes >= 2) return true;
   }
-  const digitsOnly = t.replace(/[\s-]/g, '');
-  if (/^\d{13,19}$/.test(digitsOnly) && luhnCheck(digitsOnly)) return true;
   return false;
 }
 
