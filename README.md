@@ -4,6 +4,14 @@ A minimal clipboard history manager with drag-and-drop to any app. Mac / Windows
 
 Everything you copy, quietly kept. Drag it back out into anything.
 
+## Download
+
+- [Download for Windows](https://github.com/harikrsh10/Stash/releases/latest/download/Stash-win-x64.exe)
+- [Download for Mac Apple Silicon](https://github.com/harikrsh10/Stash/releases/latest/download/Stash-mac-arm64.dmg)
+- [Download for Mac Intel](https://github.com/harikrsh10/Stash/releases/latest/download/Stash-mac-x64.dmg)
+
+All downloads are attached to the [latest GitHub release](https://github.com/harikrsh10/Stash/releases/latest).
+
 ## What it does
 
 - Monitors your system clipboard in the background

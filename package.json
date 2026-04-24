@@ -9,7 +9,9 @@
     "start": "electron .",
     "dev": "electron . --dev",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac --x64 --arm64",
+    "dist:win": "electron-builder --win --x64"
   },
   "devDependencies": {
     "electron": "^31.0.0",
@@ -18,9 +20,13 @@
   "build": {
     "appId": "com.harikrish.stash",
     "productName": "Stash",
+    "artifactName": "${productName}-${os}-${arch}.${ext}",
     "mac": {
       "category": "public.app-category.productivity",
       "target": "dmg"
+    },
+    "win": {
+      "target": "nsis"
     },
     "files": [
       "src/**/*",
