@@ -27,6 +27,12 @@ Grab the latest release for your platform:
 
 See [all releases](https://github.com/harikrsh10/Stash/releases) for older versions and changelogs.
 
+> **Latest source fix:** `main` includes a fix for paused clipboard capture
+> (`4d7a3a3`). While Stash is paused, copied content is now ignored and will
+> not be added after you resume capture. If the downloaded app still shows the
+> old behavior, that release asset was built before this fix. Build from source
+> or wait for the next packaged release.
+
 ---
 
 ## What it does
@@ -42,7 +48,7 @@ See [all releases](https://github.com/harikrsh10/Stash/releases) for older versi
 - **Pin items** (★) to keep them across restarts — pinned clips are the only thing Stash writes to disk, live in their own section at the top, and don't count toward the 100-item cap
 - **Auto-paste from dock** (optional, off by default) — when enabled, picking an item from the dock automatically pastes it into the focused app. Requires Accessibility permission on macOS
 - Search, filter by type (including "pinned"), delete individual items or clear all
-- **Pause capture** — toggle the live/paused indicator in the titlebar (or from the tray menu) when you're copying sensitive stuff you don't want recorded
+- **Pause capture** — toggle the live/paused indicator in the titlebar (or from the tray menu) when you're copying sensitive stuff you don't want recorded. Anything copied while paused stays ignored after you resume.
 - **Re-copy promotion** — if you copy the same thing again, it flashes and bumps to the top instead of being dropped as a duplicate
 - Window hides on blur — stays alive in the background
 
