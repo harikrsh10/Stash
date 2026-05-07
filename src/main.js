@@ -21,6 +21,7 @@ let history = [];
 let pinned = []; // separate array; pinned items don't age out and persist to disk
 let pollTimer = null;
 let isPaused = false;
+let pausedIgnoredSigs = new Set();
 let pinnedStorePath = null; // set once app is ready (needs app.getPath)
 let settingsStorePath = null;
 
@@ -188,7 +189,10 @@ function refreshTrayMenu() {
 }
 
 function setPaused(paused) {
-  if (isPaused !== paused) rememberCurrentClipboard();
+  if (isPaused !== paused) {
+    if (paused) pausedIgnoredSigs = new Set();
+    rememberCurrentClipboard();
+  }
   isPaused = paused;
   refreshTrayMenu();
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -201,7 +205,9 @@ function hash(buf) {
   return crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16);
 }
 
-function currentClipboardSig() {
+function currentClipboardSigs() {
+  const sigs = [];
+
   const img = clipboard.readImage();
   if (!img.isEmpty()) {
     const png = img.toPNG();
@@ -209,22 +215,30 @@ function currentClipboardSig() {
       const size = img.getSize();
       const text = clipboard.readText();
       const isTinyIncidental = size.width < 16 && size.height < 16;
-      if (!(text && isTinyIncidental)) return 'img:' + hash(png);
+      if (!(text && isTinyIncidental)) sigs.push('img:' + hash(png));
     }
   }
 
   const text = clipboard.readText();
-  if (!text) return '';
-  return 'txt:' + hash(Buffer.from(text));
+  if (text) sigs.push('txt:' + hash(Buffer.from(text)));
+  return sigs;
 }
 
 function rememberCurrentClipboard() {
   try {
-    const sig = currentClipboardSig();
-    if (sig) lastSig = sig;
+    const sigs = currentClipboardSigs();
+    sigs.forEach(sig => pausedIgnoredSigs.add(sig));
+    if (sigs.length) lastSig = sigs[0];
   } catch (err) {
     console.warn('[Stash] failed to sync clipboard signature:', err.message);
   }
+}
+
+function wasCopiedWhilePaused(sig) {
+  if (!pausedIgnoredSigs.has(sig)) return false;
+  pausedIgnoredSigs.delete(sig);
+  lastSig = sig;
+  return true;
 }
 
 function sniffType(text) {
@@ -543,6 +557,7 @@ function pollClipboard() {
       const png = img.toPNG();
       if (png && png.length > 0) {
         const sig = 'img:' + hash(png);
+        if (wasCopiedWhilePaused(sig)) return;
         if (sig === lastSig) return;
 
         const size = img.getSize();
@@ -594,6 +609,7 @@ function pollClipboard() {
     const text = clipboard.readText();
     if (!text) return;
     const sig = 'txt:' + hash(Buffer.from(text));
+    if (wasCopiedWhilePaused(sig)) return;
     if (sig === lastSig) return;
     lastSig = sig;
 
