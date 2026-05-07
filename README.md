@@ -27,11 +27,11 @@ Grab the latest release for your platform:
 
 See [all releases](https://github.com/harikrsh10/Stash/releases) for older versions and changelogs.
 
-> **Latest source fix:** `main` includes a fix for paused clipboard capture
-> (`4d7a3a3`). While Stash is paused, copied content is now ignored and will
-> not be added after you resume capture. If the downloaded app still shows the
-> old behavior, that release asset was built before this fix. Build from source
-> or wait for the next packaged release.
+> **Latest source fix:** `main` includes the newest paused clipboard capture
+> behavior. While Stash is paused, copied content is ignored and will not be
+> added after you resume capture. If the downloaded app still shows the old
+> behavior, that release asset was built before this fix. Build from source or
+> wait for the next packaged release.
 
 ---
 

@@ -21,7 +21,7 @@ let history = [];
 let pinned = []; // separate array; pinned items don't age out and persist to disk
 let pollTimer = null;
 let isPaused = false;
-let pausedIgnoredSigs = new Set();
+let pausedClipboardSigs = new Set();
 let pinnedStorePath = null; // set once app is ready (needs app.getPath)
 let settingsStorePath = null;
 
@@ -190,8 +190,8 @@ function refreshTrayMenu() {
 
 function setPaused(paused) {
   if (isPaused !== paused) {
-    if (paused) pausedIgnoredSigs = new Set();
-    rememberCurrentClipboard();
+    if (paused) pausedClipboardSigs = new Set();
+    rememberPausedClipboard();
   }
   isPaused = paused;
   refreshTrayMenu();
@@ -224,21 +224,41 @@ function currentClipboardSigs() {
   return sigs;
 }
 
-function rememberCurrentClipboard() {
+function rememberPausedClipboard() {
   try {
     const sigs = currentClipboardSigs();
-    sigs.forEach(sig => pausedIgnoredSigs.add(sig));
+    sigs.forEach(sig => pausedClipboardSigs.add(sig));
     if (sigs.length) lastSig = sigs[0];
   } catch (err) {
     console.warn('[Stash] failed to sync clipboard signature:', err.message);
   }
 }
 
-function wasCopiedWhilePaused(sig) {
-  if (!pausedIgnoredSigs.has(sig)) return false;
-  pausedIgnoredSigs.delete(sig);
-  lastSig = sig;
-  return true;
+function shouldIgnorePausedClipboard() {
+  if (pausedClipboardSigs.size === 0) return false;
+
+  try {
+    const sigs = currentClipboardSigs();
+    if (sigs.length === 0) {
+      pausedClipboardSigs.clear();
+      return false;
+    }
+
+    const stillPausedContent = sigs.some(sig => pausedClipboardSigs.has(sig));
+    if (!stillPausedContent) {
+      pausedClipboardSigs.clear();
+      return false;
+    }
+
+    // Treat every format currently on the clipboard as already seen. This is
+    // important on Windows, where one copy can expose both image and text data.
+    sigs.forEach(sig => pausedClipboardSigs.add(sig));
+    lastSig = sigs[0];
+    return true;
+  } catch (err) {
+    console.warn('[Stash] failed to check paused clipboard signature:', err.message);
+    return false;
+  }
 }
 
 function sniffType(text) {
@@ -548,16 +568,17 @@ function refreshDock() {
 // ---------- clipboard watcher ----------
 function pollClipboard() {
   if (isPaused) {
-    rememberCurrentClipboard();
+    rememberPausedClipboard();
     return;
   }
+  if (shouldIgnorePausedClipboard()) return;
+
   try {
     const img = clipboard.readImage();
     if (!img.isEmpty()) {
       const png = img.toPNG();
       if (png && png.length > 0) {
         const sig = 'img:' + hash(png);
-        if (wasCopiedWhilePaused(sig)) return;
         if (sig === lastSig) return;
 
         const size = img.getSize();
@@ -609,7 +630,6 @@ function pollClipboard() {
     const text = clipboard.readText();
     if (!text) return;
     const sig = 'txt:' + hash(Buffer.from(text));
-    if (wasCopiedWhilePaused(sig)) return;
     if (sig === lastSig) return;
     lastSig = sig;
 
