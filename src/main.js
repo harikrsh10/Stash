@@ -39,14 +39,14 @@ if (!gotLock) {
 
 // ---------- window ----------
 function createWindow() {
-  const { workArea } = screen.getPrimaryDisplay();
+  const { width: screenW, height: screenH } = screen.getPrimaryDisplay().workAreaSize;
   const drawerW = 340;
 
   mainWindow = new BrowserWindow({
     width: drawerW,
-    height: workArea.height,
-    x: workArea.x + workArea.width - drawerW,
-    y: workArea.y,
+    height: screenH,
+    x: screenW - drawerW,
+    y: 0,
     frame: false,
     transparent: false,
     resizable: false,
@@ -212,10 +212,8 @@ function sniffType(text) {
 function looksSecret(text) {
   if (!text) return false;
   const t = text.trim();
-  if (/^\d{6,8}$/.test(t)) return true;
-  const digitsOnly = t.replace(/[\s-]/g, '');
-  if (/^\d{13,19}$/.test(digitsOnly) && luhnCheck(digitsOnly)) return true;
   if (/\s/.test(t)) return false;
+  if (/^\d{6,8}$/.test(t)) return true;
   if (t.length < 8) return false;
   if (t.length > 500) return false;
 
@@ -247,6 +245,8 @@ function looksSecret(text) {
     const classes = [hasLower, hasUpper, hasDigit].filter(Boolean).length;
     if (classes >= 2) return true;
   }
+  const digitsOnly = t.replace(/[\s-]/g, '');
+  if (/^\d{13,19}$/.test(digitsOnly) && luhnCheck(digitsOnly)) return true;
   return false;
 }
 
@@ -406,7 +406,7 @@ let dockDragSafetyTimer = null;
 function createDockWindow() {
   dockWindow = new BrowserWindow({
     width: 340,
-    height: 300,
+    height: 460,
     frame: false,
     transparent: true,
     resizable: false,
@@ -468,7 +468,7 @@ function toggleDock() {
   const display = screen.getDisplayNearestPoint(cursor);
   const workArea = display.workArea;
   const winW = 340;
-  const winH = 300;
+  const winH = 460;
 
   // Anchor so the cursor sits near the top-left of the popover, offset slightly
   let x = cursor.x + 12;
@@ -496,12 +496,12 @@ function toggleDock() {
 
 function refreshDock() {
   if (!dockWindow || dockWindow.isDestroyed()) return;
-  // Show up to 5 most recent items. Pinned items show first (up to 2), then recent.
-  const dockItems = [
-    ...pinned.slice(0, 2),
-    ...history.slice(0, 5 - Math.min(pinned.length, 2)),
-  ].slice(0, 5);
-  dockWindow.webContents.send('dock:items', dockItems);
+  // Send pinned and recent as separate arrays so the renderer can render
+  // them as two distinct sections (pinned collapsible, recent capped at 10).
+  dockWindow.webContents.send('dock:items', {
+    pinned: pinned.slice(),
+    recent: history.slice(0, 10),
+  });
 }
 
 // ---------- clipboard watcher ----------

@@ -1,18 +1,33 @@
 # Stash
 
-A minimal clipboard history manager with drag-and-drop to any app. Mac / Windows / Linux via Electron.
+> A minimal clipboard history manager with drag-and-drop to any app.
+> Mac / Windows / Linux · built with Electron.
 
-Everything you copy, quietly kept. Drag it back out into anything.
+**Everything you copy, quietly kept. Drag it back out into anything.**
+
+---
 
 ## Download
 
-- [Download Stash for Windows and Mac](https://github.com/harikrsh10/Stash/releases/latest)
+Grab the latest release for your platform:
 
-Open the latest release and choose the installer for your system:
+### [→ Download latest release](https://github.com/YOUR_USERNAME/stash/releases/latest)
 
-- Windows: `Stash-win-x64.exe`
-- Mac Apple Silicon: `Stash-mac-arm64.dmg`
-- Mac Intel: `Stash-mac-x64.dmg`
+| Platform | File | |
+|----------|------|---|
+| macOS (Apple Silicon + Intel) | `Stash-x.y.z.dmg` | [↓ latest](https://github.com/YOUR_USERNAME/stash/releases/latest) |
+| Windows | `Stash-Setup-x.y.z.exe` | [↓ latest](https://github.com/YOUR_USERNAME/stash/releases/latest) |
+| Linux | `Stash-x.y.z.AppImage` | [↓ latest](https://github.com/YOUR_USERNAME/stash/releases/latest) |
+
+> **Heads up for first-time install:**
+> Stash isn't code-signed yet, so you'll see a security warning on first launch. This is normal for indie apps without an Apple Developer / Microsoft certificate — it's not a virus, it's just unverified.
+>
+> **macOS**: Right-click the app → **Open** → confirm. Or: `xattr -d com.apple.quarantine /Applications/Stash.app`
+> **Windows**: Click **More info** → **Run anyway** on the SmartScreen prompt.
+
+See [all releases](https://github.com/YOUR_USERNAME/stash/releases) for older versions and changelogs.
+
+---
 
 ## What it does
 
@@ -31,9 +46,14 @@ Open the latest release and choose the installer for your system:
 - **Re-copy promotion** — if you copy the same thing again, it flashes and bumps to the top instead of being dropped as a duplicate
 - Window hides on blur — stays alive in the background
 
-## Run it
+---
+
+## Build from source
+
+If you'd rather run it yourself (or contribute):
 
 ```bash
+git clone https://github.com/YOUR_USERNAME/stash.git
 cd stash
 npm install
 npm start
@@ -45,27 +65,31 @@ For dev mode (devtools open, window doesn't hide on blur):
 npm run dev
 ```
 
-## Package for distribution
+### Package for distribution
 
 ```bash
-# macOS .dmg
+# platform-appropriate installer (.dmg / .exe / .AppImage)
 npm run dist
 
-# just bundle without installer
+# bundle without creating an installer
 npm run pack
 ```
 
-The built app lands in `dist/`.
+The built artifacts land in `dist/`.
+
+---
 
 ## File structure
 
 ```
 stash/
 ├── package.json
+├── assets/          # tray icons
 └── src/
-    ├── main.js       # main process — clipboard polling, hotkey, drag-out
-    ├── preload.js    # secure bridge
-    └── renderer.html # the drawer UI (single file)
+    ├── main.js       # main process — clipboard polling, hotkey, drag-out, tray
+    ├── preload.js    # secure bridge between main and renderer
+    ├── renderer.html # the drawer UI
+    └── dock.html     # the quick-access popover UI
 ```
 
 ## How drag-out works
@@ -86,30 +110,12 @@ Stash keeps **unpinned history in memory only**, and **persists pinned items to 
 |------|----------|
 | Regular clips | Lost on quit or restart |
 | Pinned clips (★) | Survive quit, restart, and reboot |
+| User settings (auto-paste, etc.) | Persisted |
 | Drawer visibility | Hidden ≠ quit — `Esc` or `×` just hides |
 
-Pinned items are stored as JSON at your system's user-data path (`~/Library/Application Support/Stash/pinned.json` on macOS, `%APPDATA%\Stash\pinned.json` on Windows). Pinned images live in a `pinned-images/` subfolder next to it. Nothing else is ever written to disk.
+Pinned items and settings are stored as JSON at your system's user-data path (`~/Library/Application Support/Stash/` on macOS, `%APPDATA%\Stash\` on Windows). Pinned images live in a `pinned-images/` subfolder next to them. Nothing else is ever written to disk.
 
-Regular history is capped at **100 items** — pinned items don't count toward that cap and don't age out. "Clear all" from the tray menu only clears history; pinned items stay untouched (delete them individually if you want them gone).
-
-## Known limitations
-
-- **Text drag into code editors**: Some editors (e.g. VS Code) drop a file reference rather than inserting text. Workaround: click the entry to put it on the real clipboard, then ⌘V.
-- **Rich text loses formatting**: Only plain text and images are captured. RTF/HTML clipboard formats are simplified to plain text.
-- **Hotkey conflicts**: `⌘⇧V` is also used by some apps (Slack's plain-paste). If conflicts arise, change the shortcut in `main.js`:
-  ```js
-  globalShortcut.register('CommandOrControl+Shift+V', toggleWindow);
-  ```
-
-## Ideas to extend
-
-- Persistent history across restarts (write JSON index to `app.getPath('userData')`)
-- Pinned / favorite items that never age out
-- Sync via iCloud/Dropbox folder
-- Menu bar tray icon for quick toggle
-- Per-source filtering (e.g. "only show clips from Chrome")
-- Snippet mode — variables like `{{date}}` that expand on paste
-- Encryption for sensitive stashes (passwords, API keys)
+Regular history is capped at **100 items** — pinned items don't count toward that cap and don't age out. "Clear history" from the tray menu only clears unpinned clips; pinned items stay untouched (delete them individually if you want them gone).
 
 ## Security
 
@@ -126,4 +132,28 @@ When something is skipped, a small green dot pulses briefly next to the item cou
 
 The detection is tuned to minimize false positives — a regular URL, piece of code, or sentence will never be blocked. But no heuristic is perfect: treat Stash as a helpful session tool, not a secure vault. Truly sensitive values should still go through a password manager.
 
-Since history is memory-only, quitting Stash clears everything regardless.
+Since regular history is memory-only, quitting Stash clears everything unpinned regardless.
+
+## Known limitations
+
+- **Text drag into code editors**: Some editors (e.g. VS Code, Cursor) drop a file reference rather than inserting text. Workaround: click the entry to put it on the real clipboard, then ⌘V. Or use the dock with auto-paste enabled.
+- **Rich text loses formatting**: Only plain text and images are captured. RTF/HTML clipboard formats are simplified to plain text.
+- **Auto-paste may be blocked** by secure apps (password managers, banking sites, some terminals) that refuse synthetic keystrokes. The clip is on your clipboard — just paste manually with ⌘V.
+- **Hotkey conflicts**: `⌘⇧V` is used by some apps (Slack's plain-paste). `⌘⇧Space` may conflict with macOS Character Viewer. Both auto-retry registration on system resume and display changes.
+
+## Ideas to extend
+
+- Syncing via iCloud / Dropbox folder
+- Per-source filtering (e.g. "only show clips from Chrome")
+- Snippet mode — variables like `{{date}}` that expand on paste
+- Encryption for the on-disk pinned store
+- Customizable hotkeys via settings UI
+- Export / import of pinned items
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE)
+
+Built by [HariKrish](https://github.com/YOUR_USERNAME).

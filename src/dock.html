@@ -4,19 +4,26 @@
   <meta charset="UTF-8">
   <title>Stash Dock</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: rgba(20, 20, 20, 0.92);
-      --surface: #1a1a1a;
-      --surface2: #222;
-      --border: #2a2a2a;
-      --border2: #333;
-      --text: #e8e8e8;
-      --muted: #888;
-      --muted2: #555;
+      --bg: rgba(18, 18, 18, 0.94);
+      --surface: #181818;
+      --surface2: #1f1f1f;
+      --surface3: #252525;
+      --border: #262626;
+      --border2: #303030;
+      --text: #ededed;
+      --text2: #b8b8b8;
+      --muted: #777;
+      --muted2: #4a4a4a;
+      --accent: #d4a06a;
+      --accent-bg: rgba(212, 160, 106, 0.06);
+      --accent-border: rgba(212, 160, 106, 0.18);
+      --green: #6dbf8c;
+      --blue: #a0a0ff;
       --font-sans: 'IBM Plex Sans', -apple-system, sans-serif;
       --font-mono: 'IBM Plex Mono', monospace;
     }
@@ -43,11 +50,49 @@
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+      box-shadow: 0 24px 50px rgba(0, 0, 0, 0.55), 0 0 0 0.5px rgba(255, 255, 255, 0.06);
     }
 
     .dock-header {
-      padding: 10px 14px 6px;
+      padding: 10px 14px 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .dock-header .title {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.16em;
+      color: var(--muted2);
+      text-transform: uppercase;
+    }
+
+    .dock-header .hint {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--muted2);
+      letter-spacing: 0.06em;
+    }
+
+    /* scroll area contains both pinned section and recent section */
+    .scroll-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 6px 4px;
+      scrollbar-width: thin;
+    }
+    .scroll-area::-webkit-scrollbar { width: 3px; }
+    .scroll-area::-webkit-scrollbar-thumb {
+      background: var(--border2);
+      border-radius: 2px;
+    }
+    .scroll-area::-webkit-scrollbar-track { background: transparent; }
+
+    /* section labels */
+    .section-label {
+      padding: 8px 10px 4px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -56,78 +101,178 @@
       letter-spacing: 0.14em;
       color: var(--muted2);
       text-transform: uppercase;
-      flex-shrink: 0;
+      cursor: pointer;
+      user-select: none;
+      transition: color 0.12s;
+    }
+    .section-label:hover { color: var(--muted); }
+    .section-label .left {
+      display: flex; align-items: center; gap: 6px;
+    }
+    .section-label .star { color: var(--accent); }
+    .section-label .chevron {
+      width: 6px; height: 6px;
+      border-right: 1px solid currentColor;
+      border-bottom: 1px solid currentColor;
+      transform: rotate(45deg);
+      transition: transform 0.18s ease;
+      margin-right: 3px;
+      margin-top: -2px;
+    }
+    .section-label.collapsed .chevron {
+      transform: rotate(-45deg);
+      margin-top: 0;
+    }
+    .section-label .count {
+      font-weight: 400;
+      color: var(--muted2);
     }
 
-    .item-list {
-      flex: 1;
-      overflow-y: auto;
-      padding: 4px 6px;
-    }
-    .item-list::-webkit-scrollbar { width: 2px; }
-    .item-list::-webkit-scrollbar-thumb { background: var(--border2); }
+    .section-content { display: flex; flex-direction: column; gap: 2px; }
+    .section-content.collapsed { display: none; }
 
+    /* item rows — denser, stronger hierarchy */
     .dock-item {
       display: flex;
-      align-items: center;
+      align-items: stretch;
       gap: 10px;
       padding: 9px 10px;
-      border-radius: 8px;
+      border-radius: 7px;
       cursor: grab;
-      transition: background 0.12s;
+      transition: background 0.12s, transform 0.12s;
       position: relative;
     }
-    .dock-item:active { cursor: grabbing; }
-    .dock-item.dragging { opacity: 0.4; cursor: grabbing; }
     .dock-item:hover,
-    .dock-item.active { background: var(--surface2); }
+    .dock-item.active {
+      background: var(--surface2);
+    }
+    .dock-item.pinned-row {
+      background: var(--accent-bg);
+    }
+    .dock-item.pinned-row:hover,
+    .dock-item.pinned-row.active {
+      background: rgba(212, 160, 106, 0.10);
+    }
+    .dock-item.dragging {
+      opacity: 0.4;
+      cursor: grabbing;
+    }
 
-    .dock-item .icon {
-      width: 22px;
-      height: 22px;
-      border-radius: 5px;
+    /* drag handle — appears on hover */
+    .dock-item .drag-handle {
       display: flex;
-      align-items: center;
+      flex-direction: column;
       justify-content: center;
+      gap: 2px;
+      opacity: 0;
+      transition: opacity 0.12s;
+      flex-shrink: 0;
+      width: 6px;
+      margin-left: -4px;
+      margin-right: -2px;
+    }
+    .dock-item:hover .drag-handle,
+    .dock-item.active .drag-handle { opacity: 0.35; }
+    .dock-item .drag-handle span {
+      width: 2px;
+      height: 2px;
+      background: currentColor;
+      border-radius: 50%;
+      display: block;
+    }
+
+    .dock-item .badge {
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      display: grid;
+      place-items: center;
       flex-shrink: 0;
       font-family: var(--font-mono);
       font-size: 10px;
       font-weight: 500;
+      align-self: center;
     }
-    .dock-item .icon.text { background: #2a2a2a; color: #aaa; }
-    .dock-item .icon.code { background: #20202e; color: #a0a0ff; }
-    .dock-item .icon.url  { background: #142015; color: #6dbf8c; }
-    .dock-item .icon.img  { background: #20180c; color: #d4a06a; }
+    .dock-item .badge.text { background: #1f1f1f; color: #a0a0a0; }
+    .dock-item .badge.code { background: #181826; color: var(--blue); }
+    .dock-item .badge.url  { background: #0f1c14; color: var(--green); }
+    .dock-item .badge.img  { background: #1c1408; color: var(--accent); }
 
-    .dock-item .label {
+    /* main content column — first line is the headline */
+    .dock-item .content {
       flex: 1;
       min-width: 0;
-      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      align-self: center;
+    }
+    .dock-item .headline {
+      font-size: 12.5px;
+      font-weight: 500;
       color: var(--text);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      letter-spacing: -0.005em;
+    }
+    .dock-item .meta-row {
       font-family: var(--font-mono);
+      font-size: 9.5px;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .dock-item .meta-row .domain {
+      color: var(--green);
+      letter-spacing: 0;
+    }
+    .dock-item .meta-row .lang-tag {
+      background: var(--surface3);
+      color: var(--text2);
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 8.5px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .dock-item .meta-row .dot {
+      color: var(--muted2);
     }
 
+    /* code preview line — monospace, single line */
+    .dock-item .headline.code-preview {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      color: var(--text2);
+      background: rgba(255,255,255,0.025);
+      padding: 3px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+
+    /* image thumbnail — larger when image clip */
     .dock-item .thumb {
-      width: 38px;
-      height: 38px;
+      width: 42px;
+      height: 42px;
       border-radius: 5px;
+      object-fit: cover;
       background: var(--surface);
       border: 1px solid var(--border);
-      object-fit: cover;
       flex-shrink: 0;
+      align-self: center;
     }
 
-    .dock-item .pinned-marker {
-      position: absolute;
-      left: 3px;
-      top: 50%;
-      transform: translateY(-50%);
-      font-size: 9px;
-      color: #d4a06a;
-      opacity: 0.7;
+    .dock-item .pin-marker {
+      color: var(--accent);
+      font-size: 10px;
+      align-self: center;
+      opacity: 0.85;
+      flex-shrink: 0;
     }
 
     .dock-item .shortcut {
@@ -136,22 +281,34 @@
       color: var(--muted2);
       background: var(--surface);
       border: 1px solid var(--border);
-      padding: 1px 5px;
+      padding: 2px 5px;
       border-radius: 3px;
-      flex-shrink: 0;
       min-width: 16px;
       text-align: center;
+      align-self: center;
+      flex-shrink: 0;
     }
     .dock-item:hover .shortcut,
-    .dock-item.active .shortcut { color: var(--text); border-color: var(--border2); }
+    .dock-item.active .shortcut {
+      color: var(--text2);
+      border-color: var(--border2);
+    }
 
     .empty {
-      padding: 40px 18px;
+      padding: 50px 18px;
       text-align: center;
       color: var(--muted);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      line-height: 1.7;
+      font-weight: 300;
+    }
+    .empty .sub {
       font-family: var(--font-mono);
       font-size: 10px;
-      line-height: 1.8;
+      color: var(--muted2);
+      letter-spacing: 0.06em;
+      margin-top: 8px;
     }
 
     .dock-footer {
@@ -174,17 +331,17 @@
       align-items: center;
       gap: 6px;
       transition: color 0.12s;
+      letter-spacing: 0.04em;
     }
     .open-app-btn:hover { color: var(--text); }
     .open-app-btn .arrow {
       display: inline-block;
-      width: 8px;
-      height: 8px;
+      width: 7px; height: 7px;
       border-top: 1px solid currentColor;
       border-right: 1px solid currentColor;
       transform: rotate(45deg);
     }
-    .hint {
+    .footer-hint {
       font-family: var(--font-mono);
       font-size: 9px;
       color: var(--muted2);
@@ -195,105 +352,281 @@
 <body>
   <div class="dock">
     <div class="dock-header">
-      <span>recent</span>
-      <span class="hint">drag or ⏎</span>
+      <span class="title">stash · dock</span>
+      <span class="hint">esc to close</span>
     </div>
-    <div class="item-list" id="list">
-      <div class="empty">nothing copied yet</div>
+
+    <div class="scroll-area" id="scrollArea">
+      <div class="empty" id="emptyState">
+        Stash quietly remembers while you work.
+        <div class="sub">copy anything to begin</div>
+      </div>
     </div>
+
     <div class="dock-footer">
       <button class="open-app-btn" id="openAppBtn">
         <span>open full stash</span>
         <span class="arrow"></span>
       </button>
-      <span class="hint" id="modeHint">⏎ copy</span>
+      <span class="footer-hint" id="modeHint">⏎ copy</span>
     </div>
   </div>
 
   <script>
-    let items = [];
-    let activeIndex = 0;
+    let pinnedItems = [];
+    let recentItems = [];
+    let activeIndex = 0; // index into the flat visible list (pinned visible items + recent)
+    let pinnedCollapsed = false;
     let autoPaste = false;
 
-    const listEl = document.getElementById('list');
+    const scrollArea = document.getElementById('scrollArea');
+    const emptyState = document.getElementById('emptyState');
     const openAppBtn = document.getElementById('openAppBtn');
     const modeHintEl = document.getElementById('modeHint');
 
     function typeGlyph(type) {
-      return { text: 'T', code: '{}', url: '→', img: '◨' }[type] || '·';
-    }
-
-    function render() {
-      if (!items || items.length === 0) {
-        listEl.innerHTML = '<div class="empty">nothing copied yet<br>copy something first</div>';
-        return;
-      }
-      listEl.innerHTML = '';
-      items.forEach((c, i) => {
-        const el = document.createElement('div');
-        el.className = 'dock-item' + (i === activeIndex ? ' active' : '');
-        el.dataset.index = i;
-        el.draggable = true;
-
-        const isPinned = c.pinnedAt != null;
-        let thumbHtml = '';
-        if (c.type === 'img' && c.dataUrl) {
-          thumbHtml = `<img class="thumb" src="${c.dataUrl}" alt=""/>`;
-        }
-
-        // Truncate label for display
-        let labelText;
-        if (c.type === 'img') {
-          labelText = c.meta || 'image';
-        } else {
-          labelText = (c.content || '').replace(/\s+/g, ' ').trim().slice(0, 60);
-        }
-
-        el.innerHTML = `
-          ${isPinned ? '<span class="pinned-marker">★</span>' : ''}
-          <span class="icon ${c.type}">${typeGlyph(c.type)}</span>
-          <span class="label">${escHtml(labelText)}</span>
-          ${thumbHtml}
-          <span class="shortcut">${i + 1}</span>
-        `;
-
-        el.addEventListener('click', () => pick(i));
-        el.addEventListener('mouseenter', () => {
-          activeIndex = i;
-          updateActive();
-        });
-
-        // Native drag-out. We tell main that a drag started so it suppresses
-        // the blur-hide handler (otherwise the dock vanishes the moment the
-        // drag transfers focus to the target app).
-        el.addEventListener('dragstart', (e) => {
-          e.preventDefault();
-          el.classList.add('dragging');
-          window.api.dockDragStart();
-          window.api.startDrag(c);
-        });
-        el.addEventListener('dragend', () => {
-          el.classList.remove('dragging');
-          window.api.dockDragEnd();
-        });
-
-        listEl.appendChild(el);
-      });
-    }
-
-    function updateActive() {
-      document.querySelectorAll('.dock-item').forEach((el, i) => {
-        el.classList.toggle('active', i === activeIndex);
-      });
+      return { text: 'T', code: '{}', url: '@', img: '◨' }[type] || '·';
     }
 
     function escHtml(s) {
       return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
-    async function pick(i) {
-      if (i < 0 || i >= items.length) return;
-      await window.api.dockPick(items[i]);
+    function timeAgo(ts) {
+      const s = Math.floor((Date.now() - ts) / 1000);
+      if (s < 10) return 'just now';
+      if (s < 60) return s + 's';
+      const m = Math.floor(s / 60);
+      if (m < 60) return m + 'm';
+      const h = Math.floor(m / 60);
+      if (h < 24) return h + 'h';
+      return Math.floor(h / 24) + 'd';
+    }
+
+    // Pull domain out of a URL string
+    function domainOf(url) {
+      try {
+        const u = new URL(url);
+        return u.hostname.replace(/^www\./, '');
+      } catch { return null; }
+    }
+
+    // Title for a URL clip — domain + truncated path
+    function urlHeadline(url) {
+      try {
+        const u = new URL(url);
+        const path = (u.pathname + u.search).replace(/^\//, '');
+        if (path.length > 0) return path.slice(0, 50);
+        return u.hostname.replace(/^www\./, '');
+      } catch { return url.slice(0, 50); }
+    }
+
+    // Detect language from a code snippet — quick heuristic for the badge
+    function detectLang(text) {
+      const t = text.trim();
+      if (/^\s*<[a-z]/i.test(t)) return 'html';
+      if (/^\s*(import|from|def |class )/.test(t)) return 'py';
+      if (/(^|\s)(function|const|let|var|=>|import .* from)/.test(t)) return 'js';
+      if (/^\s*SELECT |^\s*INSERT |^\s*UPDATE |^\s*WHERE /i.test(t)) return 'sql';
+      if (/(^|\s)#include|::\s*\w+/.test(t)) return 'c';
+      if (/^\s*\{[\s\S]*\}\s*$/.test(t) && t.includes('"')) return 'json';
+      return null;
+    }
+
+    function buildItem(c, isPinned, shortcutNum) {
+      const el = document.createElement('div');
+      el.className = 'dock-item' + (isPinned ? ' pinned-row' : '');
+      el.draggable = true;
+      el.dataset.itemId = c.id;
+
+      // Headline + meta differ per type
+      let headlineHtml = '';
+      let metaHtml = '';
+      let leadingThumb = '';
+
+      if (c.type === 'url') {
+        const dom = domainOf(c.content);
+        headlineHtml = `<span class="headline">${escHtml(urlHeadline(c.content))}</span>`;
+        metaHtml = `<span class="meta-row">${dom ? `<span class="domain">${escHtml(dom)}</span><span class="dot">·</span>` : ''}<span>${isPinned ? 'pinned' : timeAgo(c.ts)}</span></span>`;
+      } else if (c.type === 'code') {
+        const firstLine = c.content.split('\n')[0].slice(0, 70);
+        const lang = detectLang(c.content);
+        headlineHtml = `<span class="headline code-preview">${escHtml(firstLine)}</span>`;
+        metaHtml = `<span class="meta-row">${lang ? `<span class="lang-tag">${lang}</span><span class="dot">·</span>` : ''}<span>${isPinned ? 'pinned' : timeAgo(c.ts) + ' ago'}</span></span>`;
+      } else if (c.type === 'img') {
+        headlineHtml = `<span class="headline">${escHtml(c.meta || 'image')}</span>`;
+        metaHtml = `<span class="meta-row"><span>${isPinned ? 'pinned' : timeAgo(c.ts) + ' ago'}</span></span>`;
+        if (c.dataUrl) {
+          leadingThumb = `<img class="thumb" src="${c.dataUrl}" alt=""/>`;
+        }
+      } else {
+        // text
+        const firstLine = c.content.split('\n')[0].slice(0, 70);
+        headlineHtml = `<span class="headline">${escHtml(firstLine)}</span>`;
+        metaHtml = `<span class="meta-row"><span>${isPinned ? 'pinned' : timeAgo(c.ts) + ' ago'}</span></span>`;
+      }
+
+      el.innerHTML = `
+        <span class="drag-handle">
+          <span></span><span></span><span></span>
+        </span>
+        ${c.type === 'img' && leadingThumb ? leadingThumb : `<span class="badge ${c.type}">${typeGlyph(c.type)}</span>`}
+        <span class="content">
+          ${headlineHtml}
+          ${metaHtml}
+        </span>
+        ${isPinned ? '<span class="pin-marker">★</span>' : ''}
+        ${shortcutNum ? `<span class="shortcut">${shortcutNum}</span>` : ''}
+      `;
+
+      // Click: copy / paste
+      el.addEventListener('click', () => pickById(c.id));
+
+      // Mouse hover updates active selection
+      el.addEventListener('mouseenter', () => {
+        const flat = getVisibleFlatList();
+        const idx = flat.findIndex(x => x.id === c.id);
+        if (idx > -1) {
+          activeIndex = idx;
+          updateActive();
+        }
+      });
+
+      // Drag-out — same flow as drawer
+      el.addEventListener('dragstart', (e) => {
+        e.preventDefault();
+        el.classList.add('dragging');
+        window.api.dockDragStart();
+        window.api.startDrag(c);
+      });
+      el.addEventListener('dragend', () => {
+        el.classList.remove('dragging');
+        window.api.dockDragEnd();
+      });
+
+      return el;
+    }
+
+    // Returns the currently-visible flat list (respects pinned-collapsed state).
+    // This is what Enter / arrow-keys / number-keys operate over.
+    function getVisibleFlatList() {
+      const pinnedVisible = pinnedCollapsed ? [] : pinnedItems;
+      return [...pinnedVisible, ...recentItems];
+    }
+
+    function render() {
+      const hasAnyItems = pinnedItems.length > 0 || recentItems.length > 0;
+      if (!hasAnyItems) {
+        emptyState.style.display = 'block';
+        // Wipe out previous sections
+        scrollArea.querySelectorAll('.section').forEach(n => n.remove());
+        return;
+      }
+      emptyState.style.display = 'none';
+      // Wipe and rebuild — small list, fine to reflow each refresh
+      scrollArea.querySelectorAll('.section').forEach(n => n.remove());
+
+      let shortcutCounter = 1;
+
+      // Pinned section
+      if (pinnedItems.length > 0) {
+        const section = document.createElement('div');
+        section.className = 'section pinned-section';
+
+        const label = document.createElement('div');
+        label.className = 'section-label' + (pinnedCollapsed ? ' collapsed' : '');
+        label.innerHTML = `
+          <span class="left">
+            <span class="chevron"></span>
+            <span class="star">★</span>
+            <span>pinned</span>
+          </span>
+          <span class="count">${pinnedItems.length}</span>
+        `;
+        label.addEventListener('click', () => {
+          pinnedCollapsed = !pinnedCollapsed;
+          // when collapsing/expanding, keep activeIndex sane
+          activeIndex = 0;
+          render();
+          updateActive();
+        });
+        section.appendChild(label);
+
+        const content = document.createElement('div');
+        content.className = 'section-content' + (pinnedCollapsed ? ' collapsed' : '');
+        pinnedItems.forEach((c) => {
+          const num = shortcutCounter <= 9 ? String(shortcutCounter) : '';
+          if (!pinnedCollapsed) shortcutCounter++;
+          content.appendChild(buildItem(c, true, num));
+        });
+        section.appendChild(content);
+        scrollArea.appendChild(section);
+      }
+
+      // Recent section
+      if (recentItems.length > 0) {
+        const section = document.createElement('div');
+        section.className = 'section recent-section';
+
+        // Show "recent" label only if pinned section is also rendered
+        if (pinnedItems.length > 0) {
+          const label = document.createElement('div');
+          label.className = 'section-label';
+          label.style.cursor = 'default';
+          label.innerHTML = `
+            <span class="left"><span style="color: var(--muted2); width: 6px; display: inline-block;"></span><span>recent</span></span>
+            <span class="count">${recentItems.length}</span>
+          `;
+          section.appendChild(label);
+        }
+
+        const content = document.createElement('div');
+        content.className = 'section-content';
+        recentItems.forEach((c) => {
+          const num = shortcutCounter <= 9 ? String(shortcutCounter) : '';
+          shortcutCounter++;
+          content.appendChild(buildItem(c, false, num));
+        });
+        section.appendChild(content);
+        scrollArea.appendChild(section);
+      }
+
+      updateActive();
+    }
+
+    function updateActive() {
+      const flat = getVisibleFlatList();
+      // clamp activeIndex
+      if (activeIndex >= flat.length) activeIndex = Math.max(0, flat.length - 1);
+      // visually mark active
+      document.querySelectorAll('.dock-item').forEach((el) => {
+        const id = el.dataset.itemId;
+        const isActive = flat[activeIndex] && flat[activeIndex].id === id;
+        el.classList.toggle('active', !!isActive);
+        if (isActive) {
+          // scroll into view
+          el.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+        }
+      });
+    }
+
+    async function pickById(id) {
+      const flat = [...pinnedItems, ...recentItems];
+      const item = flat.find(x => x.id === id);
+      if (item) await window.api.dockPick(item);
+    }
+
+    async function pickActive() {
+      const flat = getVisibleFlatList();
+      if (flat[activeIndex]) await window.api.dockPick(flat[activeIndex]);
+    }
+
+    async function pickByShortcut(n) {
+      // n is 1-based and references the visible flat list ordering used for shortcuts
+      const flat = getVisibleFlatList();
+      if (n >= 1 && n <= flat.length) {
+        await window.api.dockPick(flat[n - 1]);
+      }
     }
 
     // keyboard nav
@@ -302,29 +635,43 @@
         window.api.dockHide();
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        if (activeIndex < items.length - 1) { activeIndex++; updateActive(); }
+        const flat = getVisibleFlatList();
+        if (activeIndex < flat.length - 1) { activeIndex++; updateActive(); }
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         if (activeIndex > 0) { activeIndex--; updateActive(); }
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        pick(activeIndex);
+        pickActive();
       } else if (/^[1-9]$/.test(e.key)) {
-        const idx = parseInt(e.key, 10) - 1;
-        if (idx < items.length) pick(idx);
+        pickByShortcut(parseInt(e.key, 10));
+      } else if (e.key === ' ' || e.key === 'Spacebar') {
+        // space toggles pinned section collapse — secondary keyboard affordance
+        const target = document.querySelector('.pinned-section .section-label');
+        if (target) {
+          e.preventDefault();
+          target.click();
+        }
       }
     });
 
     openAppBtn.addEventListener('click', () => window.api.dockOpenMain());
 
-    // receive items from main
-    window.api.onDockItems((newItems) => {
-      items = newItems || [];
+    // receive items from main — now an object with {pinned, recent}
+    window.api.onDockItems((data) => {
+      if (Array.isArray(data)) {
+        // backward-compat with old payload, just in case
+        recentItems = data;
+        pinnedItems = [];
+      } else {
+        pinnedItems = data.pinned || [];
+        recentItems = data.recent || [];
+      }
       activeIndex = 0;
       render();
     });
 
-    // read the auto-paste setting to show appropriate footer hint
+    // settings — show "paste" instead of "copy" in hint when auto-paste is on
     (async () => {
       const s = await window.api.getSettings();
       autoPaste = !!(s && s.autoPasteFromDock);
