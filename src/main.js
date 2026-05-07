@@ -188,6 +188,7 @@ function refreshTrayMenu() {
 }
 
 function setPaused(paused) {
+  if (isPaused !== paused) rememberCurrentClipboard();
   isPaused = paused;
   refreshTrayMenu();
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -198,6 +199,32 @@ function setPaused(paused) {
 // ---------- helpers ----------
 function hash(buf) {
   return crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16);
+}
+
+function currentClipboardSig() {
+  const img = clipboard.readImage();
+  if (!img.isEmpty()) {
+    const png = img.toPNG();
+    if (png && png.length > 0) {
+      const size = img.getSize();
+      const text = clipboard.readText();
+      const isTinyIncidental = size.width < 16 && size.height < 16;
+      if (!(text && isTinyIncidental)) return 'img:' + hash(png);
+    }
+  }
+
+  const text = clipboard.readText();
+  if (!text) return '';
+  return 'txt:' + hash(Buffer.from(text));
+}
+
+function rememberCurrentClipboard() {
+  try {
+    const sig = currentClipboardSig();
+    if (sig) lastSig = sig;
+  } catch (err) {
+    console.warn('[Stash] failed to sync clipboard signature:', err.message);
+  }
 }
 
 function sniffType(text) {
@@ -506,7 +533,10 @@ function refreshDock() {
 
 // ---------- clipboard watcher ----------
 function pollClipboard() {
-  if (isPaused) return;
+  if (isPaused) {
+    rememberCurrentClipboard();
+    return;
+  }
   try {
     const img = clipboard.readImage();
     if (!img.isEmpty()) {
