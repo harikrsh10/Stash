@@ -11,13 +11,13 @@
 
 Grab the latest release for your platform:
 
-### [→ Download latest release](https://github.com/YOUR_USERNAME/stash/releases/latest)
+### [→ Download latest release](https://github.com/harikrsh10/Stash/releases/latest)
 
 | Platform | File | |
 |----------|------|---|
-| macOS (Apple Silicon + Intel) | `Stash-x.y.z.dmg` | [↓ latest](https://github.com/YOUR_USERNAME/stash/releases/latest) |
-| Windows | `Stash-Setup-x.y.z.exe` | [↓ latest](https://github.com/YOUR_USERNAME/stash/releases/latest) |
-| Linux | `Stash-x.y.z.AppImage` | [↓ latest](https://github.com/YOUR_USERNAME/stash/releases/latest) |
+| macOS (Apple Silicon + Intel) | `Stash-x.y.z.dmg` | [↓ latest](https://github.com/harikrsh10/Stash/releases/latest) |
+| Windows | `Stash-Setup-x.y.z.exe` | [↓ latest](https://github.com/harikrsh10/Stash/releases/latest) |
+| Linux | `Stash-x.y.z.AppImage` | [↓ latest](https://github.com/harikrsh10/Stash/releases/latest) |
 
 > **Heads up for first-time install:**
 > Stash isn't code-signed yet, so you'll see a security warning on first launch. This is normal for indie apps without an Apple Developer / Microsoft certificate — it's not a virus, it's just unverified.
@@ -25,7 +25,7 @@ Grab the latest release for your platform:
 > **macOS**: Right-click the app → **Open** → confirm. Or: `xattr -d com.apple.quarantine /Applications/Stash.app`
 > **Windows**: Click **More info** → **Run anyway** on the SmartScreen prompt.
 
-See [all releases](https://github.com/YOUR_USERNAME/stash/releases) for older versions and changelogs.
+See [all releases](https://github.com/harikrsh10/Stash/releases) for older versions and changelogs.
 
 ---
 
@@ -53,7 +53,7 @@ See [all releases](https://github.com/YOUR_USERNAME/stash/releases) for older ve
 If you'd rather run it yourself (or contribute):
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/stash.git
+git clone https://github.com/harikrsh10/Stash.git
 cd stash
 npm install
 npm start
@@ -156,4 +156,4 @@ Since regular history is memory-only, quitting Stash clears everything unpinned 
 
 MIT — see [LICENSE](LICENSE)
 
-Built by [HariKrish](https://github.com/YOUR_USERNAME).
+Built by [HariKrish](https://github.com/harikrsh10).
