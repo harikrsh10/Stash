@@ -23,10 +23,15 @@
     "artifactName": "${productName}-${os}-${arch}.${ext}",
     "mac": {
       "category": "public.app-category.productivity",
-      "target": "dmg"
+      "icon": "assets/icon.png",
+      "target": {
+        "target": "dmg",
+        "arch": ["x64", "arm64"]
+      }
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "assets/icon.ico"
     },
     "files": [
       "src/**/*",
