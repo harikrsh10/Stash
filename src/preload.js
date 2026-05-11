@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('api', {
   // drawer-specific
   hide: () => ipcRenderer.invoke('window:hide'),
   startDrag: (entry) => ipcRenderer.send('ondragstart', entry),
+  drawerDragStart: () => ipcRenderer.send('drawer:dragStart'),
+  drawerDragEnd: () => ipcRenderer.send('drawer:dragEnd'),
 
   // dock-specific
   dockPick: (entry) => ipcRenderer.invoke('dock:pick', entry),

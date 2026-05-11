@@ -704,9 +704,13 @@
       el.addEventListener('dragstart', (e) => {
         e.preventDefault();
         el.classList.add('dragging');
+        window.api.drawerDragStart();
         window.api.startDrag(c);
       });
-      el.addEventListener('dragend', () => el.classList.remove('dragging'));
+      el.addEventListener('dragend', () => {
+        el.classList.remove('dragging');
+        window.api.drawerDragEnd();
+      });
 
       el.querySelector('[data-act="copy"]').addEventListener('click', async (e) => {
         e.stopPropagation();
