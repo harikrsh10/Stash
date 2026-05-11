@@ -414,6 +414,35 @@
     }
     .pause-btn.paused .dot { background: #c49a3a; }
 
+    /* update-available badge — sits left of pause btn, only shown when a
+       newer release exists on github. clicking opens the release page. */
+    .update-badge {
+      -webkit-app-region: no-drag;
+      background: none;
+      border: 1px solid #4a7a4a;
+      color: #8fbf8f;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      padding: 3px 7px;
+      border-radius: 3px;
+      margin-right: 6px;
+      transition: color 0.15s, background 0.15s, border-color 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .update-badge:hover {
+      color: #b8d9b8;
+      background: rgba(90, 138, 90, 0.12);
+      border-color: #6a9a6a;
+    }
+    .update-badge .update-arrow {
+      font-size: 11px;
+      line-height: 1;
+    }
+
     .titlebar-right {
       -webkit-app-region: no-drag;
       display: flex;
@@ -526,6 +555,10 @@
     <div class="titlebar">
       <span class="title">stash</span>
       <div class="titlebar-right">
+        <button class="update-badge" id="updateBadge" title="" style="display:none">
+          <span class="update-arrow">↑</span>
+          <span id="updateLabel"></span>
+        </button>
         <button class="pause-btn" id="pauseBtn" title="pause clipboard capture">
           <span class="dot"></span>
           <span id="pauseLabel">live</span>
@@ -931,6 +964,22 @@
       history = state.history || [];
       pinned = state.pinned || [];
       render();
+    });
+
+    // listen for update-available notification from main process
+    // (fired once at startup if a newer release exists on github, and again
+    // every 6 hours while the app is running)
+    const updateBadge = document.getElementById('updateBadge');
+    const updateLabel = document.getElementById('updateLabel');
+    let updateUrl = null;
+    window.api.onUpdateAvailable(({ version, url }) => {
+      updateUrl = url;
+      updateLabel.textContent = version;
+      updateBadge.title = `new version ${version} available — click to download`;
+      updateBadge.style.display = 'flex';
+    });
+    updateBadge.addEventListener('click', () => {
+      if (updateUrl) window.api.openExternal(updateUrl);
     });
 
     // initial load

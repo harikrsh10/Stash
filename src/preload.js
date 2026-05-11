@@ -37,4 +37,8 @@ contextBridge.exposeInMainWorld('api', {
   onPauseChanged: (cb) => ipcRenderer.on('paused:changed', (_e, v) => cb(v)),
   onHistoryCleared: (cb) => ipcRenderer.on('history:cleared', () => cb()),
   onStateUpdated: (cb) => ipcRenderer.on('state:updated', (_e, state) => cb(state)),
+  onUpdateAvailable: (cb) => ipcRenderer.on('update:available', (_e, info) => cb(info)),
+
+  // updates
+  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 });

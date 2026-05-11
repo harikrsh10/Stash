@@ -893,6 +893,75 @@ ipcMain.on('ondragstart', (event, entry) => {
   }
 });
 
+// ---------- update check ----------
+// Lightweight check: ask GitHub for the latest release tag, compare to our
+// own version, tell the renderer if there's something newer. Runs once at
+// startup and again every 6 hours. Failures are silent — if GitHub is down
+// or the user is offline, the app just behaves as if no update exists.
+//
+// We use the public GitHub Releases API (unauthenticated, 60 req/hour per IP),
+// which is more than enough for this poll cadence.
+
+const GITHUB_RELEASES_URL = 'https://api.github.com/repos/harikrsh10/Stash/releases/latest';
+const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+// Strip leading "v" and split into numbers so "0.1.10" > "0.1.9" (string
+// compare would get this wrong).
+function parseVersion(v) {
+  return String(v).replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+}
+
+function isNewerVersion(remote, local) {
+  const a = parseVersion(remote);
+  const b = parseVersion(local);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] || 0;
+    const y = b[i] || 0;
+    if (x > y) return true;
+    if (x < y) return false;
+  }
+  return false;
+}
+
+async function checkForUpdate() {
+  try {
+    const res = await fetch(GITHUB_RELEASES_URL, {
+      headers: { 'User-Agent': `Stash/${app.getVersion()}` },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const latestTag = data.tag_name; // e.g. "v0.1.4"
+    const currentVersion = app.getVersion();
+
+    if (isNewerVersion(latestTag, currentVersion)) {
+      console.log(`[Stash] update available: ${currentVersion} → ${latestTag}`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('update:available', {
+          version: latestTag,
+          url: data.html_url, // release page on github.com
+        });
+      }
+    } else {
+      console.log(`[Stash] up to date (${currentVersion})`);
+    }
+  } catch (err) {
+    // Offline, rate-limited, or GitHub having a bad day — silently ignore.
+    console.log('[Stash] update check failed:', err.message);
+  }
+}
+
+// Renderer asks us to open a URL in the user's default browser.
+ipcMain.handle('shell:openExternal', (_e, url) => {
+  // Defensive: only allow opening github.com URLs from this IPC, so a
+  // compromised renderer can't trick us into opening arbitrary links.
+  try {
+    const u = new URL(url);
+    if (u.hostname === 'github.com' || u.hostname.endsWith('.github.com')) {
+      shell.openExternal(url);
+    }
+  } catch (_) { /* invalid URL — ignore */ }
+});
+
 // ---------- lifecycle ----------
 function registerShortcuts() {
   // Always unregister first to be safe — prevents accidental duplicate handlers
@@ -927,6 +996,11 @@ app.whenReady().then(() => {
   console.log('[Stash] settings store:', settingsStorePath);
 
   registerShortcuts();
+
+  // Update check — wait a few seconds so the window is ready to receive the
+  // IPC message, then run again every 6 hours while the app is alive.
+  setTimeout(checkForUpdate, 5000);
+  setInterval(checkForUpdate, UPDATE_CHECK_INTERVAL_MS);
 
   // macOS occasionally releases global shortcuts after certain system events
   // (screen lock, display sleep, user switching). Re-register when the app
