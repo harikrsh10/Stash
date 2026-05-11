@@ -1,6 +1,6 @@
 {
   "name": "stash",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Minimal clipboard history with drag-and-drop to any app",
   "main": "src/main.js",
   "author": "HariKrish",
