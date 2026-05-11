@@ -1,6 +1,6 @@
 {
   "name": "stash",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Minimal clipboard history with drag-and-drop to any app",
   "main": "src/main.js",
   "author": "HariKrish",
@@ -26,7 +26,10 @@
       "icon": "assets/icon.png",
       "target": {
         "target": "dmg",
-        "arch": ["x64", "arm64"]
+        "arch": [
+          "x64",
+          "arm64"
+        ]
       }
     },
     "win": {
