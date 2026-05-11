@@ -25,6 +25,12 @@ let pausedClipboardSigs = new Set();
 let pinnedStorePath = null; // set once app is ready (needs app.getPath)
 let settingsStorePath = null;
 
+// Drawer drag state — set by IPC from the renderer. Used by the blur handler
+// to suppress hide-on-blur while the OS is driving a drag operation.
+// Mirrors the dock's dragInProgress pattern (see further down).
+let drawerDragInProgress = false;
+let drawerDragSafetyTimer = null;
+
 // User settings (persisted to disk)
 let settings = {
   autoPasteFromDock: false, // default off — no permission prompt on first launch
@@ -64,8 +70,14 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'renderer.html'));
 
+  // Hide on blur — UNLESS a drag is in progress. When the user drags a clip
+  // out of the drawer, the OS takes focus to drive the drag, which fires
+  // blur on our window. Hiding mid-drag both cancels the drag and forces
+  // the user to re-open the drawer with the shortcut for every item.
   mainWindow.on('blur', () => {
-    if (!isDev) mainWindow.hide();
+    if (isDev) return;
+    if (drawerDragInProgress) return;
+    mainWindow.hide();
   });
 
   mainWindow.on('show', refreshTrayMenu);
@@ -762,6 +774,29 @@ ipcMain.on('dock:dragEnd', () => {
   if (dockDragSafetyTimer) { clearTimeout(dockDragSafetyTimer); dockDragSafetyTimer = null; }
   // After the drag completes, hide the dock (as if user had clicked an item)
   if (dockWindow && dockWindow.isVisible()) dockWindow.hide();
+});
+
+// Drawer drag state — renderer tells us when a drag starts/ends so blur-hide
+// is suppressed during the OS drag. UNLIKE the dock, we do NOT hide the drawer
+// on dragEnd: the drawer is the browsing surface and users frequently drag
+// several items in a row. Closing it after each drop forced them to re-trigger
+// the hotkey for every clip.
+ipcMain.on('drawer:dragStart', () => {
+  drawerDragInProgress = true;
+  // Safety timer: if dragEnd never fires (drag cancelled in some weird way,
+  // window unfocused for a long time, etc.), clear the flag after 8s so the
+  // drawer can hide normally again on the next blur.
+  if (drawerDragSafetyTimer) clearTimeout(drawerDragSafetyTimer);
+  drawerDragSafetyTimer = setTimeout(() => {
+    drawerDragInProgress = false;
+  }, 8000);
+});
+
+ipcMain.on('drawer:dragEnd', () => {
+  drawerDragInProgress = false;
+  if (drawerDragSafetyTimer) { clearTimeout(drawerDragSafetyTimer); drawerDragSafetyTimer = null; }
+  // Intentionally do NOT hide the drawer here — keep it open so the user
+  // can drag additional items without re-opening with ⌘⇧V every time.
 });
 
 ipcMain.handle('settings:get', () => settings);
