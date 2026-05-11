@@ -679,7 +679,7 @@
         headlineHtml = `<div class="item-headline">${esc(urlHeadline(c.content))}</div>`;
         if (dom) metaParts.push(`<span class="domain">${esc(dom)}</span>`);
         metaParts.push(`<span class="dot">·</span>`);
-        metaParts.push(`<span class="time">${isPinned ? 'pinned' : timeAgo(c.ts) + ' ago'}</span>`);
+        metaParts.push(`<span class="time">${isPinned ? 'pinned' : timeAgo(c.ts)}</span>`);
       } else if (c.type === 'code') {
         // code preview — first ~3 lines, monospace, in a tinted box
         const lines = c.content.split('\n');
@@ -687,11 +687,11 @@
         headlineHtml = `<div class="item-headline code-preview">${esc(previewText)}</div>`;
         const lang = detectLang(c.content);
         if (lang) metaParts.push(`<span class="lang-tag">${lang}</span>`);
-        metaParts.push(`<span class="time">${isPinned ? 'pinned' : timeAgo(c.ts) + ' ago'}</span>`);
+        metaParts.push(`<span class="time">${isPinned ? 'pinned' : timeAgo(c.ts)}</span>`);
         if (lines.length > 3) metaParts.push(`<span class="dot">·</span><span>+${lines.length - 3} more lines</span>`);
       } else if (c.type === 'img') {
         headlineHtml = `<div class="item-headline">${esc(c.meta || 'image')}</div>`;
-        metaParts.push(`<span class="time">${isPinned ? 'pinned' : timeAgo(c.ts) + ' ago'}</span>`);
+        metaParts.push(`<span class="time">${isPinned ? 'pinned' : timeAgo(c.ts)}</span>`);
         if (c.dataUrl) {
           extraHtml = `<img class="item-image" src="${c.dataUrl}" alt=""/>`;
         }
@@ -704,7 +704,7 @@
         // For multiline, show first 2 lines clamped; otherwise just first line
         const showText = hasMore ? c.content.slice(0, 240) : firstLine;
         headlineHtml = `<div class="${headlineClass}">${esc(showText)}</div>`;
-        metaParts.push(`<span class="time">${isPinned ? 'pinned' : timeAgo(c.ts) + ' ago'}</span>`);
+        metaParts.push(`<span class="time">${isPinned ? 'pinned' : timeAgo(c.ts)}</span>`);
         if (hasMore && lines.length > 2) {
           metaParts.push(`<span class="dot">·</span><span>+${lines.length - 2} more lines</span>`);
         }
