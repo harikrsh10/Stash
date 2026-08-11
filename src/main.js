@@ -871,25 +871,70 @@ ipcMain.handle('window:hide', () => {
   if (mainWindow) mainWindow.hide();
 });
 
-ipcMain.on('ondragstart', (event, entry) => {
-  let filepath, iconPath;
-  if (entry.type === 'img' && entry.filepath) {
-    filepath = entry.filepath;
-    iconPath = entry.filepath;
-  } else {
-    const safe = (entry.content || '').slice(0, 40).replace(/[^\w-]+/g, '_') || 'clip';
-    filepath = path.join(TMP_DIR, `${safe}-${Date.now()}.txt`);
-    fs.writeFileSync(filepath, entry.content);
-    iconPath = filepath;
+// Put a clip on disk so the OS drag can carry it. Images already have a real
+// file; everything else becomes a .txt. `index` disambiguates a multi-drag of
+// clips that would otherwise land on the same name in the same millisecond.
+function materializeForDrag(entry, index = 0) {
+  if (entry.type === 'img' && entry.filepath) return entry.filepath;
+  const safe = (entry.content || '').slice(0, 40).replace(/[^\w-]+/g, '_') || 'clip';
+  const filepath = path.join(TMP_DIR, `${safe}-${Date.now()}-${index}.txt`);
+  fs.writeFileSync(filepath, entry.content);
+  return filepath;
+}
+
+// The drag cursor can only show one thumbnail, so use the first file that
+// actually renders as an image — a text-only drag falls back to empty, which
+// is what the single-file path has always done.
+function dragIcon(paths) {
+  for (const p of paths) {
+    const img = nativeImage.createFromPath(p);
+    if (!img.isEmpty()) return img.resize({ width: 64 });
   }
+  return nativeImage.createEmpty();
+}
+
+ipcMain.on('ondragstart', (event, entry) => {
   try {
-    const img = nativeImage.createFromPath(iconPath);
-    event.sender.startDrag({
-      file: filepath,
-      icon: img.isEmpty() ? nativeImage.createEmpty() : img.resize({ width: 64 }),
-    });
+    const filepath = materializeForDrag(entry);
+    event.sender.startDrag({ file: filepath, icon: dragIcon([filepath]) });
   } catch (err) {
     console.error('startDrag failed:', err);
+  }
+});
+
+// Multi-select drag — one gesture, N files. Electron's `files` (plural) hands
+// the target a real multi-file drop, which is what Figma's canvas and AI chat
+// inputs expect; they treat it exactly like a multi-file pick from Explorer.
+ipcMain.on('ondragstart:multi', (event, entries, iconDataUrl) => {
+  if (!Array.isArray(entries) || entries.length === 0) return;
+  const files = [];
+  entries.forEach((entry, i) => {
+    try {
+      files.push(materializeForDrag(entry, i));
+    } catch (err) {
+      // one bad clip shouldn't sink the whole drag
+      console.error('skipping clip in multi-drag:', err);
+    }
+  });
+  if (files.length === 0) return;
+
+  // The renderer rasterizes the visible stack and sends it over, so the drag
+  // cursor is the deck the user just built. Fall back to the old first-image
+  // icon if that didn't arrive in time.
+  let icon = null;
+  if (typeof iconDataUrl === 'string' && iconDataUrl.startsWith('data:image/')) {
+    try {
+      const img = nativeImage.createFromDataURL(iconDataUrl);
+      if (!img.isEmpty()) icon = img;
+    } catch (err) {
+      console.error('stack icon decode failed:', err);
+    }
+  }
+
+  try {
+    event.sender.startDrag({ files, icon: icon || dragIcon(files) });
+  } catch (err) {
+    console.error('multi startDrag failed:', err);
   }
 });
 

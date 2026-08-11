@@ -166,6 +166,13 @@
     .item.dragging { opacity: 0.4; cursor: grabbing; }
     .item.new { animation: pop 0.4s ease; }
 
+    /* multi-select — accent rail on the left edge so a selected row reads as
+       picked up without competing with the pinned section's warm tint */
+    .item.selected { background: rgba(109, 140, 255, 0.08); box-shadow: inset 2px 0 0 #6d8cff; }
+    .item.selected:hover { background: rgba(109, 140, 255, 0.13); }
+    /* shift-clicking a range otherwise smears a text selection across rows */
+    .item { user-select: none; }
+
     @keyframes pop {
       0% { background: #1e2a1e; }
       100% { background: transparent; }
@@ -338,6 +345,113 @@
     }
     .act-btn:hover { color: var(--text); background: var(--surface3, #2a2a2a); }
     .act-btn.danger:hover { color: #c46a6a; }
+
+    /* ---------- selection stack ----------
+       Selecting clips gathers them into a physical little deck above the
+       footer. The deck is the drag target, so "collect, then throw" is one
+       continuous gesture rather than an abstract selection state. */
+    .stack-tray {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      padding: 11px 14px 12px;
+      border-top: 1px solid var(--border);
+      background: linear-gradient(to top, rgba(109, 140, 255, 0.13), rgba(109, 140, 255, 0.03));
+      flex-shrink: 0;
+    }
+    .stack-tray.show { display: flex; animation: trayIn 0.34s cubic-bezier(0.22, 1.2, 0.36, 1); }
+    @keyframes trayIn {
+      from { transform: translateY(100%); opacity: 0; }
+      to   { transform: translateY(0); opacity: 1; }
+    }
+
+    .stack-deck {
+      position: relative;
+      /* wide enough that a 5-card deck stays inside its own footprint when
+         the hover fan spreads it, instead of sliding under the label */
+      width: 88px;
+      height: 46px;
+      flex-shrink: 0;
+      cursor: grab;
+    }
+    .stack-deck:active { cursor: grabbing; }
+    .stack-deck.delivered { animation: settle 0.5s cubic-bezier(0.22, 1.4, 0.36, 1); }
+    @keyframes settle {
+      0%   { transform: scale(0.86) rotate(-3deg); }
+      55%  { transform: scale(1.06) rotate(1.5deg); }
+      100% { transform: scale(1) rotate(0deg); }
+    }
+
+    .stack-card {
+      position: absolute;
+      top: 50%;
+      left: 4px;
+      width: 38px;
+      height: 38px;
+      margin-top: -19px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: var(--surface2, #1a1a1a);
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5);
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: #9aa4c0;
+      transform: translateX(var(--x, 0px)) rotate(var(--r, 0deg));
+      transition: transform 0.28s cubic-bezier(0.22, 1.2, 0.36, 1), opacity 0.18s;
+      cursor: pointer;
+    }
+    .stack-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    /* hover fans the deck out so you can see what you've gathered */
+    .stack-deck:hover .stack-card {
+      transform: translateX(calc(var(--x, 0px) * 1.4)) rotate(calc(var(--r, 0deg) * 1.5));
+    }
+    .stack-card.leaving { opacity: 0; transform: translateX(var(--x, 0px)) scale(0.5) rotate(12deg); }
+
+    .stack-count {
+      position: absolute;
+      right: -5px;
+      top: -7px;
+      min-width: 17px;
+      height: 17px;
+      padding: 0 4px;
+      border-radius: 9px;
+      background: #6d8cff;
+      color: #0b0b0b;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+      z-index: 5;
+    }
+    .stack-count.bump { animation: bump 0.34s cubic-bezier(0.22, 1.4, 0.36, 1); }
+    @keyframes bump {
+      0% { transform: scale(1); } 45% { transform: scale(1.38); } 100% { transform: scale(1); }
+    }
+
+    .stack-info { flex: 1; min-width: 0; line-height: 1.35; }
+    .stack-title {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: #c3cbe6;
+      display: block;
+    }
+    .stack-hint {
+      font-size: 10px;
+      color: var(--muted);
+      display: block;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .stack-tray.show, .stack-deck.delivered, .stack-count.bump { animation: none; }
+      .stack-card { transition: none; }
+    }
 
     .footer {
       padding: 10px 18px;
@@ -596,6 +710,17 @@
       </div>
     </div>
 
+    <div class="stack-tray" id="stackTray">
+      <div class="stack-deck" id="stackDeck" draggable="true" title="drag the stack anywhere">
+        <span class="stack-count" id="stackCount">0</span>
+      </div>
+      <span class="stack-info">
+        <span class="stack-title" id="stackTitle">0 stacked</span>
+        <span class="stack-hint">drag it anywhere</span>
+      </span>
+      <button class="clear-btn" id="selClearBtn">deselect</button>
+    </div>
+
     <div class="footer">
       <span class="footer-info"><span class="skip-pulse" id="skipPulse" title="a secret-looking item was skipped"></span><span id="footerInfo">0 items</span></span>
       <button class="clear-btn" id="clearBtn">clear all</button>
@@ -612,10 +737,28 @@
     // Section collapse state — in-memory only, resets on app restart
     let collapsed = { pinned: false, recent: false };
 
+    // Multi-select state. `selected` holds clip ids; `renderedOrder` is the
+    // flat top-to-bottom order of what's currently on screen, which is what
+    // shift-click ranges are measured against (pinned rows come first, and a
+    // filter or search can hide anything in between).
+    const selected = new Set();
+    let renderedOrder = [];
+    let anchorId = null;
+
     const listEl = document.getElementById('list');
     const footerEl = document.getElementById('footerInfo');
     const searchEl = document.getElementById('search');
     const toastEl = document.getElementById('toast');
+    const stackTrayEl = document.getElementById('stackTray');
+    const stackDeckEl = document.getElementById('stackDeck');
+    const stackCountEl = document.getElementById('stackCount');
+    const stackTitleEl = document.getElementById('stackTitle');
+    // ids currently drawn in the deck, so we only animate what actually changed
+    let stackDrawn = [];
+    // rasterized stack, handed to the OS as the drag cursor; rebuilt off the
+    // critical path because dragstart can't wait on image decoding
+    let stackIconUrl = null;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     function esc(s) {
       return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -667,14 +810,205 @@
       return null;
     }
 
+    // ---------- multi-select ----------
+    // Resolve selected ids back to clips, in the order they appear on screen,
+    // so a batch drop lands in the same order the user sees.
+    function selectedClips() {
+      const byId = new Map([...pinned, ...history].map(c => [c.id, c]));
+      return renderedOrder.filter(id => selected.has(id)).map(id => byId.get(id)).filter(Boolean);
+    }
+
+    function selectRange(fromId, toId) {
+      const a = renderedOrder.indexOf(fromId);
+      const b = renderedOrder.indexOf(toId);
+      if (a === -1 || b === -1) { selected.add(toId); return; }
+      const [lo, hi] = a < b ? [a, b] : [b, a];
+      for (let i = lo; i <= hi; i++) selected.add(renderedOrder[i]);
+    }
+
+    function clearSelection() {
+      selected.clear();
+      anchorId = null;
+      syncSelection();
+    }
+
+    // Paint selection state without a full re-render — re-rendering on every
+    // click would rebuild every row and kill the drag the user is about to
+    // start. `originRect` is the row a clip was just taken from, so its card
+    // can fly out of that row instead of blinking into existence.
+    function syncSelection(originRect) {
+      document.querySelectorAll('.item').forEach(n => {
+        n.classList.toggle('selected', selected.has(n.dataset.id));
+      });
+      updateStack(originRect);
+    }
+
+    // ---------- the stack ----------
+    const MAX_CARDS = 5;
+    const GLYPH = { text: 'T', code: '{}', url: '@', img: '◨' };
+
+    // Deterministic tilt — a card must not re-shuffle its angle every redraw,
+    // or the deck twitches every time you add one.
+    function tiltFor(id) {
+      let h = 0;
+      for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+      return ((h % 13) - 6) * 0.9;
+    }
+
+    function updateStack(originRect) {
+      const clips = selectedClips();
+      const n = clips.length;
+      const wasShown = stackTrayEl.classList.contains('show');
+      stackTrayEl.classList.toggle('show', n > 0);
+
+      if (n === 0) {
+        stackDeckEl.querySelectorAll('.stack-card').forEach(el => el.remove());
+        stackDrawn = [];
+        stackIconUrl = null;
+        return;
+      }
+
+      stackTitleEl.textContent = n === 1 ? '1 clip stacked' : `${n} clips stacked`;
+      if (stackCountEl.textContent !== String(n)) {
+        stackCountEl.textContent = String(n);
+        if (!reduceMotion && wasShown) {
+          stackCountEl.classList.remove('bump');
+          void stackCountEl.offsetWidth; // reflow, so the animation restarts
+          stackCountEl.classList.add('bump');
+        }
+      }
+
+      // the deck shows the most recent few; the badge carries the real count
+      const shown = clips.slice(-MAX_CARDS);
+      const shownIds = shown.map(c => c.id);
+
+      stackDeckEl.querySelectorAll('.stack-card').forEach(el => {
+        if (!shownIds.includes(el.dataset.id)) {
+          el.classList.add('leaving');
+          el.dataset.leaveTimer = String(setTimeout(() => el.remove(), 200));
+        }
+      });
+
+      shown.forEach((c, i) => {
+        let card = stackDeckEl.querySelector(`.stack-card[data-id="${CSS.escape(c.id)}"]`);
+        // Re-picking a clip while its card is still fading out would otherwise
+        // resurrect a card mid-exit — invisible and shrunk. Catch it and cancel.
+        if (card && card.classList.contains('leaving')) {
+          clearTimeout(Number(card.dataset.leaveTimer));
+          delete card.dataset.leaveTimer;
+          card.classList.remove('leaving');
+        }
+        const isNew = !card;
+        if (isNew) {
+          card = document.createElement('div');
+          card.className = 'stack-card';
+          card.dataset.id = c.id;
+          card.title = 'click to take this one out';
+          card.innerHTML = (c.type === 'img' && c.dataUrl)
+            ? `<img src="${c.dataUrl}" alt=""/>`
+            : `<span>${GLYPH[c.type] || '·'}</span>`;
+          card.addEventListener('click', (e) => {
+            e.stopPropagation();
+            selected.delete(c.id);
+            syncSelection();
+          });
+          stackDeckEl.appendChild(card);
+        }
+        const x = i * 8;
+        const r = tiltFor(c.id);
+        card.style.setProperty('--x', x + 'px');
+        card.style.setProperty('--r', r + 'deg');
+        card.style.zIndex = String(i + 1);
+        if (isNew && originRect && !reduceMotion) flyIn(card, originRect, x, r);
+      });
+
+      stackDrawn = shownIds;
+      buildStackIcon(clips);
+    }
+
+    // card leaves the row it was picked from and lands in the deck
+    function flyIn(card, originRect, x, r) {
+      const to = card.getBoundingClientRect();
+      const dx = originRect.left + originRect.width / 2 - (to.left + to.width / 2);
+      const dy = originRect.top + originRect.height / 2 - (to.top + to.height / 2);
+      card.animate([
+        { transform: `translate(${x + dx}px, ${dy}px) scale(1.5) rotate(0deg)`, opacity: 0.25 },
+        { transform: `translateX(${x}px) rotate(${r}deg)`, opacity: 1 },
+      ], { duration: 400, easing: 'cubic-bezier(0.22, 1.2, 0.36, 1)' });
+    }
+
+    function loadImage(src) {
+      return new Promise((res, rej) => {
+        const img = new Image();
+        img.onload = () => res(img);
+        img.onerror = rej;
+        img.src = src;
+      });
+    }
+
+    // draw an image cover-style inside a square, preserving aspect ratio
+    function drawCover(ctx, img, x, y, size) {
+      const scale = Math.max(size / img.width, size / img.height);
+      const w = img.width * scale, h = img.height * scale;
+      ctx.drawImage(img, x + (size - w) / 2, y + (size - h) / 2, w, h);
+    }
+
+    // Rasterize the deck so the OS drag cursor is the stack itself rather than
+    // one generic file icon. Async because images must decode first, so it runs
+    // on selection change and the result is waiting by the time a drag starts.
+    let stackIconToken = 0;
+    async function buildStackIcon(clips) {
+      const token = ++stackIconToken;
+      const shown = clips.slice(-4);
+      const W = 140, H = 112, s = 74;
+      const canvas = document.createElement('canvas');
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext('2d');
+
+      for (let i = 0; i < shown.length; i++) {
+        const c = shown[i];
+        const img = (c.type === 'img' && c.dataUrl) ? await loadImage(c.dataUrl).catch(() => null) : null;
+        if (token !== stackIconToken) return; // a newer selection superseded us
+        ctx.save();
+        ctx.translate(W / 2 + (i - (shown.length - 1) / 2) * 12, H / 2 + i * 2);
+        ctx.rotate((tiltFor(c.id) * Math.PI) / 180);
+        ctx.beginPath();
+        ctx.roundRect(-s / 2, -s / 2, s, s, 10);
+        ctx.fillStyle = '#1c1c1c';
+        ctx.fill();
+        if (img) {
+          ctx.save();
+          ctx.clip();
+          drawCover(ctx, img, -s / 2, -s / 2, s);
+          ctx.restore();
+        } else {
+          ctx.fillStyle = '#9aa4c0';
+          ctx.font = '600 26px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(GLYPH[c.type] || '·', 0, 2);
+        }
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      if (token !== stackIconToken) return;
+      stackIconUrl = canvas.toDataURL('image/png');
+    }
+
     function buildItemEl(c, isPinned) {
       const el = document.createElement('div');
       let cls = 'item';
       if (c._new) cls += ' new';
       if (c._promoted) cls += ' promoted';
+      if (selected.has(c.id)) cls += ' selected';
       el.className = cls;
       el.draggable = true;
       el.dataset.id = c.id;
+      renderedOrder.push(c.id);
 
       // Build per-type content. The hierarchy is consistent:
       //   [drag] [type badge] [headline + meta + (optional thumb)]
@@ -741,15 +1075,23 @@
         </div>
       `;
 
-      // native drag-out
+      // native drag-out — dragging a row that's part of a multi-selection
+      // carries the whole selection; dragging anything else carries just it,
+      // matching how Finder and Explorer behave.
       el.addEventListener('dragstart', (e) => {
         e.preventDefault();
-        el.classList.add('dragging');
         window.api.drawerDragStart();
-        window.api.startDrag(c);
+        if (selected.has(c.id) && selected.size > 1) {
+          const entries = selectedClips();
+          document.querySelectorAll('.item.selected').forEach(n => n.classList.add('dragging'));
+          window.api.startDragMulti(entries, stackIconUrl);
+        } else {
+          el.classList.add('dragging');
+          window.api.startDrag(c);
+        }
       });
       el.addEventListener('dragend', () => {
-        el.classList.remove('dragging');
+        document.querySelectorAll('.item.dragging').forEach(n => n.classList.remove('dragging'));
         window.api.drawerDragEnd();
       });
 
@@ -778,8 +1120,25 @@
         }
       });
 
-      // click anywhere else re-copies
-      el.addEventListener('click', async () => {
+      // click anywhere else re-copies — unless a selection modifier is held,
+      // in which case the click is about building a selection, not copying
+      el.addEventListener('click', async (e) => {
+        if (e.metaKey || e.ctrlKey) {
+          if (selected.has(c.id)) selected.delete(c.id);
+          else selected.add(c.id);
+          anchorId = c.id;
+          syncSelection(el.getBoundingClientRect());
+          return;
+        }
+        if (e.shiftKey) {
+          // shift without a prior anchor behaves like a plain toggle
+          selectRange(anchorId || c.id, c.id);
+          anchorId = anchorId || c.id;
+          window.getSelection().removeAllRanges();
+          syncSelection(el.getBoundingClientRect());
+          return;
+        }
+        if (selected.size > 0) clearSelection();
         await window.api.write(c);
         toast('copied — paste with ⌘V');
       });
@@ -811,6 +1170,12 @@
     }
 
     function render() {
+      // buildItemEl repopulates this as it walks the sections in visual order
+      renderedOrder = [];
+      // drop ids that no longer exist — deleted, or cleared out of history
+      const liveIds = new Set([...pinned, ...history].map(c => c.id));
+      for (const id of [...selected]) if (!liveIds.has(id)) selected.delete(id);
+
       const visiblePinned = pinned.filter(c => itemMatchesFilter(c, true));
       const visibleHistory = activeFilter === 'pinned'
         ? []
@@ -834,6 +1199,7 @@
         } else {
           listEl.innerHTML = `<div class="empty">nothing matches that.<span class="empty-sub">try a different search</span></div>`;
         }
+        syncSelection();
         return;
       }
 
@@ -865,6 +1231,8 @@
           visibleHistory.forEach(c => listEl.appendChild(buildItemEl(c, false)));
         }
       }
+
+      syncSelection();
     }
 
     let toastTimer;
@@ -902,9 +1270,41 @@
     // close/hide
     document.getElementById('closeBtn').addEventListener('click', () => window.api.hide());
 
-    // escape to hide
+    document.getElementById('selClearBtn').addEventListener('click', clearSelection);
+
+    // the deck itself is a drag source — gather, then throw, one gesture
+    stackDeckEl.addEventListener('dragstart', (e) => {
+      e.preventDefault();
+      if (selected.size === 0) return;
+      window.api.drawerDragStart();
+      window.api.startDragMulti(selectedClips(), stackIconUrl);
+    });
+    stackDeckEl.addEventListener('dragend', () => {
+      window.api.drawerDragEnd();
+      // the deck settles back after the throw. The selection is deliberately
+      // kept: the OS never tells us whether the drop landed, and silently
+      // losing a hand-picked stack on a mis-drop is worse than one extra Esc.
+      if (!reduceMotion) {
+        stackDeckEl.classList.remove('delivered');
+        void stackDeckEl.offsetWidth;
+        stackDeckEl.classList.add('delivered');
+      }
+    });
+
+    // escape to hide — but a live selection swallows the first Esc, so the
+    // gesture that backs out of selecting isn't also the one that hides everything
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') window.api.hide();
+      if (e.key === 'Escape') {
+        if (selected.size > 0) clearSelection();
+        else window.api.hide();
+      }
+      // cmd/ctrl+a selects everything currently visible
+      if ((e.metaKey || e.ctrlKey) && e.key === 'a' && document.activeElement !== searchEl) {
+        e.preventDefault();
+        renderedOrder.forEach(id => selected.add(id));
+        anchorId = renderedOrder[0] || null;
+        syncSelection();
+      }
       // cmd/ctrl+f focuses search
       if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
         e.preventDefault();
