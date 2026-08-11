@@ -293,8 +293,16 @@
     /* image preview — bigger, more prominent */
     .item-image {
       margin-top: 6px;
+      /* .item-content is a column flex container, so the default stretch would
+         force width to 100% while max-height clamps height independently —
+         that distorts the image. flex-start keeps width intrinsic so the
+         max-* pair scales it proportionally. */
+      align-self: flex-start;
+      width: auto;
+      height: auto;
       max-width: 100%;
       max-height: 140px;
+      object-fit: contain;
       border-radius: 5px;
       display: block;
       border: 1px solid var(--border);
