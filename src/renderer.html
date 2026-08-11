@@ -36,6 +36,8 @@
       display: flex;
       flex-direction: column;
       height: 100vh;
+      /* the prompt editor docks against this */
+      position: relative;
     }
 
     /* drag region lets the user move the window by the title bar */
@@ -650,6 +652,123 @@
     .prompts-section .item {
       background: rgba(186, 148, 255, 0.035);
     }
+    /* the row being edited stays visibly tied to the sheet below it */
+    .item.editing {
+      background: rgba(186, 148, 255, 0.1);
+      box-shadow: inset 0 0 0 1px #7c5cbf;
+    }
+
+    /* tag chips shown inline on a prompt row, so the library is scannable */
+    .item-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+    .tag-chip {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      line-height: 1;
+      padding: 3px 6px;
+      border-radius: 3px;
+      color: #b9a2e8;
+      background: #1a1226;
+      border: 1px solid #33234d;
+      white-space: nowrap;
+    }
+
+    /* ---------- prompt editor sheet ---------- */
+    .editor {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 20;
+      max-height: 62%;
+      display: flex;
+      flex-direction: column;
+      background: #131017;
+      border-top: 1px solid #33234d;
+      box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.55);
+      transform: translateY(100%);
+      transition: transform 0.26s cubic-bezier(0.22, 1.1, 0.36, 1);
+    }
+    .editor.show { transform: translateY(0); }
+
+    .editor-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px 8px;
+      flex-shrink: 0;
+    }
+    .editor-title {
+      flex: 1;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #b9a2e8;
+    }
+    .editor-saved {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--muted2);
+      opacity: 0;
+      transition: opacity 0.18s;
+    }
+    .editor-saved.show { opacity: 1; }
+
+    .editor-body {
+      margin: 0 14px;
+      padding: 10px;
+      min-height: 78px;
+      max-height: 190px;
+      resize: none;
+      overflow-y: auto;
+      background: var(--surface2, #1a1a1a);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      line-height: 1.5;
+      outline: none;
+    }
+    .editor-body:focus { border-color: #4d3a75; }
+
+    .editor-tags {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 5px;
+      padding: 10px 14px 12px;
+      flex-shrink: 0;
+    }
+    .editor-tags .tag-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; padding: 4px 7px; }
+    .editor-tags .tag-x { cursor: pointer; color: var(--muted); }
+    .editor-tags .tag-x:hover { color: #d98a8a; }
+
+    .tag-add {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 4px 8px;
+      border-radius: 3px;
+      background: var(--surface2, #1a1a1a);
+      border: 1px dashed var(--border2);
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .tag-add:hover { color: #b9a2e8; border-color: #4d3a75; }
+    .tag-input {
+      width: 104px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 4px 7px;
+      border-radius: 3px;
+      background: var(--surface2, #1a1a1a);
+      border: 1px solid #4d3a75;
+      color: var(--text);
+      outline: none;
+    }
+    /* tag filter pills sit after the built-in ones */
+    .pill.tag-pill { color: #b9a2e8; border-color: #33234d; }
+    .pill.tag-pill.active { color: #0b0b0b; background: #b9a2e8; border-color: #b9a2e8; }
     .type-badge.prompt {
       color: #c9a4ff;
       background: #1a1226;
@@ -722,6 +841,16 @@
       </div>
     </div>
 
+    <div class="editor" id="editor">
+      <div class="editor-head">
+        <span class="editor-title">edit prompt</span>
+        <span class="editor-saved" id="editorSaved">saved</span>
+        <button class="close-btn" id="editorClose" title="close (Esc)">×</button>
+      </div>
+      <textarea class="editor-body" id="editorBody" spellcheck="false"></textarea>
+      <div class="editor-tags" id="editorTags"></div>
+    </div>
+
     <div class="stack-tray" id="stackTray">
       <div class="stack-deck" id="stackDeck" draggable="true" title="drag the stack anywhere">
         <span class="stack-count" id="stackCount">0</span>
@@ -761,6 +890,14 @@
     const footerEl = document.getElementById('footerInfo');
     const searchEl = document.getElementById('search');
     const toastEl = document.getElementById('toast');
+    // prompt editor state — the id of the prompt whose sheet is open
+    let editingId = null;
+    let editorSaveTimer = null;
+    const editorEl = document.getElementById('editor');
+    const editorBodyEl = document.getElementById('editorBody');
+    const editorTagsEl = document.getElementById('editorTags');
+    const editorSavedEl = document.getElementById('editorSaved');
+
     const stackTrayEl = document.getElementById('stackTray');
     const stackDeckEl = document.getElementById('stackDeck');
     const stackCountEl = document.getElementById('stackCount');
@@ -790,6 +927,10 @@
     function itemMatchesFilter(c, isPinned) {
       // search applies to every filter, including the pseudo-types
       if (searchQuery && !c.content.toLowerCase().includes(searchQuery)) return false;
+      if (activeFilter.startsWith('tag:')) {
+        const want = activeFilter.slice(4);
+        return !!c.isPrompt && (c.tags || []).some(t => t.toLowerCase() === want);
+      }
       if (activeFilter === 'prompt') return !!c.isPrompt;
       if (activeFilter === 'pinned') return isPinned && !c.isPrompt;
       if (activeFilter !== 'all' && c.type !== activeFilter) return false;
@@ -855,6 +996,126 @@
         n.classList.toggle('selected', selected.has(n.dataset.id));
       });
       updateStack(originRect);
+    }
+
+    // ---------- prompt editor ----------
+    function findClip(id) {
+      return pinned.find(p => p.id === id) || history.find(h => h.id === id) || null;
+    }
+
+    function openEditor(id) {
+      editingId = id;
+      const c = findClip(id);
+      if (!c) return closeEditor();
+      editorBodyEl.value = c.content || '';
+      renderEditorTags();
+      editorEl.classList.add('show');
+      markEditingRow();
+      editorBodyEl.focus();
+    }
+
+    function closeEditor() {
+      flushEditorContent();
+      editingId = null;
+      editorEl.classList.remove('show');
+      markEditingRow();
+    }
+
+    function markEditingRow() {
+      document.querySelectorAll('.item').forEach(n => {
+        n.classList.toggle('editing', !!editingId && n.dataset.id === editingId);
+      });
+    }
+
+    function flashSaved() {
+      editorSavedEl.classList.add('show');
+      clearTimeout(flashSaved._t);
+      flashSaved._t = setTimeout(() => editorSavedEl.classList.remove('show'), 900);
+    }
+
+    // content autosaves as you type; tags save the moment they change
+    function flushEditorContent() {
+      clearTimeout(editorSaveTimer);
+      if (!editingId) return;
+      const c = findClip(editingId);
+      const next = editorBodyEl.value;
+      if (!c || !next.trim() || next === c.content) return;
+      window.api.updatePrompt(editingId, { content: next }).then(ok => { if (ok) flashSaved(); });
+    }
+
+    function renderEditorTags() {
+      const c = editingId ? findClip(editingId) : null;
+      const tags = (c && c.tags) || [];
+      editorTagsEl.innerHTML = '';
+      tags.forEach(t => {
+        const chip = document.createElement('span');
+        chip.className = 'tag-chip';
+        chip.innerHTML = `<span></span><span class="tag-x" title="remove">×</span>`;
+        chip.firstChild.textContent = t;
+        chip.querySelector('.tag-x').addEventListener('click', () => setTags(tags.filter(x => x !== t)));
+        editorTagsEl.appendChild(chip);
+      });
+
+      const add = document.createElement('button');
+      add.className = 'tag-add';
+      add.textContent = '+ tag';
+      add.addEventListener('click', () => {
+        const input = document.createElement('input');
+        input.className = 'tag-input';
+        input.placeholder = 'image gen';
+        input.maxLength = 24;
+        const commit = (keepGoing) => {
+          const v = input.value.trim();
+          input.replaceWith(add);
+          if (v) setTags([...tags, v], keepGoing);
+        };
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); commit(true); }
+          if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); input.replaceWith(add); }
+        });
+        input.addEventListener('blur', () => commit(false));
+        add.replaceWith(input);
+        input.focus();
+      });
+      editorTagsEl.appendChild(add);
+    }
+
+    async function setTags(tags, reopenInput) {
+      if (!editingId) return;
+      const ok = await window.api.updatePrompt(editingId, { tags });
+      if (ok) flashSaved();
+      // state:updated re-renders; reopen the input so several tags can be added
+      // in a row without clicking "+ tag" each time
+      if (reopenInput) setTimeout(() => editorTagsEl.querySelector('.tag-add')?.click(), 0);
+    }
+
+    editorBodyEl.addEventListener('input', () => {
+      clearTimeout(editorSaveTimer);
+      editorSaveTimer = setTimeout(flushEditorContent, 400);
+    });
+    editorBodyEl.addEventListener('blur', flushEditorContent);
+    document.getElementById('editorClose').addEventListener('click', closeEditor);
+
+    // every distinct tag across the library, for the filter row
+    function allTags() {
+      const seen = new Map();
+      pinned.forEach(c => (c.tags || []).forEach(t => {
+        const k = t.toLowerCase();
+        if (!seen.has(k)) seen.set(k, t);
+      }));
+      return [...seen.values()].sort((a, b) => a.localeCompare(b));
+    }
+
+    function renderTagPills() {
+      const row = document.querySelector('.filters');
+      row.querySelectorAll('.tag-pill').forEach(p => p.remove());
+      allTags().forEach(t => {
+        const b = document.createElement('button');
+        b.className = 'pill tag-pill' + (activeFilter === 'tag:' + t.toLowerCase() ? ' active' : '');
+        b.dataset.type = 'tag:' + t.toLowerCase();
+        b.textContent = t;
+        row.appendChild(b);
+      });
     }
 
     // ---------- the stack ----------
@@ -1070,6 +1331,10 @@
       }
 
       const metaHtml = `<div class="item-meta">${metaParts.join('')}</div>`;
+      // tags ride under the meta line so the library can be skimmed
+      const tagsHtml = (c.tags && c.tags.length)
+        ? `<div class="item-tags">${c.tags.map(t => `<span class="tag-chip">${esc(t)}</span>`).join('')}</div>`
+        : '';
 
       el.innerHTML = `
         <div class="drag-handle">
@@ -1083,11 +1348,12 @@
         <div class="item-content">
           ${headlineHtml}
           ${metaHtml}
+          ${tagsHtml}
           ${extraHtml}
         </div>
         <div class="actions">
           <button class="pin-btn prompt-btn ${c.isPrompt ? 'on' : ''}" data-act="prompt" title="${c.isPrompt ? 'stop keeping this as a prompt' : 'save as a prompt — kept forever'}">✦</button>
-          ${c.isPrompt ? '' : `<button class="pin-btn ${isPinned ? 'pinned' : ''}" data-act="pin" title="${isPinned ? 'unpin' : 'pin'}">${isPinned ? '★' : '☆'}</button>`}
+          ${c.isPrompt ? `<button class="act-btn" data-act="edit" title="edit text and tags">edit</button>` : `<button class="pin-btn ${isPinned ? 'pinned' : ''}" data-act="pin" title="${isPinned ? 'unpin' : 'pin'}">${isPinned ? '★' : '☆'}</button>`}
           <button class="act-btn" data-act="copy" title="copy">copy</button>
           <button class="act-btn danger" data-act="del" title="delete">del</button>
         </div>
@@ -1137,6 +1403,12 @@
           await window.api.pin(c.id);
           toast('pinned — kept across restarts');
         }
+      });
+
+      el.querySelector('[data-act="edit"]')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (editingId === c.id) closeEditor();
+        else openEditor(c.id);
       });
 
       el.querySelector('[data-act="prompt"]').addEventListener('click', async (e) => {
@@ -1206,11 +1478,25 @@
       const liveIds = new Set([...pinned, ...history].map(c => c.id));
       for (const id of [...selected]) if (!liveIds.has(id)) selected.delete(id);
 
+      renderTagPills();
+      // a prompt that stopped being one (or was deleted) takes its sheet with it
+      if (editingId) {
+        const still = pinned.find(p => p.id === editingId && p.isPrompt);
+        if (!still) { editingId = null; editorEl.classList.remove('show'); }
+        else {
+          renderEditorTags();
+          // don't yank the text out from under someone mid-edit
+          if (document.activeElement !== editorBodyEl) editorBodyEl.value = still.content || '';
+        }
+      }
+
       // prompts share the persistent store with pinned clips but are their own
       // section, so they never read as "just another pinned thing"
       const visiblePrompts = pinned.filter(c => c.isPrompt && itemMatchesFilter(c, true));
       const visiblePinned = pinned.filter(c => !c.isPrompt && itemMatchesFilter(c, true));
-      const visibleHistory = (activeFilter === 'pinned' || activeFilter === 'prompt')
+      // tags only exist on prompts, so a tag filter empties history too
+      const promptOnlyFilter = activeFilter === 'pinned' || activeFilter === 'prompt' || activeFilter.startsWith('tag:');
+      const visibleHistory = promptOnlyFilter
         ? []
         : history.filter(c => itemMatchesFilter(c, false));
 
@@ -1282,6 +1568,7 @@
       }
 
       syncSelection();
+      markEditingRow();
     }
 
     let toastTimer;
@@ -1292,14 +1579,15 @@
       toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1500);
     }
 
-    // filters
-    document.querySelectorAll('.pill').forEach(p => {
-      p.addEventListener('click', () => {
-        document.querySelectorAll('.pill').forEach(x => x.classList.remove('active'));
-        p.classList.add('active');
-        activeFilter = p.dataset.type;
-        render();
-      });
+    // filters — delegated, because tag pills are built from the library and
+    // come and go as tags are added
+    document.querySelector('.filters').addEventListener('click', (e) => {
+      const p = e.target.closest('.pill');
+      if (!p) return;
+      document.querySelectorAll('.pill').forEach(x => x.classList.remove('active'));
+      p.classList.add('active');
+      activeFilter = p.dataset.type;
+      render();
     });
 
     // search
@@ -1344,11 +1632,15 @@
     // gesture that backs out of selecting isn't also the one that hides everything
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        if (selected.size > 0) clearSelection();
+        // back out one layer at a time: editor, then selection, then the drawer
+        if (editingId) closeEditor();
+        else if (selected.size > 0) clearSelection();
         else window.api.hide();
       }
       // cmd/ctrl+a selects everything currently visible
-      if ((e.metaKey || e.ctrlKey) && e.key === 'a' && document.activeElement !== searchEl) {
+      const typing = document.activeElement === searchEl || document.activeElement === editorBodyEl
+        || document.activeElement?.classList.contains('tag-input');
+      if ((e.metaKey || e.ctrlKey) && e.key === 'a' && !typing) {
         e.preventDefault();
         renderedOrder.forEach(id => selected.add(id));
         anchorId = renderedOrder[0] || null;

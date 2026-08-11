@@ -456,6 +456,45 @@ function promptItem(id) {
   return true;
 }
 
+// Tags are user-authored, so they get cleaned before they're stored: trimmed,
+// whitespace-collapsed, deduped case-insensitively, and capped in both length
+// and count so a stray paste can't turn into a wall of chips in the filter row.
+const TAG_MAX_LEN = 24;
+const TAG_MAX_COUNT = 8;
+function normalizeTags(tags) {
+  if (!Array.isArray(tags)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const raw of tags) {
+    if (typeof raw !== 'string') continue;
+    const t = raw.trim().replace(/\s+/g, ' ').slice(0, TAG_MAX_LEN);
+    if (!t) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+    if (out.length >= TAG_MAX_COUNT) break;
+  }
+  return out;
+}
+
+// Prompts are a library, so they're editable in place — a typo gets fixed
+// rather than re-copied. Only prompts can be edited; ordinary clips stay a
+// faithful record of what was on the clipboard.
+function updatePrompt(id, patch) {
+  const entry = pinned.find(p => p.id === id && p.isPrompt);
+  if (!entry || !patch || typeof patch !== 'object') return false;
+  if (typeof patch.content === 'string') {
+    // refuse to empty a prompt — that's a delete, and there's a button for it
+    if (!patch.content.trim()) return false;
+    entry.content = patch.content;
+  }
+  if (patch.tags !== undefined) entry.tags = normalizeTags(patch.tags);
+  entry.updatedAt = Date.now();
+  savePinned();
+  return true;
+}
+
 // Unmarking drops the clip back into ordinary history, mirroring unpin — it
 // stops being permanent, which is the whole point of taking the mark off.
 function unpromptItem(id) {
@@ -782,6 +821,14 @@ ipcMain.handle('clip:unpin', (_e, id) => {
 
 ipcMain.handle('clip:prompt', (_e, id) => {
   const ok = promptItem(id);
+  if (ok && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('state:updated', { history, pinned });
+  }
+  return ok;
+});
+
+ipcMain.handle('prompt:update', (_e, id, patch) => {
+  const ok = updatePrompt(id, patch);
   if (ok && mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('state:updated', { history, pinned });
   }
