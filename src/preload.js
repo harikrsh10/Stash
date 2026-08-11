@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('api', {
   clear: () => ipcRenderer.invoke('clip:clear'),
   pin: (id) => ipcRenderer.invoke('clip:pin', id),
   unpin: (id) => ipcRenderer.invoke('clip:unpin', id),
+  markPrompt: (id) => ipcRenderer.invoke('clip:prompt', id),
+  unmarkPrompt: (id) => ipcRenderer.invoke('clip:unprompt', id),
 
   // drawer-specific
   hide: () => ipcRenderer.invoke('window:hide'),

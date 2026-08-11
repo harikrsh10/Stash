@@ -144,6 +144,9 @@ function createTray() {
 function refreshTrayMenu() {
   if (!tray) return;
   const visible = mainWindow && mainWindow.isVisible();
+  // prompts share the pinned array, so they'd otherwise inflate the pinned count
+  const promptCount = pinned.filter(p => p.isPrompt).length;
+  const pinCount = pinned.length - promptCount;
   const menu = Menu.buildFromTemplate([
     {
       label: visible ? 'Hide Stash' : 'Show Stash',
@@ -174,7 +177,7 @@ function refreshTrayMenu() {
       },
     },
     {
-      label: `${history.length} clip${history.length === 1 ? '' : 's'}${pinned.length ? ` · ${pinned.length} pinned` : ''}${isPaused ? ' (paused)' : ''}`,
+      label: `${history.length} clip${history.length === 1 ? '' : 's'}${pinCount ? ` · ${pinCount} pinned` : ''}${promptCount ? ` · ${promptCount} prompt${promptCount === 1 ? '' : 's'}` : ''}${isPaused ? ' (paused)' : ''}`,
       enabled: false,
     },
     {
@@ -415,6 +418,52 @@ function unpinItem(id) {
   if (idx === -1) return false;
   const [removed] = pinned.splice(idx, 1);
   // move it back to history (at the top, as if just copied)
+  delete removed.pinnedAt;
+  removed.ts = Date.now();
+  history.unshift(removed);
+  savePinned();
+  refreshTrayMenu();
+  return true;
+}
+
+// ---------- prompts ----------
+// Marking a clip as a prompt is what makes it permanent — there is no separate
+// pin step. Prompts ride in the same persistent store as pinned clips (same
+// file, same save path, already proven) and are told apart by `isPrompt`, so a
+// prompt survives quit, restart and reboot the moment it's marked. The drawer
+// shows them as their own section, so the two never read as the same thing.
+function promptItem(id) {
+  const existing = pinned.find(p => p.id === id);
+  if (existing) {
+    if (existing.isPrompt) return false;
+    existing.isPrompt = true;
+    existing.promptedAt = Date.now();
+    savePinned();
+    refreshTrayMenu();
+    return true;
+  }
+  const idx = history.findIndex(h => h.id === id);
+  if (idx === -1) return false;
+  let entry = history[idx];
+  entry = makeImagePermanent(entry);
+  entry.isPrompt = true;
+  entry.promptedAt = Date.now();
+  entry.pinnedAt = Date.now();
+  pinned.unshift(entry);
+  history.splice(idx, 1);
+  savePinned();
+  refreshTrayMenu();
+  return true;
+}
+
+// Unmarking drops the clip back into ordinary history, mirroring unpin — it
+// stops being permanent, which is the whole point of taking the mark off.
+function unpromptItem(id) {
+  const idx = pinned.findIndex(p => p.id === id && p.isPrompt);
+  if (idx === -1) return false;
+  const [removed] = pinned.splice(idx, 1);
+  delete removed.isPrompt;
+  delete removed.promptedAt;
   delete removed.pinnedAt;
   removed.ts = Date.now();
   history.unshift(removed);
@@ -725,6 +774,22 @@ ipcMain.handle('clip:pin', (_e, id) => {
 
 ipcMain.handle('clip:unpin', (_e, id) => {
   const ok = unpinItem(id);
+  if (ok && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('state:updated', { history, pinned });
+  }
+  return ok;
+});
+
+ipcMain.handle('clip:prompt', (_e, id) => {
+  const ok = promptItem(id);
+  if (ok && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('state:updated', { history, pinned });
+  }
+  return ok;
+});
+
+ipcMain.handle('clip:unprompt', (_e, id) => {
+  const ok = unpromptItem(id);
   if (ok && mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('state:updated', { history, pinned });
   }
