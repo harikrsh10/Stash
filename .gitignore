@@ -37,5 +37,5 @@ Desktop.ini
 pinned.json
 pinned-images/
 
-# OCR language data — ~10MB binary, fetched at build time by npm run tessdata
-assets/tessdata/
+# compiled macOS OCR helper, built during the Mac release
+build/

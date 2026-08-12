@@ -1073,71 +1073,123 @@ ipcMain.on('ondragstart:multi', (event, entries, iconDataUrl) => {
 // ---------- OCR ----------
 // Pulling text out of a screenshot is only useful if the result comes back as
 // separate pieces. A dashboard has a dozen unrelated labels in it; handing back
-// one blob of text just moves the problem. So we take the lines tesseract finds
-// and cluster them into visual blocks, the way a person reads the image.
+// one blob of text just moves the problem. So we take the words the engine
+// finds and cluster them into visual blocks, the way a person reads the image.
+//
+// The OS engines do the reading. A bundled wasm engine was tried first and read
+// 6 of 26 words on a dark marketing screenshot where Windows read 22 — small,
+// letter-spaced or low-contrast text defeated it, and no amount of upscaling,
+// inverting or thresholding moved that number.
 
-let ocrWorker = null;
-let ocrWorkerPromise = null;
-
-// Paths have to survive being packed into app.asar — tesseract needs real files
-// on disk for its worker, wasm core and language data, so those are unpacked by
-// electron-builder and we point at the unpacked copies.
-function unpacked(p) {
-  return p.replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+// Both engines are asked for words with boxes; everything downstream — the
+// column splitting and block clustering — is engine-agnostic and unchanged.
+//
+// Windows OCR is driven through PowerShell because the API is WinRT, which has
+// no Node binding. The script is written to a temp file rather than passed as a
+// command line: it is long, and quoting it through two shells is a trap.
+const WIN_OCR_PS = `
+$ErrorActionPreference = 'Stop'
+$img = $args[0]
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$null = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType=WindowsRuntime]
+$null = [Windows.Graphics.Imaging.BitmapDecoder, Windows.Foundation, ContentType=WindowsRuntime]
+$null = [Windows.Storage.StorageFile, Windows.Foundation, ContentType=WindowsRuntime]
+$null = [Windows.Storage.FileAccessMode, Windows.Foundation, ContentType=WindowsRuntime]
+$asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+  $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and
+  $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation\`1' })[0]
+function Await($op, $type) {
+  $t = $asTask.MakeGenericMethod($type).Invoke($null, @($op))
+  $null = $t.Wait(60000)
+  $t.Result
 }
-
-async function getOcrWorker(onProgress) {
-  if (ocrWorker) return ocrWorker;
-  if (ocrWorkerPromise) return ocrWorkerPromise;
-
-  ocrWorkerPromise = (async () => {
-    const { createWorker } = require('tesseract.js');
-    const langPath = unpacked(path.join(__dirname, '..', 'assets', 'tessdata'));
-    const options = {
-      workerPath: unpacked(require.resolve('tesseract.js/src/worker-script/node/index.js')),
-      corePath: unpacked(path.dirname(require.resolve('tesseract.js-core/package.json'))),
-      cachePath: app.getPath('userData'),
-      logger: (m) => { if (onProgress) onProgress(m); },
-    };
-    // Fall back to the CDN only if the bundled language data is missing, so a
-    // source checkout that skipped the fetch script still works when online.
-    if (fs.existsSync(path.join(langPath, 'eng.traineddata.gz'))) options.langPath = langPath;
-    else console.warn('[Stash] bundled tessdata missing — OCR will try the network');
-
-    ocrWorker = await createWorker('eng', 1, options);
-    // Sparse text mode. The default assumes a scanned document, and on UI
-    // screenshots it decides isolated large text — the number on a stat card —
-    // is a picture and silently drops it. Sparse mode just finds text wherever
-    // it is and leaves the grouping to us, which is what we want anyway.
-    await ocrWorker.setParameters({ tessedit_pageseg_mode: '11' });
-    return ocrWorker;
-  })();
-
-  try {
-    return await ocrWorkerPromise;
-  } catch (err) {
-    ocrWorkerPromise = null;
-    throw err;
+$file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($img)) ([Windows.Storage.StorageFile])
+$stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
+$decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
+$bitmap = Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+$engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
+if (-not $engine) { Write-Output '{"error":"no OCR language is installed"}'; exit 0 }
+$result = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
+$words = New-Object System.Collections.ArrayList
+$li = 0
+foreach ($line in $result.Lines) {
+  foreach ($w in $line.Words) {
+    $r = $w.BoundingRect
+    $null = $words.Add([pscustomobject]@{
+      text = $w.Text
+      line = $li
+      x0 = [int]$r.X; y0 = [int]$r.Y
+      x1 = [int]($r.X + $r.Width); y1 = [int]($r.Y + $r.Height)
+    })
   }
+  $li = $li + 1
+}
+[pscustomobject]@{ width = $bitmap.PixelWidth; height = $bitmap.PixelHeight; words = $words } |
+  ConvertTo-Json -Depth 4 -Compress
+`;
+
+let winOcrScriptPath = null;
+function winOcrScript() {
+  if (!winOcrScriptPath) {
+    winOcrScriptPath = path.join(TMP_DIR, 'stash-win-ocr.ps1');
+    fs.writeFileSync(winOcrScriptPath, WIN_OCR_PS, 'utf8');
+  }
+  return winOcrScriptPath;
 }
 
-// Walk whatever shape tesseract hands back and pull out flat words with boxes.
-// Words, not lines: tesseract happily runs a line straight across three
+// Reads text out of an image using whatever the operating system provides.
+// Resolves to { width, height, words: [{ text, x0, y0, x1, y1 }] }.
+function runNativeOcr(filePath) {
+  const { execFile } = require('child_process');
+  return new Promise((resolve, reject) => {
+    let cmd, args;
+    if (process.platform === 'win32') {
+      cmd = 'powershell.exe';
+      args = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', winOcrScript(), filePath];
+    } else if (process.platform === 'darwin') {
+      cmd = path.join(process.resourcesPath || path.join(__dirname, '..', 'build'), 'stash-ocr');
+      args = [filePath];
+    } else {
+      reject(new Error('text extraction needs macOS or Windows'));
+      return;
+    }
+
+    // a page of dense text is a lot of JSON, so the default buffer is not enough
+    execFile(cmd, args, { maxBuffer: 32 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
+      if (err) return reject(new Error((stderr || err.message || '').toString().trim().slice(0, 200)));
+      let parsed;
+      try {
+        parsed = JSON.parse((stdout || '').toString().trim());
+      } catch (_) {
+        return reject(new Error('could not read the OCR result'));
+      }
+      if (parsed.error) return reject(new Error(parsed.error));
+      // one word comes back as an object, not an array, from ConvertTo-Json
+      const words = Array.isArray(parsed.words) ? parsed.words : (parsed.words ? [parsed.words] : []);
+      resolve({ width: parsed.width, height: parsed.height, words });
+    });
+  });
+}
+
+// Normalize whatever the engine returned into flat words with boxes.
+// Words, not lines: an engine will happily run a line straight across three
 // side-by-side cards, and once it has done that the columns can't be pulled
 // apart again. Starting from words lets us decide where a line really ends.
 function wordsFrom(data) {
   const out = [];
-  const push = (w) => {
+  (data.words || []).forEach((w) => {
     const text = (w.text || '').trim();
-    const b = w.bbox;
-    if (!text || !b) return;
-    if (typeof w.confidence === 'number' && w.confidence < 40) return;
-    out.push({ text, x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 });
-  };
-  if (Array.isArray(data.blocks)) {
-    data.blocks.forEach(b => (b.paragraphs || []).forEach(p => (p.lines || []).forEach(l => (l.words || []).forEach(push))));
-  }
-  if (!out.length && Array.isArray(data.words)) data.words.forEach(push);
+    if (!text) return;
+    const nums = [w.x0, w.y0, w.x1, w.y1];
+    if (nums.some(n => typeof n !== 'number' || !isFinite(n))) return;
+    if (w.x1 <= w.x0 || w.y1 <= w.y0) return;
+    out.push({
+      text,
+      // which line the engine put this word on, if it said
+      line: typeof w.line === 'number' ? w.line : -1,
+      x0: w.x0, y0: w.y0, x1: w.x1, y1: w.y1,
+    });
+  });
   return out;
 }
 
@@ -1146,28 +1198,52 @@ function wordsFrom(data) {
 // boundary, a table cell edge, or the space between two unrelated labels.
 function runsFromWords(words) {
   if (!words.length) return [];
-  const heights = words.map(w => w.y1 - w.y0).sort((a, b) => a - b);
-  const medianH = heights[Math.floor(heights.length / 2)] || 12;
 
+  // Prefer the engine's own line grouping. It knows that a run of widely
+  // letter-spaced capitals is one line; rebuilding that from geometry means
+  // guessing whether a gap is tracking or a word break, and heavily tracked
+  // marketing type sits right on that boundary.
   const rows = [];
-  for (const w of [...words].sort((a, b) => (a.y0 + a.y1) / 2 - (b.y0 + b.y1) / 2)) {
-    const mid = (w.y0 + w.y1) / 2;
-    const row = rows.find(r => Math.abs(r.mid - mid) < medianH * 0.5);
-    if (row) {
-      row.words.push(w);
-      row.mid = (row.mid * (row.words.length - 1) + mid) / row.words.length;
-    } else {
-      rows.push({ mid, words: [w] });
+  const engineLines = new Map();
+  const hasLines = words.some(w => w.line >= 0);
+
+  if (hasLines) {
+    for (const w of words) {
+      if (!engineLines.has(w.line)) engineLines.set(w.line, { words: [] });
+      engineLines.get(w.line).words.push(w);
+    }
+    rows.push(...engineLines.values());
+  } else {
+    // no line information: fall back to grouping by baseline. Every threshold
+    // is relative to the words being compared, never to a figure for the image
+    // as a whole — a screenshot routinely carries a 70px headline and a 12px
+    // caption, and one global measure fits neither.
+    for (const w of [...words].sort((a, b) => (a.y0 + a.y1) / 2 - (b.y0 + b.y1) / 2)) {
+      const mid = (w.y0 + w.y1) / 2;
+      const h = w.y1 - w.y0;
+      const row = rows.find(r => Math.abs(r.mid - mid) < Math.max(h, r.h) * 0.6);
+      if (row) {
+        row.words.push(w);
+        row.mid = (row.mid * (row.words.length - 1) + mid) / row.words.length;
+        row.h = Math.max(row.h, h);
+      } else {
+        rows.push({ mid, h, words: [w] });
+      }
     }
   }
 
+  // Split a line only where the gap is far too wide to be spacing of any kind —
+  // that is a column edge or two unrelated labels sharing a baseline. The engine
+  // already decided the ordinary word breaks, so this stays conservative.
+  const splitFactor = hasLines ? 2.2 : 1.2;
   const runs = [];
-  const gapLimit = medianH * 1.2; // ordinary word spacing is well under this
   for (const row of rows) {
     const sorted = row.words.sort((a, b) => a.x0 - b.x0);
     let current = [sorted[0]];
     for (let i = 1; i < sorted.length; i++) {
-      if (sorted[i].x0 - sorted[i - 1].x1 > gapLimit) {
+      const gap = sorted[i].x0 - sorted[i - 1].x1;
+      const localH = Math.max(sorted[i].y1 - sorted[i].y0, sorted[i - 1].y1 - sorted[i - 1].y0);
+      if (gap > localH * splitFactor) {
         runs.push(current);
         current = [];
       }
@@ -1209,7 +1285,8 @@ function clusterLines(lines) {
       if (gap > Math.max(lineH, g.lastH) * 0.95) continue;
       const overlap = Math.min(line.x1, g.x1) - Math.max(line.x0, g.x0);
       const narrower = Math.min(line.x1 - line.x0, g.x1 - g.x0) || 1;
-      const alignedLeft = Math.abs(line.x0 - g.x0) < medianH * 0.6;
+      // also local: what counts as "the same left edge" scales with the text
+      const alignedLeft = Math.abs(line.x0 - g.x0) < Math.max(lineH, g.lastH) * 0.6;
       if (overlap / narrower > 0.15 || alignedLeft) { target = g; break; }
     }
     if (target) {
@@ -1267,9 +1344,8 @@ ipcMain.handle('ocr:run', async (_e, id) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('ocr:progress', msg);
   };
   try {
-    send({ status: 'starting', progress: 0 });
-    const worker = await getOcrWorker(send);
-    const { data } = await worker.recognize(entry.filepath, {}, { blocks: true, text: true });
+    send({ status: 'recognizing text', progress: 0.2 });
+    const data = await runNativeOcr(entry.filepath);
     const blocks = clusterLines(runsFromWords(wordsFrom(data)));
     // The renderer draws boxes over the picture, so it must show the very image
     // OCR read — not entry.dataUrl, which is a 240px preview thumbnail. Box
@@ -1280,10 +1356,10 @@ ipcMain.handle('ocr:run', async (_e, id) => {
     return {
       ok: true,
       blocks,
-      raw: (data.text || '').trim(),
+      raw: blocks.map(b => b.text).join('\n\n'),
       imageUrl: pathToFileURL(entry.filepath).href,
-      width: size.width,
-      height: size.height,
+      width: data.width || size.width,
+      height: data.height || size.height,
     };
   } catch (err) {
     console.error('[Stash] OCR failed:', err);
@@ -1453,7 +1529,6 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   if (pollTimer) clearInterval(pollTimer);
-  if (ocrWorker) { try { ocrWorker.terminate(); } catch (_) {} }
   // Clean up temp drag files, but leave pinned-images directory alone
   const pinnedImagePaths = new Set(pinned.filter(p => p.filepath).map(p => p.filepath));
   try {

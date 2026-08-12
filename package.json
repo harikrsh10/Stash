@@ -8,11 +8,11 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "tessdata": "node scripts/fetch-tessdata.js",
-    "pack": "npm run tessdata && electron-builder --dir",
-    "dist": "npm run tessdata && electron-builder",
-    "dist:mac": "npm run tessdata && electron-builder --mac --x64 --arm64 --publish never",
-    "dist:win": "npm run tessdata && electron-builder --win --x64 --publish never"
+    "build:ocr": "node scripts/build-mac-ocr.js",
+    "pack": "npm run build:ocr && electron-builder --dir",
+    "dist": "npm run build:ocr && electron-builder",
+    "dist:mac": "npm run build:ocr && electron-builder --mac --x64 --arm64 --publish never",
+    "dist:win": "npm run build:ocr && electron-builder --win --x64 --publish never"
   },
   "devDependencies": {
     "electron": "^31.0.0",
@@ -27,6 +27,12 @@
       "category": "public.app-category.productivity",
       "icon": "assets/icon.png",
       "identity": null,
+      "extraResources": [
+        {
+          "from": "build/mac/stash-ocr",
+          "to": "stash-ocr"
+        }
+      ],
       "target": {
         "target": "dmg",
         "arch": [
@@ -44,12 +50,6 @@
       "assets/**/*",
       "package.json"
     ],
-    "asarUnpack": [
-      "node_modules/**",
-      "assets/tessdata/**"
-    ]
-  },
-  "dependencies": {
-    "tesseract.js": "^7.0.0"
+    "asarUnpack": []
   }
 }
