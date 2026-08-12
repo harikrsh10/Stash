@@ -36,3 +36,6 @@ Desktop.ini
 # Stash's own runtime files (shouldn't be in the repo)
 pinned.json
 pinned-images/
+
+# OCR language data — ~10MB binary, fetched at build time by npm run tessdata
+assets/tessdata/

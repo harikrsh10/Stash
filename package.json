@@ -8,10 +8,11 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder",
-    "dist:mac": "electron-builder --mac --x64 --arm64 --publish never",
-    "dist:win": "electron-builder --win --x64 --publish never"
+    "tessdata": "node scripts/fetch-tessdata.js",
+    "pack": "npm run tessdata && electron-builder --dir",
+    "dist": "npm run tessdata && electron-builder",
+    "dist:mac": "npm run tessdata && electron-builder --mac --x64 --arm64 --publish never",
+    "dist:win": "npm run tessdata && electron-builder --win --x64 --publish never"
   },
   "devDependencies": {
     "electron": "^31.0.0",
@@ -40,6 +41,14 @@
       "src/**/*",
       "assets/**/*",
       "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/tesseract.js/**",
+      "node_modules/tesseract.js-core/**",
+      "assets/tessdata/**"
     ]
+  },
+  "dependencies": {
+    "tesseract.js": "^7.0.0"
   }
 }

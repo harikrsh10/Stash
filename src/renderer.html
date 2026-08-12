@@ -823,6 +823,52 @@
     .tag-menu button.on { color: #c9a4ff; }
     .tag-menu .menu-sep { height: 1px; background: var(--border); margin: 4px 2px; }
 
+    /* ---------- extracted text sheet ---------- */
+    .ocr-sheet { border-top-color: #2a4a3a; }
+    .ocr-sheet .editor-title { color: #8fd0a8; }
+    .ocr-list {
+      margin: 0 14px 12px;
+      overflow-y: auto;
+      max-height: 260px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .ocr-list::-webkit-scrollbar { width: 3px; }
+    .ocr-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+    .ocr-list::-webkit-scrollbar-track { background: transparent; }
+    .ocr-block {
+      text-align: left;
+      padding: 8px 10px;
+      background: var(--surface2, #1a1a1a);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.45;
+      cursor: pointer;
+      white-space: pre-wrap;
+      word-break: break-word;
+      transition: border-color 0.12s, background 0.12s;
+    }
+    .ocr-block:hover { border-color: #3f7d5c; background: #16201a; }
+    .ocr-block.copied { border-color: #4e9e73; background: #16261c; }
+    .ocr-empty { padding: 18px 4px; font-size: 11px; color: var(--muted); text-align: center; }
+    .ocr-status {
+      padding: 14px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .ocr-bar {
+      height: 2px;
+      margin-top: 8px;
+      background: var(--border);
+      border-radius: 1px;
+      overflow: hidden;
+    }
+    .ocr-bar span { display: block; height: 100%; width: 0; background: #4e9e73; transition: width 0.2s; }
+
     /* picker that opens from "+ tag" — existing tags to choose, or type a new one */
     .tag-picker {
       position: absolute;
@@ -939,6 +985,15 @@
         <input class="tag-input" id="tagPickerInput" placeholder="type a new tag" maxlength="24" />
         <div class="tag-suggestions" id="tagSuggestions"></div>
       </div>
+    </div>
+
+    <div class="editor ocr-sheet" id="ocrSheet">
+      <div class="editor-head">
+        <span class="editor-title">extracted text</span>
+        <span class="editor-saved" id="ocrCount"></span>
+        <button class="close-btn" id="ocrClose" title="close (Esc)">×</button>
+      </div>
+      <div class="ocr-list" id="ocrList"></div>
     </div>
 
     <div class="stack-tray" id="stackTray">
@@ -1095,6 +1150,8 @@
     }
 
     function openEditor(id) {
+      // both sheets dock to the same edge, so only one can be up at a time
+      closeOcr();
       editingId = id;
       const c = findClip(id);
       if (!c) return closeEditor();
@@ -1160,6 +1217,77 @@
       const ok = await window.api.updatePrompt(editingId, { tags });
       if (ok) flashSaved();
     }
+
+    // ---------- extracted text ----------
+    // OCR runs in main; this just shows what came back. Each block is its own
+    // row so a screenshot becomes a set of separate copies, not one dump.
+    const ocrSheetEl = document.getElementById('ocrSheet');
+    const ocrListEl = document.getElementById('ocrList');
+    const ocrCountEl = document.getElementById('ocrCount');
+    let ocrBusyId = null;
+
+    function closeOcr() {
+      ocrSheetEl.classList.remove('show');
+    }
+
+    function showOcrStatus(label, pct) {
+      ocrListEl.innerHTML = `<div class="ocr-status">${esc(label)}<div class="ocr-bar"><span style="width:${Math.round(pct * 100)}%"></span></div></div>`;
+    }
+
+    async function runOcr(id) {
+      if (ocrBusyId) return;
+      ocrBusyId = id;
+      closeEditor();
+      ocrSheetEl.classList.add('show');
+      ocrCountEl.classList.add('show');
+      ocrCountEl.textContent = 'reading…';
+      // the first run also unpacks the language data, so it's the slow one
+      showOcrStatus('reading the image…', 0.05);
+      try {
+        const res = await window.api.ocr(id);
+        if (!res || !res.ok) {
+          ocrListEl.innerHTML = `<div class="ocr-empty">${esc((res && res.error) || 'could not read that image')}</div>`;
+          ocrCountEl.textContent = '';
+          return;
+        }
+        renderOcrBlocks(res.blocks || []);
+      } finally {
+        ocrBusyId = null;
+      }
+    }
+
+    function renderOcrBlocks(blocks) {
+      ocrCountEl.textContent = blocks.length ? `${blocks.length} block${blocks.length === 1 ? '' : 's'}` : '';
+      ocrListEl.innerHTML = '';
+      if (!blocks.length) {
+        ocrListEl.innerHTML = `<div class="ocr-empty">no text found in that image</div>`;
+        return;
+      }
+      blocks.forEach(b => {
+        const el = document.createElement('button');
+        el.className = 'ocr-block';
+        el.textContent = b.text;
+        el.title = 'click to copy';
+        el.addEventListener('click', async () => {
+          await window.api.write({ type: 'text', content: b.text });
+          el.classList.add('copied');
+          setTimeout(() => el.classList.remove('copied'), 700);
+          toast('copied — it will land in your history too');
+        });
+        ocrListEl.appendChild(el);
+      });
+    }
+
+    function onOcrProgress(m) {
+      if (!ocrBusyId || !m) return;
+      const label = m.status === 'recognizing text' ? 'reading the image…'
+        : m.status === 'loading language traineddata' || m.status === 'loading tesseract core'
+          ? 'warming up the reader…'
+          : (m.status || 'working…');
+      showOcrStatus(label, typeof m.progress === 'number' ? Math.max(0.05, m.progress) : 0.05);
+    }
+
+    document.getElementById('ocrClose').addEventListener('click', closeOcr);
 
     // ---------- tag picker ----------
     // Reusing an existing tag has to be as easy as inventing one, otherwise a
@@ -1531,6 +1659,7 @@
         <div class="actions">
           <button class="pin-btn prompt-btn ${c.isPrompt ? 'on' : ''}" data-act="prompt" title="${c.isPrompt ? 'stop keeping this as a prompt' : 'save as a prompt — kept forever'}">✦</button>
           ${c.isPrompt ? `<button class="act-btn" data-act="edit" title="edit text and tags">edit</button>` : `<button class="pin-btn ${isPinned ? 'pinned' : ''}" data-act="pin" title="${isPinned ? 'unpin' : 'pin'}">${isPinned ? '★' : '☆'}</button>`}
+          ${c.type === 'img' ? `<button class="act-btn" data-act="ocr" title="pull the text out of this image">text</button>` : ''}
           <button class="act-btn" data-act="copy" title="copy">copy</button>
           <button class="act-btn danger" data-act="del" title="delete">del</button>
         </div>
@@ -1580,6 +1709,11 @@
           await window.api.pin(c.id);
           toast('pinned — kept across restarts');
         }
+      });
+
+      el.querySelector('[data-act="ocr"]')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        runOcr(c.id);
       });
 
       el.querySelector('[data-act="edit"]')?.addEventListener('click', (e) => {
@@ -1831,6 +1965,7 @@
         const openMenu = document.querySelector('.tag-menu.show');
         if (openMenu) openMenu.classList.remove('show');
         else if (tagPickerEl.classList.contains('show')) closeTagPicker();
+        else if (ocrSheetEl.classList.contains('show')) closeOcr();
         else if (editingId) closeEditor();
         else if (selected.size > 0) clearSelection();
         else window.api.hide();
@@ -1905,6 +2040,8 @@
       history = [];
       render();
     });
+
+    window.api.onOcrProgress(onOcrProgress);
 
     // listen for state updates (pin/unpin actions from main)
     window.api.onStateUpdated((state) => {

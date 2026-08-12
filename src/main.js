@@ -1050,6 +1050,190 @@ ipcMain.on('ondragstart:multi', (event, entries, iconDataUrl) => {
   }
 });
 
+// ---------- OCR ----------
+// Pulling text out of a screenshot is only useful if the result comes back as
+// separate pieces. A dashboard has a dozen unrelated labels in it; handing back
+// one blob of text just moves the problem. So we take the lines tesseract finds
+// and cluster them into visual blocks, the way a person reads the image.
+
+let ocrWorker = null;
+let ocrWorkerPromise = null;
+
+// Paths have to survive being packed into app.asar — tesseract needs real files
+// on disk for its worker, wasm core and language data, so those are unpacked by
+// electron-builder and we point at the unpacked copies.
+function unpacked(p) {
+  return p.replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+}
+
+async function getOcrWorker(onProgress) {
+  if (ocrWorker) return ocrWorker;
+  if (ocrWorkerPromise) return ocrWorkerPromise;
+
+  ocrWorkerPromise = (async () => {
+    const { createWorker } = require('tesseract.js');
+    const langPath = unpacked(path.join(__dirname, '..', 'assets', 'tessdata'));
+    const options = {
+      workerPath: unpacked(require.resolve('tesseract.js/src/worker-script/node/index.js')),
+      corePath: unpacked(path.dirname(require.resolve('tesseract.js-core/package.json'))),
+      cachePath: app.getPath('userData'),
+      logger: (m) => { if (onProgress) onProgress(m); },
+    };
+    // Fall back to the CDN only if the bundled language data is missing, so a
+    // source checkout that skipped the fetch script still works when online.
+    if (fs.existsSync(path.join(langPath, 'eng.traineddata.gz'))) options.langPath = langPath;
+    else console.warn('[Stash] bundled tessdata missing — OCR will try the network');
+
+    ocrWorker = await createWorker('eng', 1, options);
+    // Sparse text mode. The default assumes a scanned document, and on UI
+    // screenshots it decides isolated large text — the number on a stat card —
+    // is a picture and silently drops it. Sparse mode just finds text wherever
+    // it is and leaves the grouping to us, which is what we want anyway.
+    await ocrWorker.setParameters({ tessedit_pageseg_mode: '11' });
+    return ocrWorker;
+  })();
+
+  try {
+    return await ocrWorkerPromise;
+  } catch (err) {
+    ocrWorkerPromise = null;
+    throw err;
+  }
+}
+
+// Walk whatever shape tesseract hands back and pull out flat words with boxes.
+// Words, not lines: tesseract happily runs a line straight across three
+// side-by-side cards, and once it has done that the columns can't be pulled
+// apart again. Starting from words lets us decide where a line really ends.
+function wordsFrom(data) {
+  const out = [];
+  const push = (w) => {
+    const text = (w.text || '').trim();
+    const b = w.bbox;
+    if (!text || !b) return;
+    if (typeof w.confidence === 'number' && w.confidence < 40) return;
+    out.push({ text, x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 });
+  };
+  if (Array.isArray(data.blocks)) {
+    data.blocks.forEach(b => (b.paragraphs || []).forEach(p => (p.lines || []).forEach(l => (l.words || []).forEach(push))));
+  }
+  if (!out.length && Array.isArray(data.words)) data.words.forEach(push);
+  return out;
+}
+
+// Words -> runs. Group words sharing a baseline, then cut a run wherever the
+// horizontal gap is far wider than ordinary word spacing — that gap is a column
+// boundary, a table cell edge, or the space between two unrelated labels.
+function runsFromWords(words) {
+  if (!words.length) return [];
+  const heights = words.map(w => w.y1 - w.y0).sort((a, b) => a - b);
+  const medianH = heights[Math.floor(heights.length / 2)] || 12;
+
+  const rows = [];
+  for (const w of [...words].sort((a, b) => (a.y0 + a.y1) / 2 - (b.y0 + b.y1) / 2)) {
+    const mid = (w.y0 + w.y1) / 2;
+    const row = rows.find(r => Math.abs(r.mid - mid) < medianH * 0.5);
+    if (row) {
+      row.words.push(w);
+      row.mid = (row.mid * (row.words.length - 1) + mid) / row.words.length;
+    } else {
+      rows.push({ mid, words: [w] });
+    }
+  }
+
+  const runs = [];
+  const gapLimit = medianH * 1.2; // ordinary word spacing is well under this
+  for (const row of rows) {
+    const sorted = row.words.sort((a, b) => a.x0 - b.x0);
+    let current = [sorted[0]];
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].x0 - sorted[i - 1].x1 > gapLimit) {
+        runs.push(current);
+        current = [];
+      }
+      current.push(sorted[i]);
+    }
+    runs.push(current);
+  }
+
+  return runs.filter(r => r.length).map(r => ({
+    text: r.map(w => w.text).join(' '),
+    x0: Math.min(...r.map(w => w.x0)),
+    y0: Math.min(...r.map(w => w.y0)),
+    x1: Math.max(...r.map(w => w.x1)),
+    y1: Math.max(...r.map(w => w.y1)),
+  }));
+}
+
+// Group lines into blocks: a line joins the block above it when it sits close
+// enough vertically and shares horizontal space with it. Everything else starts
+// a new block. Gaps are measured against the median line height, so the same
+// rule works on a dense table and on a poster.
+function clusterLines(lines) {
+  if (!lines.length) return [];
+  const sorted = [...lines].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+
+  const heights = sorted.map(l => l.y1 - l.y0).sort((a, b) => a - b);
+  const medianH = heights[Math.floor(heights.length / 2)] || 12;
+
+  const groups = [];
+  for (const line of sorted) {
+    const lineH = line.y1 - line.y0;
+    let target = null;
+    for (const g of groups) {
+      const gap = line.y0 - g.y1;
+      if (gap < 0) continue;
+      // Measure the gap against the taller of the two pieces rather than one
+      // global median: a 40px stat sits further from its 15px label than two
+      // lines of body copy sit from each other, and both are still one block.
+      if (gap > Math.max(lineH, g.lastH) * 0.95) continue;
+      const overlap = Math.min(line.x1, g.x1) - Math.max(line.x0, g.x0);
+      const narrower = Math.min(line.x1 - line.x0, g.x1 - g.x0) || 1;
+      const alignedLeft = Math.abs(line.x0 - g.x0) < medianH * 0.6;
+      if (overlap / narrower > 0.15 || alignedLeft) { target = g; break; }
+    }
+    if (target) {
+      target.lines.push(line);
+      target.x0 = Math.min(target.x0, line.x0);
+      target.y0 = Math.min(target.y0, line.y0);
+      target.x1 = Math.max(target.x1, line.x1);
+      target.y1 = Math.max(target.y1, line.y1);
+      target.lastH = lineH;
+    } else {
+      groups.push({ lines: [line], x0: line.x0, y0: line.y0, x1: line.x1, y1: line.y1, lastH: lineH });
+    }
+  }
+
+  return groups
+    .sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0)
+    .map((g, i) => ({
+      id: 'blk' + i,
+      text: g.lines.map(l => l.text).join('\n'),
+      lineCount: g.lines.length,
+      bbox: { x0: g.x0, y0: g.y0, x1: g.x1, y1: g.y1 },
+    }));
+}
+
+ipcMain.handle('ocr:run', async (_e, id) => {
+  const entry = [...history, ...pinned].find(c => c.id === id);
+  if (!entry || entry.type !== 'img' || !entry.filepath || !fs.existsSync(entry.filepath)) {
+    return { ok: false, error: 'that image is no longer on disk' };
+  }
+  const send = (msg) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('ocr:progress', msg);
+  };
+  try {
+    send({ status: 'starting', progress: 0 });
+    const worker = await getOcrWorker(send);
+    const { data } = await worker.recognize(entry.filepath, {}, { blocks: true, text: true });
+    const blocks = clusterLines(runsFromWords(wordsFrom(data)));
+    return { ok: true, blocks, raw: (data.text || '').trim() };
+  } catch (err) {
+    console.error('[Stash] OCR failed:', err);
+    return { ok: false, error: err.message || 'could not read that image' };
+  }
+});
+
 // ---------- update check ----------
 // Lightweight check: ask GitHub for the latest release tag, compare to our
 // own version, tell the renderer if there's something newer. Runs once at
@@ -1212,6 +1396,7 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   if (pollTimer) clearInterval(pollTimer);
+  if (ocrWorker) { try { ocrWorker.terminate(); } catch (_) {} }
   // Clean up temp drag files, but leave pinned-images directory alone
   const pinnedImagePaths = new Set(pinned.filter(p => p.filepath).map(p => p.filepath));
   try {

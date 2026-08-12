@@ -13,6 +13,10 @@ contextBridge.exposeInMainWorld('api', {
   unmarkPrompt: (id) => ipcRenderer.invoke('clip:unprompt', id),
   updatePrompt: (id, patch) => ipcRenderer.invoke('prompt:update', id, patch),
 
+  // OCR
+  ocr: (id) => ipcRenderer.invoke('ocr:run', id),
+  onOcrProgress: (cb) => ipcRenderer.on('ocr:progress', (_e, m) => cb(m)),
+
   // drawer-specific
   hide: () => ipcRenderer.invoke('window:hide'),
   startDrag: (entry) => ipcRenderer.send('ondragstart', entry),
