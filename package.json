@@ -45,8 +45,7 @@
       "package.json"
     ],
     "asarUnpack": [
-      "node_modules/tesseract.js/**",
-      "node_modules/tesseract.js-core/**",
+      "node_modules/**",
       "assets/tessdata/**"
     ]
   },
