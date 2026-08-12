@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('api', {
 
   // OCR
   ocr: (id) => ipcRenderer.invoke('ocr:run', id),
+  expandWindow: (v) => ipcRenderer.invoke('window:expand', v),
+  createPrompt: (content) => ipcRenderer.invoke('prompt:create', content),
   onOcrProgress: (cb) => ipcRenderer.on('ocr:progress', (_e, m) => cb(m)),
 
   // drawer-specific

@@ -32,13 +32,120 @@
       user-select: none;
     }
 
+    /* The window is a fixed-width drawer that widens to the left when an image
+       is being inspected. The shell holds both columns. */
+    .shell { display: flex; height: 100vh; }
     .app {
       display: flex;
       flex-direction: column;
       height: 100vh;
+      width: 340px;
+      flex-shrink: 0;
+      order: 2;
       /* the prompt editor docks against this */
       position: relative;
     }
+
+    /* ---------- image inspector ---------- */
+    .inspector {
+      display: none;
+      order: 1;
+      flex: 1;
+      min-width: 0;
+      flex-direction: column;
+      height: 100vh;
+      background: #0c0c0e;
+      border-right: 1px solid var(--border);
+    }
+    .inspector.show { display: flex; }
+
+    .insp-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 14px 10px;
+      flex-shrink: 0;
+    }
+    .insp-title {
+      flex: 1;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #8fd0a8;
+    }
+    .insp-hint { font-size: 10px; color: var(--muted); }
+
+    /* the picture, with a clickable box over every block of text found */
+    .insp-canvas {
+      flex: 1;
+      min-height: 0;
+      margin: 0 14px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      overflow: auto;
+      position: relative;
+    }
+    .insp-stage { position: relative; line-height: 0; }
+    .insp-stage img { max-width: 100%; height: auto; display: block; border-radius: 4px; }
+
+    .region {
+      position: absolute;
+      border: 1px solid rgba(143, 208, 168, 0.55);
+      background: rgba(143, 208, 168, 0.10);
+      border-radius: 2px;
+      cursor: pointer;
+      transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+    }
+    .region:hover { background: rgba(143, 208, 168, 0.22); border-color: #8fd0a8; }
+    .region.picked {
+      background: rgba(109, 140, 255, 0.28);
+      border-color: #8aa4ff;
+      box-shadow: 0 0 0 1px rgba(138, 164, 255, 0.5);
+    }
+
+    .insp-out {
+      flex-shrink: 0;
+      margin: 12px 14px 0;
+      padding: 10px;
+      min-height: 62px;
+      max-height: 150px;
+      overflow-y: auto;
+      background: var(--surface2, #1a1a1a);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .insp-out.empty { color: var(--muted); font-family: var(--font-mono); font-size: 10px; }
+    .insp-out::-webkit-scrollbar { width: 3px; }
+    .insp-out::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    .insp-actions {
+      display: flex;
+      gap: 8px;
+      padding: 10px 14px 14px;
+      flex-shrink: 0;
+    }
+    .insp-btn {
+      flex: 1;
+      padding: 8px 10px;
+      border-radius: 4px;
+      background: var(--surface2, #1a1a1a);
+      border: 1px solid var(--border2);
+      color: var(--text-2, #b8b8b8);
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      cursor: pointer;
+      transition: color 0.12s, border-color 0.12s, background 0.12s;
+    }
+    .insp-btn:hover:not(:disabled) { color: #8fd0a8; border-color: #3f7d5c; background: #16201a; }
+    .insp-btn.prompt:hover:not(:disabled) { color: #c9a4ff; border-color: #4d3a75; background: #191324; }
+    .insp-btn:disabled { opacity: 0.4; cursor: default; }
 
     /* drag region lets the user move the window by the title bar */
     .titlebar {
@@ -837,22 +944,6 @@
     .ocr-list::-webkit-scrollbar { width: 3px; }
     .ocr-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
     .ocr-list::-webkit-scrollbar-track { background: transparent; }
-    .ocr-block {
-      text-align: left;
-      padding: 8px 10px;
-      background: var(--surface2, #1a1a1a);
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      color: var(--text);
-      font-size: 12px;
-      line-height: 1.45;
-      cursor: pointer;
-      white-space: pre-wrap;
-      word-break: break-word;
-      transition: border-color 0.12s, background 0.12s;
-    }
-    .ocr-block:hover { border-color: #3f7d5c; background: #16201a; }
-    .ocr-block.copied { border-color: #4e9e73; background: #16261c; }
     .ocr-empty { padding: 18px 4px; font-size: 11px; color: var(--muted); text-align: center; }
     .ocr-status {
       padding: 14px;
@@ -935,6 +1026,23 @@
   </style>
 </head>
 <body>
+  <div class="shell">
+  <div class="inspector" id="inspector">
+    <div class="insp-head">
+      <span class="insp-title">select text from image</span>
+      <span class="insp-hint" id="inspHint">tap the highlighted areas</span>
+      <button class="close-btn" id="inspClose" title="close (Esc)">×</button>
+    </div>
+    <div class="insp-canvas">
+      <div class="insp-stage" id="inspStage"></div>
+    </div>
+    <div class="insp-out empty" id="inspOut">selected text appears here</div>
+    <div class="insp-actions">
+      <button class="insp-btn" id="inspCopy" disabled>copy text</button>
+      <button class="insp-btn prompt" id="inspPrompt" disabled>add to prompts</button>
+    </div>
+  </div>
+
   <div class="app">
     <div class="titlebar">
       <span class="title">stash</span>
@@ -1011,6 +1119,7 @@
       <span class="footer-info"><span class="skip-pulse" id="skipPulse" title="a secret-looking item was skipped"></span><span id="footerInfo">0 items</span></span>
       <button class="clear-btn" id="clearBtn">clear all</button>
     </div>
+  </div>
   </div>
 
   <div class="toast" id="toast"></div>
@@ -1226,9 +1335,118 @@
     const ocrCountEl = document.getElementById('ocrCount');
     let ocrBusyId = null;
 
+    // the inspector — the picture with its text regions drawn over it
+    const inspectorEl = document.getElementById('inspector');
+    const inspStageEl = document.getElementById('inspStage');
+    const inspOutEl = document.getElementById('inspOut');
+    const inspHintEl = document.getElementById('inspHint');
+    const inspCopyEl = document.getElementById('inspCopy');
+    const inspPromptEl = document.getElementById('inspPrompt');
+    let inspBlocks = [];
+    const inspPicked = new Set();
+
     function closeOcr() {
       ocrSheetEl.classList.remove('show');
+      closeInspector();
     }
+
+    function closeInspector() {
+      if (!inspectorEl.classList.contains('show')) return;
+      inspectorEl.classList.remove('show');
+      inspStageEl.innerHTML = '';
+      inspBlocks = [];
+      inspPicked.clear();
+      syncInspOut();
+      window.api.expandWindow(false);
+    }
+
+    async function openInspector(dataUrl, blocks) {
+      inspBlocks = blocks;
+      inspPicked.clear();
+      inspStageEl.innerHTML = '';
+      // widen the OS window first so the picture is measured at its real size
+      await window.api.expandWindow(true);
+      inspectorEl.classList.add('show');
+
+      const img = new Image();
+      img.alt = '';
+      inspStageEl.appendChild(img);
+      img.onload = () => drawRegions(img);
+      img.src = dataUrl;
+
+      inspHintEl.textContent = blocks.length
+        ? `${blocks.length} area${blocks.length === 1 ? '' : 's'} found`
+        : 'no text found';
+      syncInspOut();
+    }
+
+    // Boxes come back in image pixels; the picture is displayed scaled to fit,
+    // so every box is scaled by the same factor to land on top of its text.
+    function drawRegions(img) {
+      inspStageEl.querySelectorAll('.region').forEach(r => r.remove());
+      // Position boxes as percentages of the image's natural size rather than
+      // measuring the rendered element. naturalWidth is known the moment the
+      // image decodes, so this needs no layout to have happened, and the boxes
+      // track the picture for free when the window resizes.
+      const nw = img.naturalWidth || 1;
+      const nh = img.naturalHeight || 1;
+      const pct = (v, total) => (v / total * 100) + '%';
+      inspBlocks.forEach((b, i) => {
+        if (!b.bbox) return;
+        const el = document.createElement('div');
+        el.className = 'region' + (inspPicked.has(i) ? ' picked' : '');
+        el.dataset.index = String(i);
+        el.title = b.text;
+        el.style.left = pct(b.bbox.x0, nw);
+        el.style.top = pct(b.bbox.y0, nh);
+        el.style.width = pct(b.bbox.x1 - b.bbox.x0, nw);
+        el.style.height = pct(b.bbox.y1 - b.bbox.y0, nh);
+        el.addEventListener('click', () => {
+          if (inspPicked.has(i)) inspPicked.delete(i);
+          else inspPicked.add(i);
+          el.classList.toggle('picked', inspPicked.has(i));
+          syncInspOut();
+        });
+        inspStageEl.appendChild(el);
+      });
+    }
+
+    function pickedText() {
+      return [...inspPicked].sort((a, b) => a - b).map(i => inspBlocks[i].text).join('\n\n');
+    }
+
+    function syncInspOut() {
+      const text = pickedText();
+      inspOutEl.textContent = text || 'selected text appears here';
+      inspOutEl.classList.toggle('empty', !text);
+      inspCopyEl.disabled = !text;
+      inspPromptEl.disabled = !text;
+      if (inspBlocks.length) {
+        inspHintEl.textContent = inspPicked.size
+          ? `${inspPicked.size} of ${inspBlocks.length} selected`
+          : `${inspBlocks.length} area${inspBlocks.length === 1 ? '' : 's'} found`;
+      }
+    }
+
+    inspCopyEl.addEventListener('click', async () => {
+      const text = pickedText();
+      if (!text) return;
+      await window.api.write({ type: 'text', content: text });
+      toast('copied — paste with ⌘V');
+    });
+
+    inspPromptEl.addEventListener('click', async () => {
+      const text = pickedText();
+      if (!text) return;
+      const ok = await window.api.createPrompt(text);
+      toast(ok ? 'saved as a prompt — kept forever' : 'could not save that');
+    });
+
+    document.getElementById('inspClose').addEventListener('click', closeInspector);
+    // hiding the drawer must also shrink the window back, or it reopens wide
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) closeInspector();
+    });
 
     function showOcrStatus(label, pct) {
       ocrListEl.innerHTML = `<div class="ocr-status">${esc(label)}<div class="ocr-bar"><span style="width:${Math.round(pct * 100)}%"></span></div></div>`;
@@ -1250,32 +1468,12 @@
           ocrCountEl.textContent = '';
           return;
         }
-        renderOcrBlocks(res.blocks || []);
+        // hand off to the inspector: the picture with its regions, not a list
+        ocrSheetEl.classList.remove('show');
+        await openInspector(res.dataUrl, res.blocks || []);
       } finally {
         ocrBusyId = null;
       }
-    }
-
-    function renderOcrBlocks(blocks) {
-      ocrCountEl.textContent = blocks.length ? `${blocks.length} block${blocks.length === 1 ? '' : 's'}` : '';
-      ocrListEl.innerHTML = '';
-      if (!blocks.length) {
-        ocrListEl.innerHTML = `<div class="ocr-empty">no text found in that image</div>`;
-        return;
-      }
-      blocks.forEach(b => {
-        const el = document.createElement('button');
-        el.className = 'ocr-block';
-        el.textContent = b.text;
-        el.title = 'click to copy';
-        el.addEventListener('click', async () => {
-          await window.api.write({ type: 'text', content: b.text });
-          el.classList.add('copied');
-          setTimeout(() => el.classList.remove('copied'), 700);
-          toast('copied — it will land in your history too');
-        });
-        ocrListEl.appendChild(el);
-      });
     }
 
     function onOcrProgress(m) {
@@ -1965,6 +2163,7 @@
         const openMenu = document.querySelector('.tag-menu.show');
         if (openMenu) openMenu.classList.remove('show');
         else if (tagPickerEl.classList.contains('show')) closeTagPicker();
+        else if (inspectorEl.classList.contains('show')) closeInspector();
         else if (ocrSheetEl.classList.contains('show')) closeOcr();
         else if (editingId) closeEditor();
         else if (selected.size > 0) clearSelection();

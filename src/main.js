@@ -45,9 +45,28 @@ if (!gotLock) {
 }
 
 // ---------- window ----------
+// The drawer is a fixed-width strip on the right edge. Inspecting an image
+// widens the window leftwards so the picture has room, then puts it back.
+const DRAWER_W = 340;
+const INSPECTOR_W = 520;
+
+function setWindowExpanded(expanded) {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  const { workArea } = screen.getPrimaryDisplay();
+  const width = expanded ? DRAWER_W + INSPECTOR_W : DRAWER_W;
+  mainWindow.setBounds({
+    // grow to the left so the drawer stays welded to the screen edge
+    x: workArea.x + workArea.width - width,
+    y: workArea.y,
+    width,
+    height: workArea.height,
+  });
+  return true;
+}
+
 function createWindow() {
   const { workArea } = screen.getPrimaryDisplay();
-  const drawerW = 340;
+  const drawerW = DRAWER_W;
 
   mainWindow = new BrowserWindow({
     width: drawerW,
@@ -1214,6 +1233,30 @@ function clusterLines(lines) {
     }));
 }
 
+ipcMain.handle('window:expand', (_e, expanded) => setWindowExpanded(!!expanded));
+
+// "Add to prompt" from extracted text — the text was never a clip of its own,
+// so there's nothing to promote; make one directly.
+ipcMain.handle('prompt:create', (_e, content) => {
+  if (typeof content !== 'string' || !content.trim()) return false;
+  const entry = {
+    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+    type: sniffType(content),
+    content,
+    ts: Date.now(),
+    isPrompt: true,
+    promptedAt: Date.now(),
+    pinnedAt: Date.now(),
+  };
+  pinned.unshift(entry);
+  savePinned();
+  refreshTrayMenu();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('state:updated', { history, pinned });
+  }
+  return true;
+});
+
 ipcMain.handle('ocr:run', async (_e, id) => {
   const entry = [...history, ...pinned].find(c => c.id === id);
   if (!entry || entry.type !== 'img' || !entry.filepath || !fs.existsSync(entry.filepath)) {
@@ -1227,7 +1270,10 @@ ipcMain.handle('ocr:run', async (_e, id) => {
     const worker = await getOcrWorker(send);
     const { data } = await worker.recognize(entry.filepath, {}, { blocks: true, text: true });
     const blocks = clusterLines(runsFromWords(wordsFrom(data)));
-    return { ok: true, blocks, raw: (data.text || '').trim() };
+    // the renderer draws the boxes over the picture, so it needs the image too
+    const dataUrl = entry.dataUrl
+      || `data:image/png;base64,${fs.readFileSync(entry.filepath).toString('base64')}`;
+    return { ok: true, blocks, raw: (data.text || '').trim(), dataUrl };
   } catch (err) {
     console.error('[Stash] OCR failed:', err);
     return { ok: false, error: err.message || 'could not read that image' };
