@@ -72,7 +72,8 @@ do {
 var words: [Word] = []
 var lineIndex = 0
 
-for case let observation as VNRecognizedTextObservation in request.results ?? [] {
+// results are already text observations; casting them warned as always-true
+for observation in request.results ?? [] {
     guard let candidate = observation.topCandidates(1).first else { continue }
     let text = candidate.string
     defer { lineIndex += 1 }
@@ -91,8 +92,10 @@ for case let observation as VNRecognizedTextObservation in request.results ?? []
         let range = index..<end
         let piece = String(text[range])
 
+        // `try?` already flattens the optional the API returns, so binding it a
+        // second time is what failed to compile
         var box = observation.boundingBox
-        if let observed = try? candidate.boundingBox(for: range), let quad = observed {
+        if let quad = try? candidate.boundingBox(for: range) {
             box = quad.boundingBox
         }
 
