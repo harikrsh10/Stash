@@ -77,18 +77,22 @@
     .insp-hint { font-size: 10px; color: var(--muted); }
 
     /* the picture, with a clickable box over every block of text found */
+    /* The regions are positioned as percentages, so their containing block has
+       to be exactly the rendered image and nothing more. The stage is therefore
+       a plain block the full width of the panel, with the image filling it —
+       height follows the image, so the stage box and the picture coincide.
+       (As a flex item the stage refused to shrink below the image's natural
+       width, so the box was far wider than the picture and every region landed
+       off to the side.) */
     .insp-canvas {
       flex: 1;
       min-height: 0;
       margin: 0 14px;
-      display: flex;
-      align-items: flex-start;
-      justify-content: center;
-      overflow: auto;
-      position: relative;
+      overflow-y: auto;
+      overflow-x: hidden;
     }
-    .insp-stage { position: relative; line-height: 0; }
-    .insp-stage img { max-width: 100%; height: auto; display: block; border-radius: 4px; }
+    .insp-stage { position: relative; width: 100%; line-height: 0; }
+    .insp-stage img { display: block; width: 100%; height: auto; border-radius: 4px; }
 
     .region {
       position: absolute;
