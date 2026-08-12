@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
+const { pathToFileURL } = require('url');
 
 const isDev = process.argv.includes('--dev');
 const HISTORY_LIMIT = 100;
@@ -1270,10 +1271,20 @@ ipcMain.handle('ocr:run', async (_e, id) => {
     const worker = await getOcrWorker(send);
     const { data } = await worker.recognize(entry.filepath, {}, { blocks: true, text: true });
     const blocks = clusterLines(runsFromWords(wordsFrom(data)));
-    // the renderer draws the boxes over the picture, so it needs the image too
-    const dataUrl = entry.dataUrl
-      || `data:image/png;base64,${fs.readFileSync(entry.filepath).toString('base64')}`;
-    return { ok: true, blocks, raw: (data.text || '').trim(), dataUrl };
+    // The renderer draws boxes over the picture, so it must show the very image
+    // OCR read — not entry.dataUrl, which is a 240px preview thumbnail. Box
+    // coordinates are in the full image's pixel space, so against the thumbnail
+    // they land far outside it. Send the file itself plus the size the
+    // coordinates belong to, and let the renderer scale from that.
+    const size = nativeImage.createFromPath(entry.filepath).getSize();
+    return {
+      ok: true,
+      blocks,
+      raw: (data.text || '').trim(),
+      imageUrl: pathToFileURL(entry.filepath).href,
+      width: size.width,
+      height: size.height,
+    };
   } catch (err) {
     console.error('[Stash] OCR failed:', err);
     return { ok: false, error: err.message || 'could not read that image' };

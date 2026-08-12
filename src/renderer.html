@@ -1347,6 +1347,9 @@
     const inspCopyEl = document.getElementById('inspCopy');
     const inspPromptEl = document.getElementById('inspPrompt');
     let inspBlocks = [];
+    // pixel dimensions of the image OCR read — the space block boxes live in
+    let inspSrcW = 0;
+    let inspSrcH = 0;
     const inspPicked = new Set();
 
     function closeOcr() {
@@ -1364,8 +1367,12 @@
       window.api.expandWindow(false);
     }
 
-    async function openInspector(dataUrl, blocks) {
+    // `src` is the full-size image OCR actually read, and w/h are the pixel
+    // dimensions the block coordinates belong to — never the on-screen size.
+    async function openInspector(src, blocks, w, h) {
       inspBlocks = blocks;
+      inspSrcW = w || 0;
+      inspSrcH = h || 0;
       inspPicked.clear();
       inspStageEl.innerHTML = '';
       // widen the OS window first so the picture is measured at its real size
@@ -1376,7 +1383,7 @@
       img.alt = '';
       inspStageEl.appendChild(img);
       img.onload = () => drawRegions(img);
-      img.src = dataUrl;
+      img.src = src;
 
       inspHintEl.textContent = blocks.length
         ? `${blocks.length} area${blocks.length === 1 ? '' : 's'} found`
@@ -1392,8 +1399,11 @@
       // measuring the rendered element. naturalWidth is known the moment the
       // image decodes, so this needs no layout to have happened, and the boxes
       // track the picture for free when the window resizes.
-      const nw = img.naturalWidth || 1;
-      const nh = img.naturalHeight || 1;
+      // Scale against the size OCR worked in. Falling back to the element's
+      // natural size is only for safety — if the two ever disagree (a preview
+      // thumbnail, say) every box would be misplaced by that ratio.
+      const nw = inspSrcW || img.naturalWidth || 1;
+      const nh = inspSrcH || img.naturalHeight || 1;
       const pct = (v, total) => (v / total * 100) + '%';
       inspBlocks.forEach((b, i) => {
         if (!b.bbox) return;
@@ -1474,7 +1484,15 @@
         }
         // hand off to the inspector: the picture with its regions, not a list
         ocrSheetEl.classList.remove('show');
-        await openInspector(res.dataUrl, res.blocks || []);
+        await openInspector(res.imageUrl || res.dataUrl, res.blocks || [], res.width, res.height);
+      } catch (err) {
+        // without this a fault here leaves nothing on screen at all: the
+        // progress sheet has already stepped aside and the panel never opened
+        console.error('inspector failed:', err);
+        closeInspector();
+        ocrSheetEl.classList.add('show');
+        ocrListEl.innerHTML = `<div class="ocr-empty">something went wrong reading that image</div>`;
+        ocrCountEl.textContent = '';
       } finally {
         ocrBusyId = null;
       }
