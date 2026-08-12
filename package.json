@@ -22,9 +22,11 @@
     "appId": "com.harikrish.stash",
     "productName": "Stash",
     "artifactName": "${productName}-${os}-${arch}.${ext}",
+    "afterPack": "scripts/adhoc-sign.js",
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "assets/icon.png",
+      "identity": null,
       "target": {
         "target": "dmg",
         "arch": [
