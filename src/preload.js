@@ -13,6 +13,14 @@ contextBridge.exposeInMainWorld('api', {
   unmarkPrompt: (id) => ipcRenderer.invoke('clip:unprompt', id),
   updatePrompt: (id, patch) => ipcRenderer.invoke('prompt:update', id, patch),
 
+  // sessions
+  createSession: (name) => ipcRenderer.invoke('sessions:create', name),
+  renameSession: (id, name) => ipcRenderer.invoke('sessions:rename', id, name),
+  deleteSession: (id) => ipcRenderer.invoke('sessions:delete', id),
+  setActiveSession: (id) => ipcRenderer.invoke('sessions:setActive', id),
+  addToSession: (clipId, sessionId) => ipcRenderer.invoke('session:add', clipId, sessionId),
+  removeFromSession: (clipId, sessionId) => ipcRenderer.invoke('session:remove', clipId, sessionId),
+
   // OCR
   ocr: (id) => ipcRenderer.invoke('ocr:run', id),
   expandWindow: (v) => ipcRenderer.invoke('window:expand', v),

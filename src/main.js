@@ -1,4 +1,4 @@
-// src/main.js — Stash main process
+﻿// src/main.js â€” Stash main process
 // Handles: window lifecycle, global hotkey, tray, clipboard polling, native drag-out
 const { app, BrowserWindow, Tray, Menu, globalShortcut, clipboard, ipcMain, nativeImage, screen, shell, powerMonitor } = require('electron');
 const path = require('path');
@@ -26,7 +26,7 @@ let pausedClipboardSigs = new Set();
 let pinnedStorePath = null; // set once app is ready (needs app.getPath)
 let settingsStorePath = null;
 
-// Drawer drag state — set by IPC from the renderer. Used by the blur handler
+// Drawer drag state â€” set by IPC from the renderer. Used by the blur handler
 // to suppress hide-on-blur while the OS is driving a drag operation.
 // Mirrors the dock's dragInProgress pattern (see further down).
 let drawerDragInProgress = false;
@@ -34,10 +34,21 @@ let drawerDragSafetyTimer = null;
 
 // User settings (persisted to disk)
 let settings = {
-  autoPasteFromDock: false, // default off — no permission prompt on first launch
+  autoPasteFromDock: false, // default off â€” no permission prompt on first launch
+  activeSessionId: null,    // capture into this session; null means ordinary copying
 };
 
-// Single instance — second launch just toggles the existing window
+// ---------- sessions ----------
+// A session is a named folder that fills itself: while one is active, whatever
+// you copy joins it. Sessions and their clips survive restarts, so a session
+// keeps its own copy of an entry rather than sharing the one in history â€”
+// history is memory-only, capped, and deletes the temp file of anything that
+// ages out, which would otherwise gut the session it belonged to.
+let sessions = [];      // [{ id, name, createdAt }]
+let sessionClips = [];  // entries carrying sessionId
+let sessionStorePath = null;
+
+// Single instance â€” second launch just toggles the existing window
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -90,7 +101,7 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'renderer.html'));
 
-  // Hide on blur — UNLESS a drag is in progress. When the user drags a clip
+  // Hide on blur â€” UNLESS a drag is in progress. When the user drags a clip
   // out of the drawer, the OS takes focus to drive the drag, which fires
   // blur on our window. Hiding mid-drag both cancels the drag and forces
   // the user to re-open the drawer with the shortcut for every item.
@@ -150,7 +161,7 @@ function createTray() {
   }
 
   tray = new Tray(icon);
-  tray.setToolTip('Stash — clipboard history (⌘⇧V)');
+  tray.setToolTip('Stash â€” clipboard history (âŒ˜â‡§V)');
   refreshTrayMenu();
 
   tray.on('click', () => toggleWindow());
@@ -167,6 +178,7 @@ function refreshTrayMenu() {
   // prompts share the pinned array, so they'd otherwise inflate the pinned count
   const promptCount = pinned.filter(p => p.isPrompt).length;
   const pinCount = pinned.length - promptCount;
+  const activeSession = sessions.find(s => s.id === settings.activeSessionId);
   const menu = Menu.buildFromTemplate([
     {
       label: visible ? 'Hide Stash' : 'Show Stash',
@@ -183,6 +195,18 @@ function refreshTrayMenu() {
       label: isPaused ? 'Resume clipboard capture' : 'Pause clipboard capture',
       click: () => setPaused(!isPaused),
     },
+    // capturing into a session is easy to forget about, so say so where the
+    // pause state is already shown
+    ...(activeSession ? [{
+      label: `Collecting into "${activeSession.name}"`,
+      click: () => {
+        settings.activeSessionId = null;
+        saveSettings();
+        refreshTrayMenu();
+        broadcastState();
+      },
+      toolTip: 'click to stop collecting',
+    }] : []),
     {
       label: 'Auto-paste from dock',
       type: 'checkbox',
@@ -197,7 +221,7 @@ function refreshTrayMenu() {
       },
     },
     {
-      label: `${history.length} clip${history.length === 1 ? '' : 's'}${pinCount ? ` · ${pinCount} pinned` : ''}${promptCount ? ` · ${promptCount} prompt${promptCount === 1 ? '' : 's'}` : ''}${isPaused ? ' (paused)' : ''}`,
+      label: `${history.length} clip${history.length === 1 ? '' : 's'}${pinCount ? ` Â· ${pinCount} pinned` : ''}${promptCount ? ` Â· ${promptCount} prompt${promptCount === 1 ? '' : 's'}` : ''}${isPaused ? ' (paused)' : ''}`,
       enabled: false,
     },
     {
@@ -385,7 +409,7 @@ function loadPinned() {
 function savePinned() {
   if (!pinnedStorePath) return;
   try {
-    // Strip dataUrl from saved entries — it's huge and we can regenerate on demand
+    // Strip dataUrl from saved entries â€” it's huge and we can regenerate on demand
     const serializable = pinned.map(p => {
       const copy = { ...p };
       delete copy._new;
@@ -447,7 +471,7 @@ function unpinItem(id) {
 }
 
 // ---------- prompts ----------
-// Marking a clip as a prompt is what makes it permanent — there is no separate
+// Marking a clip as a prompt is what makes it permanent â€” there is no separate
 // pin step. Prompts ride in the same persistent store as pinned clips (same
 // file, same save path, already proven) and are told apart by `isPrompt`, so a
 // prompt survives quit, restart and reboot the moment it's marked. The drawer
@@ -498,14 +522,14 @@ function normalizeTags(tags) {
   return out;
 }
 
-// Prompts are a library, so they're editable in place — a typo gets fixed
+// Prompts are a library, so they're editable in place â€” a typo gets fixed
 // rather than re-copied. Only prompts can be edited; ordinary clips stay a
 // faithful record of what was on the clipboard.
 function updatePrompt(id, patch) {
   const entry = pinned.find(p => p.id === id && p.isPrompt);
   if (!entry || !patch || typeof patch !== 'object') return false;
   if (typeof patch.content === 'string') {
-    // refuse to empty a prompt — that's a delete, and there's a button for it
+    // refuse to empty a prompt â€” that's a delete, and there's a button for it
     if (!patch.content.trim()) return false;
     entry.content = patch.content;
   }
@@ -515,7 +539,7 @@ function updatePrompt(id, patch) {
   return true;
 }
 
-// Unmarking drops the clip back into ordinary history, mirroring unpin — it
+// Unmarking drops the clip back into ordinary history, mirroring unpin â€” it
 // stops being permanent, which is the whole point of taking the mark off.
 function unpromptItem(id) {
   const idx = pinned.findIndex(p => p.id === id && p.isPrompt);
@@ -529,6 +553,84 @@ function unpromptItem(id) {
   savePinned();
   refreshTrayMenu();
   return true;
+}
+
+function loadSessions() {
+  if (!sessionStorePath) return;
+  try {
+    if (!fs.existsSync(sessionStorePath)) return;
+    const data = JSON.parse(fs.readFileSync(sessionStorePath, 'utf8'));
+    sessions = Array.isArray(data.sessions) ? data.sessions : [];
+    // drop image clips whose file has gone, same as the pinned store does
+    sessionClips = (Array.isArray(data.clips) ? data.clips : []).filter(c => {
+      if (c.type === 'img' && c.filepath) return fs.existsSync(c.filepath);
+      return true;
+    });
+    console.log(`[Stash] loaded ${sessions.length} sessions, ${sessionClips.length} session clips`);
+  } catch (err) {
+    console.error('[Stash] failed to load sessions:', err);
+    sessions = [];
+    sessionClips = [];
+  }
+}
+
+function saveSessions() {
+  if (!sessionStorePath) return;
+  try {
+    const clips = sessionClips.map(c => {
+      const copy = { ...c };
+      delete copy._new;
+      delete copy._promoted;
+      return copy;
+    });
+    fs.writeFileSync(sessionStorePath, JSON.stringify({ sessions, clips }, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[Stash] failed to save sessions:', err);
+  }
+}
+
+function sessionState() {
+  return { sessions, sessionClips, activeSessionId: settings.activeSessionId || null };
+}
+
+function inSession(clipId, sessionId) {
+  return sessionClips.some(c => c.id === clipId && c.sessionId === sessionId);
+}
+
+// Take a session's own copy: history may drop this entry and delete its temp
+// file, so images are moved somewhere permanent first.
+function addToSession(entry, sessionId) {
+  if (!sessions.some(s => s.id === sessionId)) return false;
+  if (inSession(entry.id, sessionId)) return false;
+  const copy = makeImagePermanent({ ...entry });
+  delete copy._new;
+  delete copy._promoted;
+  copy.sessionId = sessionId;
+  copy.addedAt = Date.now();
+  sessionClips.unshift(copy);
+  saveSessions();
+  return true;
+}
+
+function removeFromSession(clipId, sessionId) {
+  const idx = sessionClips.findIndex(c => c.id === clipId && c.sessionId === sessionId);
+  if (idx === -1) return false;
+  const [gone] = sessionClips.splice(idx, 1);
+  dropSessionImage(gone);
+  saveSessions();
+  return true;
+}
+
+// An image file is only safe to delete once nothing else points at it â€” the
+// same picture can sit in two sessions, or be pinned as well.
+function dropSessionImage(clip) {
+  if (!clip || clip.type !== 'img' || !clip.filepath) return;
+  const stillUsed = sessionClips.some(c => c.filepath === clip.filepath)
+    || pinned.some(p => p.filepath === clip.filepath);
+  if (stillUsed) return;
+  try {
+    if (fs.existsSync(clip.filepath)) fs.unlinkSync(clip.filepath);
+  } catch (_) { /* a leftover file is better than a crash */ }
 }
 
 // ---------- settings persistence ----------
@@ -556,7 +658,7 @@ function saveSettings() {
 // ---------- auto-paste (platform-specific) ----------
 // Attempts to simulate Cmd+V / Ctrl+V in whatever app was focused before the dock opened.
 // On macOS this requires Accessibility permission (granted once in System Settings).
-// On Windows we use PowerShell's SendKeys. Both fail silently if blocked — the clip is
+// On Windows we use PowerShell's SendKeys. Both fail silently if blocked â€” the clip is
 // already on the clipboard either way, so the user can always paste manually.
 function tryAutoPaste() {
   const { exec } = require('child_process');
@@ -577,9 +679,9 @@ function tryAutoPaste() {
 
 // ---------- dock window ----------
 // A small popover showing the last ~5 items, appearing at the cursor position.
-// Separate from the main drawer — optimized for speed, not browsing.
+// Separate from the main drawer â€” optimized for speed, not browsing.
 
-// Track whether a drag is in progress inside the dock — we suppress blur-hide
+// Track whether a drag is in progress inside the dock â€” we suppress blur-hide
 // during drag, otherwise the OS drag operation gets cancelled mid-flight.
 let dockDragInProgress = false;
 let dockDragSafetyTimer = null;
@@ -605,7 +707,7 @@ function createDockWindow() {
 
   dockWindow.loadFile(path.join(__dirname, 'dock.html'));
 
-  // Hide on blur — UNLESS a drag is in progress (otherwise drag gets cancelled)
+  // Hide on blur â€” UNLESS a drag is in progress (otherwise drag gets cancelled)
   dockWindow.on('blur', () => {
     if (isDev) return;
     if (dockDragInProgress) return;
@@ -614,10 +716,10 @@ function createDockWindow() {
 
   // If the window is closed (rather than hidden), recreate it so the hotkey
   // keeps working. This was the likely cause of "hotkey stops working after a while"
-  // — some paths (e.g. accidental Cmd+W if focus went weird) could close the window
+  // â€” some paths (e.g. accidental Cmd+W if focus went weird) could close the window
   // without destroying the reference.
   dockWindow.on('closed', () => {
-    console.log('[Stash] dock window closed — will recreate on next toggle');
+    console.log('[Stash] dock window closed â€” will recreate on next toggle');
     dockWindow = null;
   });
 }
@@ -739,7 +841,7 @@ function pollClipboard() {
             content: filename,
             filepath,
             dataUrl: img.resize({ width: 240 }).toDataURL(),
-            meta: `${size.width}×${size.height}`,
+            meta: `${size.width}Ã—${size.height}`,
             ts: Date.now(),
           });
           return;
@@ -761,7 +863,7 @@ function pollClipboard() {
     }
 
     // If the user re-copies something they've pinned, just bump its pinnedAt
-    // so it rises to the top of the pinned section — don't duplicate into history.
+    // so it rises to the top of the pinned section â€” don't duplicate into history.
     const pinnedIdx = pinned.findIndex(p => p.id === sig);
     if (pinnedIdx > -1) {
       const existing = pinned.splice(pinnedIdx, 1)[0];
@@ -801,6 +903,12 @@ function broadcastPromote(entry) {
 }
 
 function addEntry(entry) {
+  // an active session collects whatever is copied, before history's cap can
+  // age the entry out from under it
+  if (settings.activeSessionId && sessions.some(s => s.id === settings.activeSessionId)) {
+    addToSession(entry, settings.activeSessionId);
+  }
+
   history = history.filter(h => h.id !== entry.id);
   history.unshift(entry);
   if (history.length > HISTORY_LIMIT) {
@@ -819,14 +927,90 @@ function addEntry(entry) {
 }
 
 // ---------- ipc ----------
-ipcMain.handle('history:get', () => ({ history, pinned }));
+ipcMain.handle('history:get', () => ({ history, pinned, ...sessionState() }));
+
+function broadcastState() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('state:updated', { history, pinned, ...sessionState() });
+  }
+}
+
+ipcMain.handle('sessions:create', (_e, name) => {
+  const clean = String(name || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+  if (!clean) return false;
+  const session = {
+    id: crypto.randomUUID ? crypto.randomUUID() : 'ses-' + Date.now(),
+    name: clean,
+    createdAt: Date.now(),
+  };
+  sessions.unshift(session);
+  // creating one is how you start collecting into it
+  settings.activeSessionId = session.id;
+  saveSessions();
+  saveSettings();
+  refreshTrayMenu();
+  broadcastState();
+  return session.id;
+});
+
+ipcMain.handle('sessions:rename', (_e, id, name) => {
+  const session = sessions.find(s => s.id === id);
+  const clean = String(name || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+  if (!session || !clean) return false;
+  session.name = clean;
+  saveSessions();
+  refreshTrayMenu();
+  broadcastState();
+  return true;
+});
+
+ipcMain.handle('sessions:delete', (_e, id) => {
+  const idx = sessions.findIndex(s => s.id === id);
+  if (idx === -1) return false;
+  sessions.splice(idx, 1);
+  const orphans = sessionClips.filter(c => c.sessionId === id);
+  sessionClips = sessionClips.filter(c => c.sessionId !== id);
+  orphans.forEach(dropSessionImage);
+  if (settings.activeSessionId === id) {
+    settings.activeSessionId = null;
+    saveSettings();
+  }
+  saveSessions();
+  refreshTrayMenu();
+  broadcastState();
+  return true;
+});
+
+ipcMain.handle('sessions:setActive', (_e, id) => {
+  const next = id && sessions.some(s => s.id === id) ? id : null;
+  settings.activeSessionId = next;
+  saveSettings();
+  refreshTrayMenu();
+  broadcastState();
+  return next;
+});
+
+// add or remove a clip that already exists, from anywhere in the drawer
+ipcMain.handle('session:add', (_e, clipId, sessionId) => {
+  const entry = [...history, ...pinned, ...sessionClips].find(c => c.id === clipId);
+  if (!entry) return false;
+  const ok = addToSession(entry, sessionId);
+  if (ok) broadcastState();
+  return ok;
+});
+
+ipcMain.handle('session:remove', (_e, clipId, sessionId) => {
+  const ok = removeFromSession(clipId, sessionId);
+  if (ok) broadcastState();
+  return ok;
+});
 ipcMain.handle('paused:get', () => isPaused);
 ipcMain.handle('paused:set', (_e, v) => { setPaused(!!v); return isPaused; });
 
 ipcMain.handle('clip:pin', (_e, id) => {
   const ok = pinItem(id);
   if (ok && mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('state:updated', { history, pinned });
+    mainWindow.webContents.send('state:updated', { history, pinned, ...sessionState() });
   }
   return ok;
 });
@@ -834,7 +1018,7 @@ ipcMain.handle('clip:pin', (_e, id) => {
 ipcMain.handle('clip:unpin', (_e, id) => {
   const ok = unpinItem(id);
   if (ok && mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('state:updated', { history, pinned });
+    mainWindow.webContents.send('state:updated', { history, pinned, ...sessionState() });
   }
   return ok;
 });
@@ -842,7 +1026,7 @@ ipcMain.handle('clip:unpin', (_e, id) => {
 ipcMain.handle('clip:prompt', (_e, id) => {
   const ok = promptItem(id);
   if (ok && mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('state:updated', { history, pinned });
+    mainWindow.webContents.send('state:updated', { history, pinned, ...sessionState() });
   }
   return ok;
 });
@@ -850,7 +1034,7 @@ ipcMain.handle('clip:prompt', (_e, id) => {
 ipcMain.handle('prompt:update', (_e, id, patch) => {
   const ok = updatePrompt(id, patch);
   if (ok && mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('state:updated', { history, pinned });
+    mainWindow.webContents.send('state:updated', { history, pinned, ...sessionState() });
   }
   return ok;
 });
@@ -858,7 +1042,7 @@ ipcMain.handle('prompt:update', (_e, id, patch) => {
 ipcMain.handle('clip:unprompt', (_e, id) => {
   const ok = unpromptItem(id);
   if (ok && mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('state:updated', { history, pinned });
+    mainWindow.webContents.send('state:updated', { history, pinned, ...sessionState() });
   }
   return ok;
 });
@@ -888,7 +1072,7 @@ ipcMain.handle('dock:openMain', () => {
   }
 });
 
-// Dock drag state — renderer tells us when a drag starts/ends so we can
+// Dock drag state â€” renderer tells us when a drag starts/ends so we can
 // suppress blur-hide during the drag.
 ipcMain.on('dock:dragStart', () => {
   dockDragInProgress = true;
@@ -908,7 +1092,7 @@ ipcMain.on('dock:dragEnd', () => {
   if (dockWindow && dockWindow.isVisible()) dockWindow.hide();
 });
 
-// Drawer drag state — renderer tells us when a drag starts/ends so blur-hide
+// Drawer drag state â€” renderer tells us when a drag starts/ends so blur-hide
 // is suppressed during the OS drag. UNLIKE the dock, we do NOT hide the drawer
 // on dragEnd: the drawer is the browsing surface and users frequently drag
 // several items in a row. Closing it after each drop forced them to re-trigger
@@ -927,8 +1111,8 @@ ipcMain.on('drawer:dragStart', () => {
 ipcMain.on('drawer:dragEnd', () => {
   drawerDragInProgress = false;
   if (drawerDragSafetyTimer) { clearTimeout(drawerDragSafetyTimer); drawerDragSafetyTimer = null; }
-  // Intentionally do NOT hide the drawer here — keep it open so the user
-  // can drag additional items without re-opening with ⌘⇧V every time.
+  // Intentionally do NOT hide the drawer here â€” keep it open so the user
+  // can drag additional items without re-opening with âŒ˜â‡§V every time.
 });
 
 ipcMain.handle('settings:get', () => settings);
@@ -945,7 +1129,7 @@ ipcMain.handle('clip:write', (_e, entry) => {
   } else {
     clipboard.writeText(entry.content);
   }
-  // promote on intentional re-use — check pinned first, then history
+  // promote on intentional re-use â€” check pinned first, then history
   const pinnedIdx = pinned.findIndex(p => p.id === entry.id);
   if (pinnedIdx > 0) {
     const existing = pinned.splice(pinnedIdx, 1)[0];
@@ -1015,7 +1199,7 @@ function materializeForDrag(entry, index = 0) {
 }
 
 // The drag cursor can only show one thumbnail, so use the first file that
-// actually renders as an image — a text-only drag falls back to empty, which
+// actually renders as an image â€” a text-only drag falls back to empty, which
 // is what the single-file path has always done.
 function dragIcon(paths) {
   for (const p of paths) {
@@ -1034,7 +1218,7 @@ ipcMain.on('ondragstart', (event, entry) => {
   }
 });
 
-// Multi-select drag — one gesture, N files. Electron's `files` (plural) hands
+// Multi-select drag â€” one gesture, N files. Electron's `files` (plural) hands
 // the target a real multi-file drop, which is what Figma's canvas and AI chat
 // inputs expect; they treat it exactly like a multi-file pick from Explorer.
 ipcMain.on('ondragstart:multi', (event, entries, iconDataUrl) => {
@@ -1077,12 +1261,12 @@ ipcMain.on('ondragstart:multi', (event, entries, iconDataUrl) => {
 // finds and cluster them into visual blocks, the way a person reads the image.
 //
 // The OS engines do the reading. A bundled wasm engine was tried first and read
-// 6 of 26 words on a dark marketing screenshot where Windows read 22 — small,
+// 6 of 26 words on a dark marketing screenshot where Windows read 22 â€” small,
 // letter-spaced or low-contrast text defeated it, and no amount of upscaling,
 // inverting or thresholding moved that number.
 
-// Both engines are asked for words with boxes; everything downstream — the
-// column splitting and block clustering — is engine-agnostic and unchanged.
+// Both engines are asked for words with boxes; everything downstream â€” the
+// column splitting and block clustering â€” is engine-agnostic and unchanged.
 //
 // Windows OCR is driven through PowerShell because the API is WinRT, which has
 // no Node binding. The script is written to a temp file rather than passed as a
@@ -1194,7 +1378,7 @@ function wordsFrom(data) {
 }
 
 // Words -> runs. Group words sharing a baseline, then cut a run wherever the
-// horizontal gap is far wider than ordinary word spacing — that gap is a column
+// horizontal gap is far wider than ordinary word spacing â€” that gap is a column
 // boundary, a table cell edge, or the space between two unrelated labels.
 function runsFromWords(words) {
   if (!words.length) return [];
@@ -1216,7 +1400,7 @@ function runsFromWords(words) {
   } else {
     // no line information: fall back to grouping by baseline. Every threshold
     // is relative to the words being compared, never to a figure for the image
-    // as a whole — a screenshot routinely carries a 70px headline and a 12px
+    // as a whole â€” a screenshot routinely carries a 70px headline and a 12px
     // caption, and one global measure fits neither.
     for (const w of [...words].sort((a, b) => (a.y0 + a.y1) / 2 - (b.y0 + b.y1) / 2)) {
       const mid = (w.y0 + w.y1) / 2;
@@ -1232,7 +1416,7 @@ function runsFromWords(words) {
     }
   }
 
-  // Split a line only where the gap is far too wide to be spacing of any kind —
+  // Split a line only where the gap is far too wide to be spacing of any kind â€”
   // that is a column edge or two unrelated labels sharing a baseline. The engine
   // already decided the ordinary word breaks, so this stays conservative.
   const splitFactor = hasLines ? 2.2 : 1.2;
@@ -1313,7 +1497,7 @@ function clusterLines(lines) {
 
 ipcMain.handle('window:expand', (_e, expanded) => setWindowExpanded(!!expanded));
 
-// "Add to prompt" from extracted text — the text was never a clip of its own,
+// "Add to prompt" from extracted text â€” the text was never a clip of its own,
 // so there's nothing to promote; make one directly.
 ipcMain.handle('prompt:create', (_e, content) => {
   if (typeof content !== 'string' || !content.trim()) return false;
@@ -1330,7 +1514,7 @@ ipcMain.handle('prompt:create', (_e, content) => {
   savePinned();
   refreshTrayMenu();
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('state:updated', { history, pinned });
+    mainWindow.webContents.send('state:updated', { history, pinned, ...sessionState() });
   }
   return true;
 });
@@ -1348,7 +1532,7 @@ ipcMain.handle('ocr:run', async (_e, id) => {
     const data = await runNativeOcr(entry.filepath);
     const blocks = clusterLines(runsFromWords(wordsFrom(data)));
     // The renderer draws boxes over the picture, so it must show the very image
-    // OCR read — not entry.dataUrl, which is a 240px preview thumbnail. Box
+    // OCR read â€” not entry.dataUrl, which is a 240px preview thumbnail. Box
     // coordinates are in the full image's pixel space, so against the thumbnail
     // they land far outside it. Send the file itself plus the size the
     // coordinates belong to, and let the renderer scale from that.
@@ -1370,7 +1554,7 @@ ipcMain.handle('ocr:run', async (_e, id) => {
 // ---------- update check ----------
 // Lightweight check: ask GitHub for the latest release tag, compare to our
 // own version, tell the renderer if there's something newer. Runs once at
-// startup and again every 6 hours. Failures are silent — if GitHub is down
+// startup and again every 6 hours. Failures are silent â€” if GitHub is down
 // or the user is offline, the app just behaves as if no update exists.
 //
 // We use the public GitHub Releases API (unauthenticated, 60 req/hour per IP),
@@ -1408,7 +1592,7 @@ async function checkForUpdate() {
     const currentVersion = app.getVersion();
 
     if (isNewerVersion(latestTag, currentVersion)) {
-      console.log(`[Stash] update available: ${currentVersion} → ${latestTag}`);
+      console.log(`[Stash] update available: ${currentVersion} â†’ ${latestTag}`);
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('update:available', {
           version: latestTag,
@@ -1419,7 +1603,7 @@ async function checkForUpdate() {
       console.log(`[Stash] up to date (${currentVersion})`);
     }
   } catch (err) {
-    // Offline, rate-limited, or GitHub having a bad day — silently ignore.
+    // Offline, rate-limited, or GitHub having a bad day â€” silently ignore.
     console.log('[Stash] update check failed:', err.message);
   }
 }
@@ -1433,18 +1617,18 @@ ipcMain.handle('shell:openExternal', (_e, url) => {
     if (u.hostname === 'github.com' || u.hostname.endsWith('.github.com')) {
       shell.openExternal(url);
     }
-  } catch (_) { /* invalid URL — ignore */ }
+  } catch (_) { /* invalid URL â€” ignore */ }
 });
 
 // ---------- lifecycle ----------
 function registerShortcuts() {
-  // Always unregister first to be safe — prevents accidental duplicate handlers
+  // Always unregister first to be safe â€” prevents accidental duplicate handlers
   try { globalShortcut.unregisterAll(); } catch (_) {}
 
   const drawerReg = globalShortcut.register('CommandOrControl+Shift+V', toggleWindow);
   const dockReg = globalShortcut.register('CommandOrControl+Shift+Space', toggleDock);
 
-  console.log(`[Stash] shortcuts registered — drawer: ${drawerReg}, dock: ${dockReg}`);
+  console.log(`[Stash] shortcuts registered â€” drawer: ${drawerReg}, dock: ${dockReg}`);
   if (!drawerReg) console.warn('[Stash] drawer hotkey registration failed (conflict?)');
   if (!dockReg) console.warn('[Stash] dock hotkey registration failed (conflict?)');
   return drawerReg && dockReg;
@@ -1456,8 +1640,14 @@ app.whenReady().then(() => {
   // Set up persistence paths (now that app is ready)
   pinnedStorePath = path.join(app.getPath('userData'), 'pinned.json');
   settingsStorePath = path.join(app.getPath('userData'), 'settings.json');
+  sessionStorePath = path.join(app.getPath('userData'), 'sessions.json');
   loadPinned();
   loadSettings();
+  loadSessions();
+  // a session deleted outside the app shouldn't leave capture pointing at it
+  if (settings.activeSessionId && !sessions.some(s => s.id === settings.activeSessionId)) {
+    settings.activeSessionId = null;
+  }
 
   createWindow();
   createDockWindow();
@@ -1467,11 +1657,12 @@ app.whenReady().then(() => {
   console.log('[Stash] platform:', process.platform);
   console.log('[Stash] assets dir:', path.join(__dirname, '..', 'assets'));
   console.log('[Stash] pinned store:', pinnedStorePath);
+  console.log('[Stash] session store:', sessionStorePath);
   console.log('[Stash] settings store:', settingsStorePath);
 
   registerShortcuts();
 
-  // Update check — wait a few seconds so the window is ready to receive the
+  // Update check â€” wait a few seconds so the window is ready to receive the
   // IPC message, then run again every 6 hours while the app is alive.
   setTimeout(checkForUpdate, 5000);
   setInterval(checkForUpdate, UPDATE_CHECK_INTERVAL_MS);
@@ -1482,7 +1673,7 @@ app.whenReady().then(() => {
   app.on('browser-window-focus', () => {
     if (!globalShortcut.isRegistered('CommandOrControl+Shift+V') ||
         !globalShortcut.isRegistered('CommandOrControl+Shift+Space')) {
-      console.log('[Stash] a shortcut was dropped — re-registering');
+      console.log('[Stash] a shortcut was dropped â€” re-registering');
       registerShortcuts();
     }
   });
@@ -1490,25 +1681,25 @@ app.whenReady().then(() => {
   // System sleep/wake and display changes are the main culprits for dropped
   // shortcuts. Re-register after every resume.
   powerMonitor.on('resume', () => {
-    console.log('[Stash] system resumed — re-registering shortcuts');
+    console.log('[Stash] system resumed â€” re-registering shortcuts');
     registerShortcuts();
   });
   powerMonitor.on('unlock-screen', () => {
-    console.log('[Stash] screen unlocked — re-registering shortcuts');
+    console.log('[Stash] screen unlocked â€” re-registering shortcuts');
     registerShortcuts();
   });
   screen.on('display-added', () => registerShortcuts());
   screen.on('display-removed', () => registerShortcuts());
   screen.on('display-metrics-changed', () => registerShortcuts());
 
-  // Periodic health check — cheap (just two boolean reads) and catches any
+  // Periodic health check â€” cheap (just two boolean reads) and catches any
   // edge case the above handlers miss. Runs every 30 seconds.
   setInterval(() => {
     try {
       const drawerOk = globalShortcut.isRegistered('CommandOrControl+Shift+V');
       const dockOk = globalShortcut.isRegistered('CommandOrControl+Shift+Space');
       if (!drawerOk || !dockOk) {
-        console.log('[Stash] health check found dropped shortcut — re-registering');
+        console.log('[Stash] health check found dropped shortcut â€” re-registering');
         registerShortcuts();
       }
     } catch (_) {}
@@ -1523,7 +1714,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  // keep running — menu-bar style
+  // keep running â€” menu-bar style
 });
 
 app.on('will-quit', () => {

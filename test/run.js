@@ -16,6 +16,7 @@ const SUITES = [
   { file: 'prompts.test.js', runtime: 'electron', what: 'the prompt library and its store' },
   { file: 'tags.test.js', runtime: 'electron', what: 'prompt editing, tags and tag filtering' },
   { file: 'inspector.test.js', runtime: 'electron', what: 'text extraction and the image inspector' },
+  { file: 'sessions.test.js', runtime: 'electron', what: 'sessions, their store and the drawer' },
 ];
 
 const verbose = process.argv.includes('--verbose');
