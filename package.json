@@ -8,6 +8,7 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
+    "test": "node test/run.js",
     "build:ocr": "node scripts/build-mac-ocr.js",
     "pack": "npm run build:ocr && electron-builder --dir",
     "dist": "npm run build:ocr && electron-builder",

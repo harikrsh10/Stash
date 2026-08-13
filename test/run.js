@@ -1,0 +1,57 @@
+#!/usr/bin/env node
+// Runs every suite and sums up the result. Exits non-zero if any suite fails,
+// so `npm test` is usable as a gate.
+//
+// Most suites need Electron: they load the real renderer.html in a hidden
+// window and drive the actual DOM, rather than testing a copy of the logic.
+// The pure ones run under plain node and take about a second.
+const { spawnSync } = require('child_process');
+const path = require('path');
+
+const electron = require('electron'); // resolves to the binary path
+
+const SUITES = [
+  { file: 'drag.test.js', runtime: 'node', what: 'drag-out file materialization' },
+  { file: 'stack.test.js', runtime: 'electron', what: 'multi-select and the drag stack' },
+  { file: 'prompts.test.js', runtime: 'electron', what: 'the prompt library and its store' },
+  { file: 'tags.test.js', runtime: 'electron', what: 'prompt editing, tags and tag filtering' },
+  { file: 'inspector.test.js', runtime: 'electron', what: 'text extraction and the image inspector' },
+];
+
+const verbose = process.argv.includes('--verbose');
+let failed = 0;
+let totalPassed = 0;
+let totalRun = 0;
+
+for (const suite of SUITES) {
+  const cmd = suite.runtime === 'electron' ? electron : process.execPath;
+  const res = spawnSync(cmd, [path.join(__dirname, suite.file)], {
+    encoding: 'utf8',
+    // electron chatters about security warnings and GPU state on stderr
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  const out = (res.stdout || '') + (res.stderr || '');
+  const tally = out.match(/(\d+)\/(\d+) passed/);
+  const passed = tally ? Number(tally[1]) : 0;
+  const ran = tally ? Number(tally[2]) : 0;
+  totalPassed += passed;
+  totalRun += ran;
+
+  const bad = res.status !== 0 || !tally || passed !== ran;
+  if (bad) failed++;
+
+  console.log(`${bad ? 'FAIL' : 'pass'}  ${suite.file.padEnd(20)} ${String(passed) + '/' + String(ran)}`
+    + `  ${suite.what}`);
+
+  // only the failures are worth reading in full
+  if (bad || verbose) {
+    out.split('\n')
+      .filter(l => verbose ? l.trim() : /FAIL|THREW|Error|error/.test(l))
+      .forEach(l => console.log('      ' + l.trim()));
+  }
+}
+
+console.log(`\n${totalPassed}/${totalRun} assertions across ${SUITES.length} suites`
+  + (failed ? `, ${failed} suite${failed === 1 ? '' : 's'} failing` : ''));
+process.exit(failed ? 1 : 0);
