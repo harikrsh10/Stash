@@ -12,24 +12,27 @@ permissions:
   contents: write
 
 jobs:
+  # Each platform only builds and hands its installer to the next job. Nothing
+  # is published here: when these steps uploaded to the release directly, a
+  # failure on one platform still left the other's installer published, and
+  # v0.1.17 went out as a release with no Mac download at all.
   build:
     name: Build ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
 
     strategy:
+      # keep going so a failure on one platform still reports the other's
       fail-fast: false
       matrix:
         include:
           - platform: windows
             os: windows-latest
             command: npm run dist:win
-            files: |
-              dist/*.exe
+            files: dist/*.exe
           - platform: macos
             os: macos-latest
             command: npm run dist:mac
-            files: |
-              dist/*.dmg
+            files: dist/*.dmg
 
     steps:
       - name: Checkout
@@ -49,9 +52,37 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      - name: Upload release assets
+      - name: Hand the installer on
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: ${{ matrix.files }}
+          # a build that quietly produces nothing should fail here, not surface
+          # later as a release missing a download
+          if-no-files-found: error
+          retention-days: 1
+
+  # `needs` waits for every platform in the matrix, and a failure in any of them
+  # skips this job — so a release is either complete or does not appear.
+  publish:
+    name: Publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Collect the installers
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Show what will be published
+        run: ls -lh dist
+
+      - name: Publish
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.files }}
+          files: dist/*
           generate_release_notes: true
           make_latest: true
