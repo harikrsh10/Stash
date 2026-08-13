@@ -103,15 +103,21 @@ app.whenReady().then(async () => {
     history = [{ id: 'h1', type: 'text', ts: Date.now(), content: 'ordinary clip' }];
     render();
 
+    const goTo = (scope) => [...document.querySelectorAll('.rail-item')]
+      .find(b => b.dataset.scope === scope).click();
+    const promptRows = () => document.querySelectorAll('.item').length;
+
     // tags must NOT appear as top-level filters
     ok('no tag pills in the main filter row', document.querySelectorAll('.filters .tag-pill').length === 0,
        document.querySelectorAll('.filters .tag-pill').length + '');
-    ok('main filter row untouched', [...document.querySelectorAll('.filters .pill')].map(p => p.textContent).join(',')
-       === 'all,prompt,pinned,text,code,url,image',
+    ok('the filter row is types only', [...document.querySelectorAll('.filters .pill')].map(p => p.textContent).join(',')
+       === 'all,text,code,url,image',
        [...document.querySelectorAll('.filters .pill')].map(p => p.textContent).join(','));
 
-    // the tag dropdown lives inside the prompts section header
-    const tf = document.querySelector('.prompts-section .section-label .tag-filter');
+    // the tag dropdown belongs to the prompts place, and only appears there
+    ok('no tag dropdown outside prompts', !document.querySelector('#scopeActions .tag-filter'), '');
+    goTo('prompts');
+    const tf = document.querySelector('#scopeActions .tag-filter');
     ok('tag dropdown sits in the prompts header', !!tf, '');
     ok('dropdown reads "all tags" by default',
        document.getElementById('tagFilterBtn').textContent.startsWith('all tags'),
@@ -130,25 +136,27 @@ app.whenReady().then(async () => {
 
     // picking a tag narrows prompts only â€” history is untouched
     [...document.querySelectorAll('#tagMenu button')].find(b => b.textContent === 'mobile').click();
-    ok('tag narrows the prompts section',
-       document.querySelectorAll('.prompts-section .item').length === 1,
-       document.querySelectorAll('.prompts-section .item').length + '');
-    ok('history is NOT filtered by a tag', !!document.querySelector('.item[data-id=\\"h1\\"]'), '');
+    ok('tag narrows the prompts place', promptRows() === 1, promptRows() + '');
     ok('dropdown shows the active tag',
        document.getElementById('tagFilterBtn').textContent.startsWith('mobile'),
        document.getElementById('tagFilterBtn').textContent);
     ok('dropdown marked active', document.getElementById('tagFilterBtn').classList.contains('on'), '');
 
+    // history is a different place now, so a tag cannot reach it
+    goTo('all');
+    ok('history is NOT filtered by a tag', !!document.querySelector('.item[data-id=\\"h1\\"]'), '');
+    ok('leaving prompts clears the tag', activeTag === null, String(activeTag));
+    goTo('prompts');
+
     // a tag matching nothing still leaves the dropdown reachable
     activeTag = 'video gen'; activeFilter = 'all'; searchQuery = 'hero'; render();
-    ok('empty tag result keeps the section header', !!document.querySelector('.prompts-section .tag-filter'), '');
+    ok('empty result keeps the dropdown reachable', !!document.querySelector('#scopeActions .tag-filter'), '');
     searchQuery = ''; render();
 
     // reset
     document.getElementById('tagFilterBtn').click();
     [...document.querySelectorAll('#tagMenu button')].find(b => b.textContent === 'all tags').click();
-    ok('reset restores every prompt', document.querySelectorAll('.prompts-section .item').length === 3,
-       document.querySelectorAll('.prompts-section .item').length + '');
+    ok('reset restores every prompt', promptRows() === 3, promptRows() + '');
 
     // the editor sheet
     const editor = document.getElementById('editor');

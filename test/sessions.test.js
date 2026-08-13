@@ -131,20 +131,26 @@ app.whenReady().then(async () => {
     history = [{ id: 'h1', type: 'text', content: 'an ordinary clip', ts: Date.now() }];
     render();
 
-    // the bar says what is being collected into
-    ok('the bar names the active session',
-       document.getElementById('sessionName').textContent.startsWith('Redesign'),
-       document.getElementById('sessionName').textContent);
-    ok('the bar is marked live', document.getElementById('sessionBtn').classList.contains('on'), '');
+    const goTo = (scope) => [...document.querySelectorAll('.rail-item')]
+      .find(b => b.dataset.scope === scope).click();
+    const rows = () => [...document.querySelectorAll('.item')];
 
-    // a section per session, the active one first
-    const heads = [...document.querySelectorAll('.sessions-section .section-label')]
-      .map(h => h.textContent.replace(/\\s+/g, ' ').trim());
-    ok('a section per session with clips', heads.length === 2, heads.length + '');
-    ok('the one being collected into comes first', heads[0].includes('Redesign'), heads[0]);
+    // every session is a place on the rail
+    const railLabels = [...document.querySelectorAll('.rail-item .lbl')].map(n => n.textContent);
+    ok('the rail lists the fixed places, the sessions and new',
+       railLabels.join(',') === 'all,prompts,pinned,Redesign,Research,new', railLabels.join(','));
+    ok('no section headers survive', document.querySelectorAll('.section-label').length === 0,
+       document.querySelectorAll('.section-label').length + '');
+    ok('the session being collected into is marked on the rail',
+       !!document.querySelector('.rail-item.session .rec'), '');
 
-    const inSes = document.querySelector('.sessions-section .item');
-    ok('session clips render in their section', !!inSes, '');
+    goTo('ses1');
+    ok('the header names the session', document.getElementById('scopeName').textContent === 'Redesign',
+       document.getElementById('scopeName').textContent);
+    ok('it holds only that session', rows().length === 1 && rows()[0].dataset.id === 'sc1',
+       rows().map(r => r.dataset.id).join(','));
+
+    const inSes = rows()[0];
     ok('inside a session, delete becomes remove',
        inSes.querySelector('[data-act=\\"del\\"]').textContent === 'remove',
        inSes.querySelector('[data-act=\\"del\\"]').textContent);
@@ -155,18 +161,20 @@ app.whenReady().then(async () => {
        JSON.stringify(calls[calls.length - 1]));
 
     // an ordinary clip can be added to whatever is being collected into
-    const histRow = [...document.querySelectorAll('.item')].find(r => r.dataset.id === 'h1');
+    goTo('all');
+    const histRow = rows().find(r => r.dataset.id === 'h1');
     ok('ordinary rows offer to join the session', !!histRow.querySelector('[data-act=\\"ses\\"]'), '');
     histRow.querySelector('[data-act=\\"ses\\"]').click();
     await tick();
     ok('joining calls addToSession',
        JSON.stringify(calls[calls.length - 1]) === '[\\"add\\",\\"h1\\",\\"ses1\\"]',
        JSON.stringify(calls[calls.length - 1]));
+    goTo('ses1');
     ok('a clip already in the session is not offered again',
-       !document.querySelector('.sessions-section .item [data-act=\\"ses\\"]'), '');
+       !document.querySelector('.item [data-act=\\"ses\\"]'), '');
 
-    // rename and delete live on the section header
-    const actions = document.querySelector('.sessions-section .session-actions');
+    // collect, rename and delete live on the scope header
+    const actions = document.getElementById('scopeActions');
     ok('the header offers collect, rename and delete',
        [...actions.querySelectorAll('button')].map(b => b.textContent).join(',') === 'collecting,rename,delete',
        [...actions.querySelectorAll('button')].map(b => b.textContent).join(','));
@@ -181,20 +189,11 @@ app.whenReady().then(async () => {
     ok('the second click deletes', JSON.stringify(calls[calls.length - 1]) === '[\\"delete\\",\\"ses1\\"]',
        JSON.stringify(calls[calls.length - 1]));
 
-    // the picker
-    document.getElementById('sessionBtn').click();
-    const menu = document.getElementById('sessionMenu');
-    ok('the picker opens', menu.classList.contains('show'), '');
-    const labels = [...menu.querySelectorAll('button')].map(b => b.textContent);
-    ok('it offers normal copying, each session, and a way to make one',
-       labels[0].startsWith('nothing') && labels.some(l => l.startsWith('Redesign'))
-       && labels[labels.length - 1] === '+ new session', JSON.stringify(labels));
-    // creating one: the button becomes a field you type a name into
-    const newBtn = [...menu.querySelectorAll('button')].find(b => b.textContent === '+ new session');
-    newBtn.click();
-    ok('the new-session field appears', !!document.querySelector('.session-input'),
-       document.querySelector('.session-input') ? 'present' : 'GONE — the menu closed itself');
-    const nameField = document.querySelector('.session-input');
+    // making one from the rail
+    document.getElementById('railAdd').click();
+    ok('the new-session field appears', !!document.querySelector('.rail-name'),
+       document.querySelector('.rail-name') ? 'present' : 'GONE — something closed it');
+    const nameField = document.querySelector('.rail-name');
     if (nameField) {
       nameField.value = 'Redesign work';
       nameField.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
@@ -204,29 +203,36 @@ app.whenReady().then(async () => {
        JSON.stringify(calls[calls.length - 1]) === '[\\"create\\",\\"Redesign work\\"]',
        JSON.stringify(calls[calls.length - 1]));
 
-    document.getElementById('sessionBtn').click();
-    const menu2 = document.getElementById('sessionMenu');
-    [...menu2.querySelectorAll('button')][0].click();
+    // stopping collection, from the session's own header
+    goTo('ses1');
+    [...document.getElementById('scopeActions').querySelectorAll('button')]
+      .find(b => b.textContent === 'collecting').click();
     await tick();
-    ok('choosing nothing stops collecting',
+    ok('the header can stop collecting',
        JSON.stringify(calls[calls.length - 1]) === '[\\"setActive\\",null]',
        JSON.stringify(calls[calls.length - 1]));
 
-    // with nothing active, rows stop offering to join
-    activeSessionId = null; render();
+    // with nothing being collected into, rows stop offering to join
+    activeSessionId = null; goTo('all');
     ok('no session, no join buttons', !document.querySelector('[data-act=\\"ses\\"]'), '');
-    ok('the bar says normal copying',
-       document.getElementById('sessionName').textContent.includes('normal copying'),
-       document.getElementById('sessionName').textContent);
-    ok('sections remain so old sessions stay reachable',
-       document.querySelectorAll('.sessions-section').length === 2,
-       document.querySelectorAll('.sessions-section').length + '');
+    ok('nothing is marked as collecting on the rail',
+       !document.querySelector('.rail-item .rec'), '');
+    ok('the sessions stay on the rail so they remain reachable',
+       document.querySelectorAll('.rail-item.session').length === 2,
+       document.querySelectorAll('.rail-item.session').length + '');
 
-    // a clip in both places is still one entry for selection purposes
+    // a place that disappears drops you back to everything
+    activeScope = 'ses2';
+    sessions = sessions.filter(s => s.id !== 'ses2');
+    render();
+    ok('deleting the place you were in returns you to everything', activeScope === 'all', activeScope);
+
+    // one clip, one entry in the selection order, wherever it shows
+    sessions.push({ id: 'ses2', name: 'Research', createdAt: 2 });
     activeSessionId = 'ses1';
     sessionClips.push({ id: 'h1', sessionId: 'ses1', type: 'text', content: 'an ordinary clip', ts: Date.now() });
-    render();
-    ok('a clip shown twice appears once in the selection order',
+    goTo('all');
+    ok('a clip appears once in the selection order',
        renderedOrder.filter(id => id === 'h1').length === 1,
        renderedOrder.filter(id => id === 'h1').length + '');
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }));

@@ -104,16 +104,26 @@ app.whenReady().then(async () => {
     history = [{ id: 'h1', type: 'text', content: 'ephemeral clip', ts: Date.now() }];
     render();
 
-    const sec = (cls) => document.querySelector(cls);
-    ok('prompts section exists', !!sec('.prompts-section'), '');
-    ok('prompts section is first', document.querySelector('.list').firstElementChild.className.includes('prompts-section'),
-       document.querySelector('.list').firstElementChild.className);
-    ok('prompts section holds both prompts', sec('.prompts-section').querySelectorAll('.item').length === 2,
-       sec('.prompts-section').querySelectorAll('.item').length + '');
-    ok('pinned section excludes prompts', sec('.pinned-section').querySelectorAll('.item').length === 1,
-       sec('.pinned-section').querySelectorAll('.item').length + '');
+    // prompts are a place on the rail, not a section in a stack of sections
+    const goTo = (scope) => [...document.querySelectorAll('.rail-item')]
+      .find(b => b.dataset.scope === scope).click();
+    const rows = () => [...document.querySelectorAll('.item')];
 
-    const promptRow = sec('.prompts-section').querySelector('.item');
+    ok('the rail offers prompts as a place',
+       !!document.querySelector('.rail-item[data-scope=\\"prompts\\"]'), '');
+    ok('no section headers anywhere', document.querySelectorAll('.section-label').length === 0,
+       document.querySelectorAll('.section-label').length + '');
+    ok('everything shows all of it', rows().length === 4, rows().length + '');
+
+    goTo('prompts');
+    ok('the prompts place holds both prompts', rows().length === 2, rows().length + '');
+    ok('the header names the place', document.getElementById('scopeName').textContent === 'prompts',
+       document.getElementById('scopeName').textContent);
+    goTo('pinned');
+    ok('the pinned place excludes prompts', rows().length === 1, rows().length + '');
+
+    goTo('prompts');
+    const promptRow = rows()[0];
     ok('prompt badge replaces the type badge', promptRow.querySelector('.type-badge').textContent.trim() === 'prompt',
        promptRow.querySelector('.type-badge').textContent.trim());
     ok('prompt row has no pin button', !promptRow.querySelector('[data-act=\\"pin\\"]'), '');
@@ -121,27 +131,25 @@ app.whenReady().then(async () => {
        promptRow.querySelector('.item-meta').textContent.trim());
     ok('mark button is on for a prompt', promptRow.querySelector('[data-act=\\"prompt\\"]').classList.contains('on'), '');
 
-    const histRow = document.querySelectorAll('.item')[3];
+    goTo('all');
+    const histRow = rows().find(r => r.dataset.id === 'h1');
     ok('history row has both buttons',
        !!histRow.querySelector('[data-act=\\"pin\\"]') && !!histRow.querySelector('[data-act=\\"prompt\\"]'), '');
     histRow.querySelector('[data-act=\\"prompt\\"]').click();
     ok('clicking mark calls markPrompt', marked === 'h1', String(marked));
-    promptRow.querySelector('[data-act=\\"prompt\\"]').click();
+    goTo('prompts');
+    rows()[0].querySelector('[data-act=\\"prompt\\"]').click();
     ok('clicking again calls unmarkPrompt', unmarked === 'pr1', String(unmarked));
 
-    // the prompt filter
-    activeFilter = 'prompt'; render();
-    ok('prompt filter shows only prompts', document.querySelectorAll('.item').length === 2,
-       document.querySelectorAll('.item').length + '');
-    activeFilter = 'pinned'; render();
-    ok('pinned filter excludes prompts', document.querySelectorAll('.item').length === 1,
-       document.querySelectorAll('.item').length + '');
+    // the filter pills now deal only in types
+    ok('pills are types only',
+       [...document.querySelectorAll('.filters .pill')].map(p => p.textContent).join(',') === 'all,text,code,url,image',
+       [...document.querySelectorAll('.filters .pill')].map(p => p.textContent).join(','));
 
-    // search now applies inside the pseudo-filters too
-    activeFilter = 'prompt'; searchQuery = 'refactor'; render();
-    ok('search narrows prompts', document.querySelectorAll('.item').length === 1,
-       document.querySelectorAll('.item').length + '');
-    searchQuery = ''; activeFilter = 'all'; render();
+    // search narrows within the place you are in
+    goTo('prompts'); searchQuery = 'refactor'; render();
+    ok('search narrows the current place', rows().length === 1, rows().length + '');
+    searchQuery = ''; goTo('all');
 
     ok('footer counts prompts separately',
        document.getElementById('footerInfo').textContent.includes('2 prompts') &&

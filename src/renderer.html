@@ -35,16 +35,132 @@
     /* The window is a fixed-width drawer that widens to the left when an image
        is being inspected. The shell holds both columns. */
     .shell { display: flex; height: 100vh; }
+    /* The drawer is the panel plus the rail. The rail is navigation — every
+       top-level place lives there, which is why the list has no section
+       headers and the filters below only deal in types. */
     .app {
       display: flex;
-      flex-direction: column;
+      flex-direction: row;
       height: 100vh;
-      width: 340px;
+      width: 418px;
       flex-shrink: 0;
       order: 2;
-      /* the prompt editor docks against this */
+    }
+    .panel {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      flex: 1;
+      height: 100vh;
+      /* the prompt editor and the OCR sheet dock against this */
       position: relative;
     }
+
+    .rail {
+      width: 78px;
+      flex: none;
+      border-left: 1px solid var(--border);
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      padding: 10px 0 12px;
+      gap: 2px;
+      overflow-y: auto;
+    }
+    .rail::-webkit-scrollbar { width: 0; }
+    .rail-item {
+      background: none;
+      border: 0;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+      padding: 9px 4px;
+      margin: 0 7px;
+      border-radius: 8px;
+      position: relative;
+      color: var(--muted2);
+      transition: background 0.16s, color 0.16s;
+    }
+    .rail-item:hover { color: var(--text-2, #b8b8b8); background: var(--surface2); }
+    .rail-item.on { color: var(--text); background: var(--bg); box-shadow: 0 0 0 1px var(--border); }
+    .rail-item svg { width: 19px; height: 19px; stroke: currentColor; fill: none; stroke-width: 1.5; }
+    .rail-item .lbl {
+      font-family: var(--font-mono);
+      font-size: 8.5px;
+      max-width: 62px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .rail-item.prompts.on { color: #c9a4ff; }
+    .rail-item.pinned.on { color: #e0b070; }
+    .rail-item.session.on { color: #79c48f; }
+    /* the session being collected into stays marked wherever you are */
+    .rail-item .rec {
+      position: absolute;
+      top: 7px;
+      right: 12px;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #79c48f;
+      animation: recPulse 2.6s ease-in-out infinite;
+    }
+    @keyframes recPulse { 50% { opacity: 0.3; } }
+    .rail-sep { height: 1px; background: var(--border); margin: 7px 16px; flex: none; }
+    .rail-name {
+      width: 60px;
+      margin: 4px 9px;
+      padding: 4px 5px;
+      border-radius: 4px;
+      background: var(--bg);
+      border: 1px solid #3f7d5c;
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 9px;
+      outline: none;
+    }
+
+    /* the scope header replaces every section label */
+    .scopehead {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 2px 18px 10px;
+      flex-shrink: 0;
+    }
+    .scope-name {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .scope-count {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--muted2);
+      flex: 1;
+    }
+    .scope-actions { display: flex; align-items: center; gap: 5px; }
+    .scope-btn {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      padding: 3px 7px;
+      border-radius: 3px;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .scope-btn:hover { color: var(--text); }
+    .scope-btn.on { color: #0b0b0b; background: #79c48f; border-color: #79c48f; }
+    .scope-btn.danger:hover { color: #c46a6a; border-color: #4a2a2a; }
 
     /* ---------- image inspector ---------- */
     .inspector {
@@ -708,61 +824,6 @@
       100% { background: transparent; }
     }
 
-    /* pinned section */
-    .section-label {
-      padding: 10px 18px 6px;
-      font-family: var(--font-mono);
-      font-size: 9px;
-      letter-spacing: 0.14em;
-      color: var(--muted2);
-      text-transform: uppercase;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      cursor: pointer;
-      user-select: none;
-      transition: color 0.12s;
-    }
-    .section-label:hover { color: var(--muted); }
-    .section-label-left {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .section-label .chevron {
-      display: inline-block;
-      width: 7px;
-      height: 7px;
-      border-right: 1px solid currentColor;
-      border-bottom: 1px solid currentColor;
-      transform: rotate(45deg);
-      transition: transform 0.18s ease;
-      margin-right: 2px;
-      margin-top: -2px;
-    }
-    .section-label.collapsed .chevron {
-      transform: rotate(-45deg);
-      margin-top: 0;
-    }
-    .section-label .count {
-      color: var(--muted2);
-      font-weight: 400;
-    }
-    .section-label .pin-icon {
-      width: 8px; height: 8px;
-      display: inline-block;
-    }
-    .pinned-section {
-      border-bottom: 1px solid var(--border);
-      padding-bottom: 6px;
-    }
-    .pinned-section .item {
-      background: rgba(255, 215, 140, 0.02);
-    }
-    /* prompts read as a library, not history — cooler tint than pinned's warm one */
-    .prompts-section .item {
-      background: rgba(186, 148, 255, 0.035);
-    }
     /* the row being edited stays visibly tied to the sheet below it */
     .item.editing {
       background: rgba(186, 148, 255, 0.1);
@@ -877,94 +938,6 @@
       color: var(--text);
       outline: none;
     }
-    /* ---------- sessions ---------- */
-    .session-bar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 0 18px 10px;
-      flex-shrink: 0;
-    }
-    .session-label {
-      font-family: var(--font-mono);
-      font-size: 9px;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--muted2);
-      flex-shrink: 0;
-    }
-    .session-pick {
-      position: relative;
-      flex: 1;
-      min-width: 0;
-    }
-    .session-btn {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 5px 8px;
-      border-radius: 4px;
-      background: var(--surface2, #1a1a1a);
-      border: 1px solid var(--border2);
-      color: var(--muted);
-      font-family: var(--font-mono);
-      font-size: 10px;
-      cursor: pointer;
-      text-align: left;
-    }
-    .session-btn:hover { color: var(--text); border-color: #4a6b52; }
-    .session-btn.on { color: #0b0b0b; background: #79c48f; border-color: #79c48f; }
-    .session-btn .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .session-btn .caret { font-size: 7px; opacity: 0.7; }
-    /* a quiet pulse so "everything is being collected" is never a surprise */
-    .session-btn.on .rec {
-      width: 5px; height: 5px; border-radius: 50%;
-      background: #0b0b0b; animation: recPulse 2s ease-in-out infinite;
-    }
-    @keyframes recPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
-
-    .session-menu {
-      position: absolute;
-      left: 0; right: 0;
-      top: 120%;
-      z-index: 40;
-      max-height: 230px;
-      overflow-y: auto;
-      padding: 4px;
-      background: #10140f;
-      border: 1px solid #2c3f31;
-      border-radius: 5px;
-      box-shadow: 0 8px 22px rgba(0,0,0,0.55);
-      display: none;
-    }
-    .session-menu.show { display: block; }
-    .session-menu button {
-      display: block; width: 100%; text-align: left;
-      background: none; border: 0; border-radius: 3px;
-      padding: 6px 7px;
-      font-family: var(--font-mono); font-size: 10px;
-      color: var(--text-2, #b8b8b8); cursor: pointer;
-    }
-    .session-menu button:hover { background: #16211a; color: #79c48f; }
-    .session-menu button.on { color: #79c48f; }
-    .session-menu .menu-sep { height: 1px; background: var(--border); margin: 4px 2px; }
-    .session-menu .new { color: #79c48f; }
-    .session-input {
-      width: 100%;
-      box-sizing: border-box;
-      margin: 2px 0;
-      padding: 5px 7px;
-      border-radius: 3px;
-      background: var(--surface2, #1a1a1a);
-      border: 1px solid #3f7d5c;
-      color: var(--text);
-      font-family: var(--font-mono);
-      font-size: 10px;
-      outline: none;
-    }
-
-    .sessions-section .item { background: rgba(121, 196, 143, 0.035); }
     .type-badge.session { color: #79c48f; background: #0f1f14; border: 1px solid #1f3d29; }
     .session-btn-row.on { color: #79c48f; }
     .session-actions {
@@ -1107,10 +1080,6 @@
     }
     .prompt-btn.on { color: #c9a4ff; }
     .prompt-btn:hover { color: #c9a4ff; }
-    .section-content.collapsed {
-      display: none;
-    }
-
     /* pin button — little star/dot on each item */
     .pin-btn {
       background: var(--surface2);
@@ -1152,6 +1121,7 @@
   </div>
 
   <div class="app">
+  <div class="panel">
     <div class="titlebar">
       <span class="title">stash</span>
       <div class="titlebar-right">
@@ -1171,10 +1141,9 @@
 
     <div class="controls">
       <input class="search-input" id="search" placeholder="search clipboard..." />
+      <!-- only types live here now; prompts and pinned are places on the rail -->
       <div class="filters">
         <button class="pill active" data-type="all">all</button>
-        <button class="pill" data-type="prompt">prompt</button>
-        <button class="pill" data-type="pinned">pinned</button>
         <button class="pill" data-type="text">text</button>
         <button class="pill" data-type="code">code</button>
         <button class="pill" data-type="url">url</button>
@@ -1182,16 +1151,10 @@
       </div>
     </div>
 
-    <div class="session-bar">
-      <span class="session-label">collecting</span>
-      <span class="session-pick">
-        <button class="session-btn" id="sessionBtn" title="choose where copies are collected">
-          <span class="rec"></span>
-          <span class="name" id="sessionName">nothing — normal copying</span>
-          <span class="caret">▼</span>
-        </button>
-        <div class="session-menu" id="sessionMenu"></div>
-      </span>
+    <div class="scopehead">
+      <span class="scope-name" id="scopeName">everything</span>
+      <span class="scope-count" id="scopeCount"></span>
+      <span class="scope-actions" id="scopeActions"></span>
     </div>
 
     <div class="list" id="list">
@@ -1240,6 +1203,10 @@
       <button class="clear-btn" id="clearBtn">clear all</button>
     </div>
   </div>
+
+  <!-- every top-level place: everything, prompts, pinned, each session, and new -->
+  <nav class="rail" id="rail" aria-label="places"></nav>
+  </div>
   </div>
 
   <div class="toast" id="toast"></div>
@@ -1248,9 +1215,10 @@
     let history = [];
     let pinned = [];
     let activeFilter = 'all';
+    // which place the rail has selected: all | prompts | pinned | a session id
+    let activeScope = 'all';
     let searchQuery = '';
     // Section collapse state — in-memory only, resets on app restart
-    let collapsed = { prompts: false, pinned: false, recent: false };
 
     // Multi-select state. `selected` holds clip ids; `renderedOrder` is the
     // flat top-to-bottom order of what's currently on screen, which is what
@@ -1309,10 +1277,10 @@
     }
 
     function itemMatchesFilter(c, isPinned) {
-      // search applies to every filter, including the pseudo-types
+      // The rail decides which place you're in; these only narrow by type.
+      // prompt and pinned used to live here as pseudo-types, which is why the
+      // row wrapped onto two lines.
       if (searchQuery && !c.content.toLowerCase().includes(searchQuery)) return false;
-      if (activeFilter === 'prompt') return !!c.isPrompt;
-      if (activeFilter === 'pinned') return isPinned && !c.isPrompt;
       if (activeFilter !== 'all' && c.type !== activeFilter) return false;
       return true;
     }
@@ -1378,147 +1346,164 @@
       updateStack(originRect);
     }
 
-    // ---------- sessions ----------
-    const sessionBtnEl = document.getElementById('sessionBtn');
-    const sessionNameEl = document.getElementById('sessionName');
-    const sessionMenuEl = document.getElementById('sessionMenu');
+    // ---------- the rail ----------
+    // Every top-level place is a rail item: everything, prompts, pinned, one
+    // per session, and new. Choosing one swaps what the list shows, which is
+    // why there are no section headers any more.
+    const railEl = document.getElementById('rail');
+    const scopeNameEl = document.getElementById('scopeName');
+    const scopeCountEl = document.getElementById('scopeCount');
+    const scopeActionsEl = document.getElementById('scopeActions');
+
+    const RAIL_ICONS = {
+      all: '<svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg>',
+      // a four-point sparkle, so prompts never reads as a second star
+      prompts: '<svg viewBox="0 0 24 24"><path d="M12 3.5c.6 4.2 1.8 5.4 6 6-4.2.6-5.4 1.8-6 6-.6-4.2-1.8-5.4-6-6 4.2-.6 5.4-1.8 6-6z"/><path d="M18.5 15.5c.25 1.6.75 2.1 2.3 2.3-1.55.25-2.05.75-2.3 2.3-.25-1.55-.75-2.05-2.3-2.3 1.55-.2 2.05-.7 2.3-2.3z"/></svg>',
+      pinned: '<svg viewBox="0 0 24 24"><path d="M12 4l2.3 5.1 5.7.6-4.2 3.8 1.2 5.5L12 16.3 7 19l1.2-5.5L4 9.7l5.7-.6z"/></svg>',
+      folder: '<svg viewBox="0 0 24 24"><path d="M4 7a2 2 0 012-2h3.2l1.6 2H18a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2z"/></svg>',
+      add: '<svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></svg>',
+    };
 
     function activeSession() {
       return sessions.find(s => s.id === activeSessionId) || null;
     }
 
-    function clipsInSession(id) {
-      return sessionClips.filter(c => c.sessionId === id);
+    function scopeIsSession(id) {
+      return sessions.some(s => s.id === id);
     }
 
-    function isInSession(clipId, sessionId) {
-      return sessionClips.some(c => c.id === clipId && c.sessionId === sessionId);
+    function scopeLabel(id) {
+      if (id === 'prompts') return 'prompts';
+      if (id === 'pinned') return 'pinned';
+      const s = sessions.find(x => x.id === id);
+      return s ? s.name : 'everything';
     }
 
-    function syncSessionBar() {
-      const active = activeSession();
-      sessionBtnEl.classList.toggle('on', !!active);
-      sessionNameEl.textContent = active
-        ? `${active.name} · ${clipsInSession(active.id).length}`
-        : 'nothing — normal copying';
+    // What belongs in each place. Prompts and pinned share one store, told
+    // apart by the flag; sessions keep their own copies.
+    function clipsForScope(id) {
+      if (id === 'prompts') return pinned.filter(c => c.isPrompt);
+      if (id === 'pinned') return pinned.filter(c => !c.isPrompt);
+      if (scopeIsSession(id)) return clipsInSession(id);
+      // everything: kept things first, then the running history
+      return [...pinned.filter(c => c.isPrompt), ...pinned.filter(c => !c.isPrompt), ...history];
     }
 
-    function closeSessionMenu() {
-      sessionMenuEl.classList.remove('show');
-      sessionMenuEl.innerHTML = '';
-    }
-
-    function buildSessionMenu() {
-      sessionMenuEl.innerHTML = '';
-
-      const none = document.createElement('button');
-      none.textContent = 'nothing — normal copying';
-      if (!activeSessionId) none.classList.add('on');
-      none.addEventListener('click', async () => {
-        closeSessionMenu();
-        await window.api.setActiveSession(null);
+    function railItem(id, label, icon, cls) {
+      const b = document.createElement('button');
+      b.className = 'rail-item ' + (cls || '') + (activeScope === id ? ' on' : '');
+      b.dataset.scope = id;
+      b.title = label;
+      b.innerHTML = icon + '<span class="lbl"></span>';
+      b.querySelector('.lbl').textContent = label;
+      b.addEventListener('click', () => {
+        activeScope = id;
+        // a tag filter belongs to prompts; leaving prompts clears it
+        if (id !== 'prompts') activeTag = null;
+        render();
       });
-      sessionMenuEl.appendChild(none);
+      return b;
+    }
 
-      if (sessions.length) {
-        const sep = document.createElement('div');
-        sep.className = 'menu-sep';
-        sessionMenuEl.appendChild(sep);
-        sessions.forEach(s => {
-          const b = document.createElement('button');
-          b.textContent = `${s.name} · ${clipsInSession(s.id).length}`;
-          if (s.id === activeSessionId) b.classList.add('on');
-          b.addEventListener('click', async () => {
-            closeSessionMenu();
-            await window.api.setActiveSession(s.id);
-          });
-          sessionMenuEl.appendChild(b);
-        });
-      }
+    function buildRail() {
+      railEl.innerHTML = '';
+      railEl.appendChild(railItem('all', 'all', RAIL_ICONS.all, ''));
+      railEl.appendChild(railItem('prompts', 'prompts', RAIL_ICONS.prompts, 'prompts'));
+      railEl.appendChild(railItem('pinned', 'pinned', RAIL_ICONS.pinned, 'pinned'));
 
-      const sep2 = document.createElement('div');
-      sep2.className = 'menu-sep';
-      sessionMenuEl.appendChild(sep2);
+      const sep = document.createElement('div');
+      sep.className = 'rail-sep';
+      railEl.appendChild(sep);
+
+      sessions.forEach(s => {
+        const el = railItem(s.id, s.name, RAIL_ICONS.folder, 'session');
+        if (s.id === activeSessionId) {
+          const dot = document.createElement('span');
+          dot.className = 'rec';
+          dot.title = 'collecting into this session';
+          el.appendChild(dot);
+        }
+        railEl.appendChild(el);
+      });
 
       const add = document.createElement('button');
-      add.className = 'new';
-      add.textContent = '+ new session';
+      add.className = 'rail-item';
+      add.id = 'railAdd';
+      add.title = 'new session';
+      add.innerHTML = RAIL_ICONS.add + '<span class="lbl">new</span>';
       add.addEventListener('click', (e) => {
-        // this handler removes its own button, so the click must not reach the
-        // dismiss-on-outside-click listener below — see the isConnected note there
+        // this handler removes its own button, so the click must not reach any
+        // dismiss-on-outside-click listener
         e.stopPropagation();
         const input = document.createElement('input');
-        input.className = 'session-input';
-        input.placeholder = 'name it, then enter';
+        input.className = 'rail-name';
+        input.placeholder = 'name';
         input.maxLength = 40;
-        input.addEventListener('keydown', async (e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
+        input.addEventListener('keydown', async (ev) => {
+          ev.stopPropagation();
+          if (ev.key === 'Enter') {
+            ev.preventDefault();
             const name = input.value.trim();
             if (!name) return;
-            closeSessionMenu();
-            // creating one starts collecting into it straight away
-            await window.api.createSession(name);
+            const id = await window.api.createSession(name);
+            if (id) activeScope = id;
             toast('collecting into “' + name + '”');
           }
-          if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeSessionMenu(); }
+          if (ev.key === 'Escape') { ev.preventDefault(); render(); }
         });
+        input.addEventListener('blur', () => render());
         add.replaceWith(input);
         input.focus();
       });
-      sessionMenuEl.appendChild(add);
+      railEl.appendChild(add);
     }
 
-    sessionBtnEl.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (sessionMenuEl.classList.contains('show')) return closeSessionMenu();
-      buildSessionMenu();
-      sessionMenuEl.classList.add('show');
-    });
+    // The scope header carries whatever the place itself needs: collecting and
+    // rename and delete for a session, the tag filter for prompts.
+    function buildScopeHead(count) {
+      scopeNameEl.textContent = scopeLabel(activeScope);
+      scopeCountEl.textContent = count + (count === 1 ? ' clip' : ' clips');
+      scopeActionsEl.innerHTML = '';
 
-    document.addEventListener('click', (e) => {
-      // A handler that replaces its own element leaves this listener holding a
-      // detached target, whose closest() finds nothing and looks exactly like a
-      // click somewhere else — which then tore down the menu the handler had
-      // just built. Ignore clicks on elements that are no longer in the page.
-      if (!e.target.isConnected) return;
-      if (!e.target.closest('.session-pick')) closeSessionMenu();
-    });
+      if (activeScope === 'prompts') {
+        const tagFilter = buildTagFilter();
+        if (tagFilter) scopeActionsEl.appendChild(tagFilter);
+        return;
+      }
+      if (!scopeIsSession(activeScope)) return;
 
-    // rename / delete, offered on the session's own section header
-    function buildSessionActions(session) {
-      const wrap = document.createElement('span');
-      wrap.className = 'session-actions';
-      wrap.addEventListener('click', (e) => e.stopPropagation()); // don't collapse
+      const session = sessions.find(s => s.id === activeScope);
+      const collecting = session.id === activeSessionId;
 
       const collect = document.createElement('button');
-      collect.textContent = session.id === activeSessionId ? 'collecting' : 'collect here';
-      collect.title = session.id === activeSessionId
-        ? 'stop collecting into this session'
-        : 'send new copies to this session';
-      if (session.id === activeSessionId) collect.classList.add('session-btn-row', 'on');
+      collect.className = 'scope-btn' + (collecting ? ' on' : '');
+      collect.dataset.act = 'collect';
+      collect.textContent = collecting ? 'collecting' : 'collect here';
+      collect.title = collecting ? 'stop collecting into this session' : 'send new copies here';
       collect.addEventListener('click', () => {
-        window.api.setActiveSession(session.id === activeSessionId ? null : session.id);
+        window.api.setActiveSession(collecting ? null : session.id);
       });
 
       const rename = document.createElement('button');
+      rename.className = 'scope-btn';
+      rename.dataset.act = 'rename';
       rename.textContent = 'rename';
       rename.addEventListener('click', (e) => {
-        e.stopPropagation(); // same self-removal problem as "+ new session"
+        e.stopPropagation();
         const input = document.createElement('input');
-        input.className = 'session-input';
-        input.style.width = '120px';
+        input.className = 'rail-name';
+        input.style.width = '110px';
         input.value = session.name;
         input.maxLength = 40;
-        input.addEventListener('click', (e) => e.stopPropagation());
-        input.addEventListener('keydown', async (e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
+        input.addEventListener('keydown', async (ev) => {
+          ev.stopPropagation();
+          if (ev.key === 'Enter') {
+            ev.preventDefault();
             const name = input.value.trim();
             if (name) await window.api.renameSession(session.id, name);
             else render();
           }
-          if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); render(); }
+          if (ev.key === 'Escape') { ev.preventDefault(); render(); }
         });
         input.addEventListener('blur', () => render());
         rename.replaceWith(input);
@@ -1527,12 +1512,13 @@
       });
 
       const del = document.createElement('button');
-      del.className = 'danger';
+      del.className = 'scope-btn danger';
+      del.dataset.act = 'delete';
       del.textContent = 'delete';
       del.title = 'delete this session and the clips kept in it';
       del.addEventListener('click', async () => {
-        // deleting throws away clips that may exist nowhere else, so make the
-        // second click the confirmation rather than opening a dialog
+        // deleting throws away clips that may exist nowhere else, so the second
+        // click is the confirmation rather than a dialog
         if (del.dataset.armed !== '1') {
           del.dataset.armed = '1';
           del.textContent = 'sure?';
@@ -1540,13 +1526,21 @@
           return;
         }
         await window.api.deleteSession(session.id);
+        activeScope = 'all';
         toast('session deleted');
       });
 
-      wrap.appendChild(collect);
-      wrap.appendChild(rename);
-      wrap.appendChild(del);
-      return wrap;
+      scopeActionsEl.appendChild(collect);
+      scopeActionsEl.appendChild(rename);
+      scopeActionsEl.appendChild(del);
+    }
+
+    function clipsInSession(id) {
+      return sessionClips.filter(c => c.sessionId === id);
+    }
+
+    function isInSession(clipId, sessionId) {
+      return sessionClips.some(c => c.id === clipId && c.sessionId === sessionId);
     }
 
     // ---------- prompt editor ----------
@@ -1937,7 +1931,7 @@
 
     // ---------- the stack ----------
     const MAX_CARDS = 5;
-    const GLYPH = { text: 'T', code: '{}', url: '@', img: '◨' };
+    const GLYPH = { text: 'T', code: '{}', url: '@', img: '●¨' };
 
     // Deterministic tilt — a card must not re-shuffle its angle every redraw,
     // or the deck twitches every time you add one.
@@ -2224,7 +2218,7 @@
       el.querySelector('[data-act="ses"]')?.addEventListener('click', async (e) => {
         e.stopPropagation();
         const ok = await window.api.addToSession(c.id, activeSessionId);
-        if (ok) toast('added to “' + (activeSession()?.name || 'session') + '”');
+        if (ok) toast('added to “' + (activeSession()?.name || 'session') + '”');
       });
 
       // prompts have no pin button — marking as a prompt already keeps them
@@ -2290,34 +2284,18 @@
       return el;
     }
 
-    function buildSectionLabel(key, iconHtml, labelText, count) {
-      const label = document.createElement('div');
-      const isCollapsed = collapsed[key];
-      label.className = 'section-label' + (isCollapsed ? ' collapsed' : '');
-      label.dataset.section = key;
-      label.innerHTML = `
-        <span class="section-label-left">
-          <span class="chevron"></span>
-          ${iconHtml ? `<span>${iconHtml}</span>` : ''}
-          <span>${labelText}</span>
-        </span>
-        <span class="count">${count}</span>
-      `;
-      label.addEventListener('click', () => {
-        collapsed[key] = !collapsed[key];
-        render();
-      });
-      return label;
-    }
-
     function render() {
-      // buildItemEl repopulates this as it walks the sections in visual order
+      // buildItemEl repopulates this as it walks the list in visual order
       renderedOrder = [];
       // drop ids that no longer exist — deleted, or cleared out of history
       const liveIds = new Set([...pinned, ...history, ...sessionClips].map(c => c.id));
       for (const id of [...selected]) if (!liveIds.has(id)) selected.delete(id);
 
-      syncSessionBar();
+      // a place that has gone away leaves you looking at nothing
+      if (activeScope !== 'all' && activeScope !== 'prompts' && activeScope !== 'pinned'
+          && !scopeIsSession(activeScope)) {
+        activeScope = 'all';
+      }
 
       // a tag that no longer exists anywhere shouldn't keep filtering
       if (activeTag && !allTags().some(t => t.toLowerCase() === activeTag.toLowerCase())) activeTag = null;
@@ -2333,128 +2311,60 @@
         }
       }
 
-      // prompts share the persistent store with pinned clips but are their own
-      // section, so they never read as "just another pinned thing"
-      // the tag dropdown narrows the prompts section and nothing else
-      const promptsBeforeTag = pinned.filter(c => c.isPrompt && itemMatchesFilter(c, true));
-      const visiblePrompts = promptsBeforeTag.filter(c =>
-        !activeTag || (c.tags || []).some(t => t.toLowerCase() === activeTag.toLowerCase()));
-      const visiblePinned = pinned.filter(c => !c.isPrompt && itemMatchesFilter(c, true));
-      const visibleHistory = (activeFilter === 'pinned' || activeFilter === 'prompt')
-        ? []
-        : history.filter(c => itemMatchesFilter(c, false));
+      const sessionScope = scopeIsSession(activeScope) ? activeScope : null;
+      const inScope = clipsForScope(activeScope);
+      const visible = inScope
+        .filter(c => itemMatchesFilter(c, activeScope === 'pinned' || activeScope === 'prompts'))
+        .filter(c => activeScope !== 'prompts' || !activeTag
+          || (c.tags || []).some(t => t.toLowerCase() === activeTag.toLowerCase()));
 
-      // Auto-expand on active search if matches exist in the hidden section.
-      // Without this, typing a query that only matches pinned/recent in a
-      // collapsed section silently returns nothing — feels broken.
-      if (searchQuery) {
-        if (collapsed.prompts && visiblePrompts.length > 0) collapsed.prompts = false;
-        if (collapsed.pinned && visiblePinned.length > 0) collapsed.pinned = false;
-        if (collapsed.recent && visibleHistory.length > 0) collapsed.recent = false;
-      }
+      buildRail();
+      buildScopeHead(visible.length);
 
       const promptTotal = pinned.filter(c => c.isPrompt).length;
       const pinnedTotal = pinned.length - promptTotal;
-      const totalVisible = visiblePrompts.length + visiblePinned.length + visibleHistory.length;
       const totalItems = history.length + pinned.length;
-      footerEl.textContent = `${totalVisible} of ${totalItems} items${pinnedTotal ? ` · ${pinnedTotal} pinned` : ''}${promptTotal ? ` · ${promptTotal} prompt${promptTotal === 1 ? '' : 's'}` : ''}`;
+      footerEl.textContent = `${totalItems} item${totalItems === 1 ? '' : 's'}`
+        + (pinnedTotal ? ` · ${pinnedTotal} pinned` : '')
+        + (promptTotal ? ` · ${promptTotal} prompt${promptTotal === 1 ? '' : 's'}` : '');
 
-      const visibleInSessions = sessionClips.filter(c => itemMatchesFilter(c, false)).length;
-
-      // keep going when a tag filter emptied the prompts section — otherwise the
-      // dropdown that set it disappears and there's no way to undo it
-      if (totalVisible === 0 && promptsBeforeTag.length === 0 && visibleInSessions === 0) {
-        if (totalItems === 0) {
-          listEl.innerHTML = `<div class="empty">Stash quietly remembers while you work.<span class="empty-sub">copy anything to begin · <span class="hotkey">⌘</span><span class="hotkey">⇧</span><span class="hotkey">V</span> to toggle</span></div>`;
-        } else {
-          listEl.innerHTML = `<div class="empty">nothing matches that.<span class="empty-sub">try a different search</span></div>`;
-        }
+      listEl.innerHTML = '';
+      if (visible.length === 0) {
+        listEl.appendChild(emptyStateFor(activeScope, inScope.length));
         syncSelection();
+        markEditingRow();
         return;
       }
 
-      listEl.innerHTML = '';
-
-      // Prompts section — top of the drawer, because it's a library you reach
-      // for on purpose, not history you scroll past
-      if (promptsBeforeTag.length > 0) {
-        const section = document.createElement('div');
-        section.className = 'prompts-section';
-        const label = buildSectionLabel('prompts', '✦', 'prompts', visiblePrompts.length);
-        // the tag dropdown belongs to this section, not the filter row above
-        const tagFilter = buildTagFilter();
-        if (tagFilter) label.insertBefore(tagFilter, label.querySelector('.count'));
-        section.appendChild(label);
-
-        const content = document.createElement('div');
-        content.className = 'section-content' + (collapsed.prompts ? ' collapsed' : '');
-        if (visiblePrompts.length === 0) {
-          const none = document.createElement('div');
-          none.className = 'empty';
-          none.style.padding = '22px 24px';
-          none.textContent = 'no prompts tagged “' + activeTag + '”';
-          content.appendChild(none);
-        } else {
-          visiblePrompts.forEach(c => content.appendChild(buildItemEl(c, true)));
-        }
-        section.appendChild(content);
-        listEl.appendChild(section);
-      }
-
-      // A section per session that has anything in it. The one being collected
-      // into comes first, since that's the one you're working in.
-      const orderedSessions = [...sessions].sort((a, b) => {
-        if (a.id === activeSessionId) return -1;
-        if (b.id === activeSessionId) return 1;
-        return 0;
-      });
-      orderedSessions.forEach(s => {
-        const clips = clipsInSession(s.id).filter(c => itemMatchesFilter(c, false));
-        if (!clips.length) return;
-        const key = 'session:' + s.id;
-        const section = document.createElement('div');
-        section.className = 'sessions-section';
-        const label = buildSectionLabel(key, s.id === activeSessionId ? '●' : '○', s.name, clips.length);
-        label.insertBefore(buildSessionActions(s), label.querySelector('.count'));
-        section.appendChild(label);
-        const content = document.createElement('div');
-        content.className = 'section-content' + (collapsed[key] ? ' collapsed' : '');
-        clips.forEach(c => content.appendChild(buildItemEl(c, false, s.id)));
-        section.appendChild(content);
-        listEl.appendChild(section);
-      });
-
-      // Pinned section
-      if (visiblePinned.length > 0) {
-        const section = document.createElement('div');
-        section.className = 'pinned-section';
-        section.appendChild(buildSectionLabel('pinned', '★', 'pinned', visiblePinned.length));
-        const content = document.createElement('div');
-        content.className = 'section-content' + (collapsed.pinned ? ' collapsed' : '');
-        visiblePinned.forEach(c => content.appendChild(buildItemEl(c, true)));
-        section.appendChild(content);
-        listEl.appendChild(section);
-      }
-
-      // Recent section
-      if (visibleHistory.length > 0) {
-        // Only show the "recent" header when there's a section above it
-        // (otherwise the drawer has one section and the label is visual noise)
-        if (visiblePinned.length > 0 || promptsBeforeTag.length > 0) {
-          listEl.appendChild(buildSectionLabel('recent', '', 'recent', visibleHistory.length));
-          const content = document.createElement('div');
-          content.className = 'section-content' + (collapsed.recent ? ' collapsed' : '');
-          visibleHistory.forEach(c => content.appendChild(buildItemEl(c, false)));
-          listEl.appendChild(content);
-        } else {
-          visibleHistory.forEach(c => listEl.appendChild(buildItemEl(c, false)));
-        }
-      }
+      visible.forEach(c => listEl.appendChild(buildItemEl(c, activeScope === 'pinned' || (!sessionScope && !!c.pinnedAt), sessionScope)));
 
       syncSelection();
       markEditingRow();
     }
 
+    // Each place says something different when it has nothing to show, because
+    // "nothing matches that" is unhelpful in a session you have not filled yet.
+    function emptyStateFor(scope, beforeFilters) {
+      const el = document.createElement('div');
+      el.className = 'empty';
+      if (beforeFilters > 0) {
+        el.innerHTML = 'nothing matches that.<span class="empty-sub">try a different filter or search</span>';
+        return el;
+      }
+      if (scope === 'prompts') {
+        el.innerHTML = 'no prompts yet.<span class="empty-sub">mark a clip with ✦ to keep it here forever</span>';
+      } else if (scope === 'pinned') {
+        el.innerHTML = 'nothing pinned.<span class="empty-sub">pin a clip with ★ to keep it across restarts</span>';
+      } else if (scopeIsSession(scope)) {
+        const collecting = scope === activeSessionId;
+        el.innerHTML = collecting
+          ? 'collecting into this session.<span class="empty-sub">whatever you copy next lands here</span>'
+          : 'nothing collected yet.<span class="empty-sub">press “collect here”, then copy something</span>';
+      } else {
+        el.innerHTML = 'Stash quietly remembers while you work.<span class="empty-sub">copy anything to begin · <span class="hotkey">⌘</span><span class="hotkey">⇧</span><span class="hotkey">V</span> to toggle</span>';
+      }
+      return el;
+    }
     let toastTimer;
     function toast(msg) {
       toastEl.textContent = msg;
