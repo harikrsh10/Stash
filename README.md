@@ -1,37 +1,30 @@
 # Stash
 
-> A minimal clipboard history manager with drag-and-drop to any app.
-> Mac / Windows / Linux · built with Electron.
+> A clipboard manager that keeps what you copy, and gets it back out again.
+> Mac / Windows · built with Electron.
 
-**Everything you copy, quietly kept. Drag it back out into anything.**
+**Everything you copy, quietly kept. Gather a stack of it, pull text out of screenshots, keep your prompts forever.**
 
 ---
 
 ## Download
 
-Grab the latest release for your platform:
-
 ### [→ Download latest release](https://github.com/harikrsh10/Stash/releases/latest)
 
-| Platform | File | |
-|----------|------|---|
-| macOS (Apple Silicon + Intel) | `Stash-x.y.z.dmg` | [↓ latest](https://github.com/harikrsh10/Stash/releases/latest) |
-| Windows | `Stash-Setup-x.y.z.exe` | [↓ latest](https://github.com/harikrsh10/Stash/releases/latest) |
-| Linux | `Stash-x.y.z.AppImage` | [↓ latest](https://github.com/harikrsh10/Stash/releases/latest) |
+| Platform | File |
+|----------|------|
+| macOS (Apple Silicon) | `Stash-mac-arm64.dmg` |
+| macOS (Intel) | `Stash-mac-x64.dmg` |
+| Windows | `Stash-win-x64.exe` |
 
-> **Heads up for first-time install:**
-> Stash isn't code-signed yet, so you'll see a security warning on first launch. This is normal for indie apps without an Apple Developer / Microsoft certificate — it's not a virus, it's just unverified.
+> **First launch will be blocked.** Stash is signed only ad-hoc, not notarized —
+> that needs a paid Apple Developer account. It isn't a virus, it's unverified.
 >
-> **macOS**: Right-click the app → **Open** → confirm. Or: `xattr -d com.apple.quarantine /Applications/Stash.app`
-> **Windows**: Click **More info** → **Run anyway** on the SmartScreen prompt.
+> **macOS**: System Settings → **Privacy & Security** → scroll down → **Open Anyway**.
+> On recent macOS the old right-click → Open trick no longer works.
+> **Windows**: **More info** → **Run anyway** on the SmartScreen prompt.
 
-See [all releases](https://github.com/harikrsh10/Stash/releases) for older versions and changelogs.
-
-> **Latest source fix:** `main` includes the newest paused clipboard capture
-> behavior. While Stash is paused, copied content is ignored and will not be
-> added after you resume capture. If the downloaded app still shows the old
-> behavior, that release asset was built before this fix. Build from source or
-> wait for the next packaged release.
+See [all releases](https://github.com/harikrsh10/Stash/releases) for older versions.
 
 ---
 
@@ -45,12 +38,55 @@ See [all releases](https://github.com/harikrsh10/Stash/releases) for older versi
   - **Dock** — Press **⌘⇧Space** (Cmd+Shift+Space / Ctrl+Shift+Space) to pop a small popover open at your cursor position, showing the last 5 items. Use this for quick paste while you're working.
 - Drag any entry from the drawer into any other app — Notion, VS Code, Figma, Finder, browser address bar, anywhere that accepts file or text drops
 - Click an entry to re-copy it (then ⌘V elsewhere as normal)
-- **Pin items** (★) to keep them across restarts — pinned clips are the only thing Stash writes to disk, live in their own section at the top, and don't count toward the 100-item cap
+- **Pin items** (★) to keep them across restarts — pinned clips live in their own section at the top and don't count toward the 100-item cap
 - **Auto-paste from dock** (optional, off by default) — when enabled, picking an item from the dock automatically pastes it into the focused app. Requires Accessibility permission on macOS
-- Search, filter by type (including "pinned"), delete individual items or clear all
+- Search, filter by type (including "pinned" and "prompt"), delete individual items or clear all
 - **Pause capture** — toggle the live/paused indicator in the titlebar (or from the tray menu) when you're copying sensitive stuff you don't want recorded. Anything copied while paused stays ignored after you resume.
 - **Re-copy promotion** — if you copy the same thing again, it flashes and bumps to the top instead of being dropped as a duplicate
 - Window hides on blur — stays alive in the background
+
+---
+
+## Gather a stack, drop it in one go
+
+Dropping six screenshots into Figma used to mean six drags.
+
+- **Ctrl/Cmd+click** clips to gather them, **Shift+click** for a range, **Ctrl/Cmd+A** for everything visible
+- Each pick flies a card into a deck above the footer. Hover to fan it out, click a card to take that one back out
+- **Drag the deck** into Figma, an AI chat input, a folder — everything lands at once
+- The drag cursor is the stack you built, not a generic file icon
+- Images drop as their real files; text, code and links as one `.txt` each
+
+A plain click still just copies, so nothing changes if you never use the modifiers. `Esc` clears the selection.
+
+---
+
+## Prompts
+
+The clips you reuse shouldn't age out behind a hundred screenshots.
+
+- Hover a clip and press **✦** to mark it a prompt. That single act makes it permanent — there's no separate pin step, and a prompt that could expire wouldn't be a library
+- Prompts live in their own section at the top, with their own filter
+- **edit** opens a sheet with the full text — editable in place, autosaved — and its tags
+- **Tag** prompts (`image gen`, `mobile`, `review`) and filter by tag from the prompts header. The picker offers tags you already use, so a library doesn't drift into three spellings of the same idea
+- Unmarking a prompt returns it to ordinary history, where it ages out again
+
+---
+
+## Pull text out of an image
+
+Copy a screenshot, hover it, press **text**.
+
+The window widens and the picture opens beside the drawer with every block of
+text it found outlined. Click the areas you want; they assemble underneath in
+reading order, ready to **copy** or **add to prompts**.
+
+Text comes back in pieces rather than one dump — a dashboard's cards stay
+separate, a paragraph stays whole. Reading is done by the operating system:
+Windows OCR and Apple's Vision framework. A bundled engine was tried first and
+read 6 of 26 words on a dark marketing screenshot where Windows read 22.
+
+**This needs macOS or Windows.** There's no bundled engine to fall back on.
 
 ---
 
@@ -71,17 +107,30 @@ For dev mode (devtools open, window doesn't hide on blur):
 npm run dev
 ```
 
+### Tests
+
+```bash
+npm test
+```
+
+175 assertions, about a minute. They drive the real renderer in a hidden window
+rather than a copy of it — see [test/README.md](test/README.md).
+
 ### Package for distribution
 
 ```bash
-# platform-appropriate installer (.dmg / .exe / .AppImage)
+# platform-appropriate installer (.dmg / .exe)
 npm run dist
 
 # bundle without creating an installer
 npm run pack
 ```
 
-The built artifacts land in `dist/`.
+The built artifacts land in `dist/`. Quit any packaged copy first — Windows
+won't let the build replace files that a running app has open.
+
+Releases are cut by pushing a tag; CI builds both platforms and publishes only
+if **both** succeed.
 
 ---
 
@@ -90,17 +139,26 @@ The built artifacts land in `dist/`.
 ```
 stash/
 ├── package.json
-├── assets/          # tray icons
+├── assets/           # tray icons
+├── scripts/
+│   ├── adhoc-sign.js     # ad-hoc signs the mac app during the build
+│   ├── build-mac-ocr.js  # compiles the Vision helper (macOS only)
+│   └── ocr-mac/          # the Swift helper's source
+├── test/             # npm test
 └── src/
-    ├── main.js       # main process — clipboard polling, hotkey, drag-out, tray
+    ├── main.js       # main process — clipboard polling, hotkey, drag-out, OCR, tray
     ├── preload.js    # secure bridge between main and renderer
-    ├── renderer.html # the drawer UI
+    ├── renderer.html # the drawer, prompt editor and image inspector
     └── dock.html     # the quick-access popover UI
 ```
 
 ## How drag-out works
 
 The renderer cancels HTML5 drag and calls `window.api.startDrag(entry)`, which sends an IPC message to the main process. Main writes the content to a temp file and calls `webContents.startDrag({ file, icon })` — this is Electron's native OS-level drag initiator. The target app receives a real file drop (or, for apps that accept text drops, the file's text content).
+
+Dragging a stack takes the same path with `files` (plural), so the target sees a
+normal multi-file drop — the same thing it would get from selecting several
+files in Explorer or Finder.
 
 For **text/code/url** entries: content is written to a `.txt` temp file. Most rich-text targets (Notion, Slack, docs) will unwrap the text content automatically. File-accepting targets (Finder, editors) get the actual file.
 
@@ -110,18 +168,19 @@ Temp files are cleaned up on app quit.
 
 ## Persistence & lifecycle
 
-Stash keeps **unpinned history in memory only**, and **persists pinned items to disk**.
+Stash keeps **ordinary history in memory only**, and persists the things you've said to keep.
 
 | What | Lifetime |
 |------|----------|
 | Regular clips | Lost on quit or restart |
 | Pinned clips (★) | Survive quit, restart, and reboot |
+| Prompts (✦) and their tags | Same — marking one is what makes it permanent |
 | User settings (auto-paste, etc.) | Persisted |
 | Drawer visibility | Hidden ≠ quit — `Esc` or `×` just hides |
 
-Pinned items and settings are stored as JSON at your system's user-data path (`~/Library/Application Support/Stash/` on macOS, `%APPDATA%\Stash\` on Windows). Pinned images live in a `pinned-images/` subfolder next to them. Nothing else is ever written to disk.
+Pinned clips and prompts share one JSON file at your system's user-data path (`~/Library/Application Support/Stash/` on macOS, `%APPDATA%\Stash\` on Windows), told apart by a flag; they're only kept separate on screen. Pinned images live in a `pinned-images/` subfolder next to it. Nothing else is ever written to disk — extracted text isn't stored anywhere until you copy it.
 
-Regular history is capped at **100 items** — pinned items don't count toward that cap and don't age out. "Clear history" from the tray menu only clears unpinned clips; pinned items stay untouched (delete them individually if you want them gone).
+Regular history is capped at **100 items** — pinned clips and prompts don't count toward that cap and don't age out. "Clear history" from the tray menu only clears ordinary clips; anything kept stays untouched (delete those individually if you want them gone).
 
 ## Security
 
@@ -146,15 +205,21 @@ Since regular history is memory-only, quitting Stash clears everything unpinned 
 - **Rich text loses formatting**: Only plain text and images are captured. RTF/HTML clipboard formats are simplified to plain text.
 - **Auto-paste may be blocked** by secure apps (password managers, banking sites, some terminals) that refuse synthetic keystrokes. The clip is on your clipboard — just paste manually with ⌘V.
 - **Hotkey conflicts**: `⌘⇧V` is used by some apps (Slack's plain-paste). `⌘⇧Space` may conflict with macOS Character Viewer. Both auto-retry registration on system resume and display changes.
+- **Text extraction needs macOS or Windows.** It uses the OS engine and there's no bundled fallback.
+- **Extraction is only as good as the OS engine.** Both are strong on ordinary UI text and still mistake `10X` for `IOX` or `AI` for `Al` on stylised type. Very small or very low-contrast text can be missed entirely.
+- **Where a block starts and ends is a judgement call.** Text is grouped by the engine's own lines, then split where a gap is far too wide to be word spacing. Unusual layouts can group things you'd have separated.
+- **Prompts don't sync.** Each machine keeps its own library; there's no sharing between your Mac and your PC.
+- **No Linux build.** The workflow builds macOS and Windows only.
 
 ## Ideas to extend
 
-- Syncing via iCloud / Dropbox folder
+- Send a prompt straight to an AI — the piece the prompt library was built for. Two different things depending on whether you want a new conversation or the one you're already in
+- Snippet mode — variables like `{{date}}` that expand on paste, which would turn prompts into templates
+- Syncing prompts between machines
 - Per-source filtering (e.g. "only show clips from Chrome")
-- Snippet mode — variables like `{{date}}` that expand on paste
-- Encryption for the on-disk pinned store
+- Encryption for the on-disk store
 - Customizable hotkeys via settings UI
-- Export / import of pinned items
+- Export / import of prompts
 
 ---
 
