@@ -1443,7 +1443,10 @@
       const add = document.createElement('button');
       add.className = 'new';
       add.textContent = '+ new session';
-      add.addEventListener('click', () => {
+      add.addEventListener('click', (e) => {
+        // this handler removes its own button, so the click must not reach the
+        // dismiss-on-outside-click listener below — see the isConnected note there
+        e.stopPropagation();
         const input = document.createElement('input');
         input.className = 'session-input';
         input.placeholder = 'name it, then enter';
@@ -1474,6 +1477,11 @@
     });
 
     document.addEventListener('click', (e) => {
+      // A handler that replaces its own element leaves this listener holding a
+      // detached target, whose closest() finds nothing and looks exactly like a
+      // click somewhere else — which then tore down the menu the handler had
+      // just built. Ignore clicks on elements that are no longer in the page.
+      if (!e.target.isConnected) return;
       if (!e.target.closest('.session-pick')) closeSessionMenu();
     });
 
@@ -1495,7 +1503,8 @@
 
       const rename = document.createElement('button');
       rename.textContent = 'rename';
-      rename.addEventListener('click', () => {
+      rename.addEventListener('click', (e) => {
+        e.stopPropagation(); // same self-removal problem as "+ new session"
         const input = document.createElement('input');
         input.className = 'session-input';
         input.style.width = '120px';

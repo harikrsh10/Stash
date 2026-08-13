@@ -189,7 +189,24 @@ app.whenReady().then(async () => {
     ok('it offers normal copying, each session, and a way to make one',
        labels[0].startsWith('nothing') && labels.some(l => l.startsWith('Redesign'))
        && labels[labels.length - 1] === '+ new session', JSON.stringify(labels));
-    [...menu.querySelectorAll('button')][0].click();
+    // creating one: the button becomes a field you type a name into
+    const newBtn = [...menu.querySelectorAll('button')].find(b => b.textContent === '+ new session');
+    newBtn.click();
+    ok('the new-session field appears', !!document.querySelector('.session-input'),
+       document.querySelector('.session-input') ? 'present' : 'GONE — the menu closed itself');
+    const nameField = document.querySelector('.session-input');
+    if (nameField) {
+      nameField.value = 'Redesign work';
+      nameField.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await tick();
+    }
+    ok('typing a name and pressing enter creates the session',
+       JSON.stringify(calls[calls.length - 1]) === '[\\"create\\",\\"Redesign work\\"]',
+       JSON.stringify(calls[calls.length - 1]));
+
+    document.getElementById('sessionBtn').click();
+    const menu2 = document.getElementById('sessionMenu');
+    [...menu2.querySelectorAll('button')][0].click();
     await tick();
     ok('choosing nothing stops collecting',
        JSON.stringify(calls[calls.length - 1]) === '[\\"setActive\\",null]',
