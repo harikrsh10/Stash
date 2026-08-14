@@ -4,7 +4,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('api', {
   // history / pinned
   getHistory: () => ipcRenderer.invoke('history:get'),
-  write: (entry) => ipcRenderer.invoke('clip:write', entry),
+  // plain: true forces text only, dropping any formatting the clip kept
+  write: (entry, plain) => ipcRenderer.invoke('clip:write', entry, plain),
   delete: (id) => ipcRenderer.invoke('clip:delete', id),
   clear: () => ipcRenderer.invoke('clip:clear'),
   pin: (id) => ipcRenderer.invoke('clip:pin', id),

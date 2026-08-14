@@ -37,7 +37,7 @@ See [all releases](https://github.com/harikrsh10/Stash/releases) for older versi
   - **Drawer** — Press **⌘⇧V** (Cmd+Shift+V / Ctrl+Shift+V) to slide the full drawer in from the right edge. Use this to browse, search, filter, and manage.
   - **Dock** — Press **⌘⇧Space** (Cmd+Shift+Space / Ctrl+Shift+Space) to pop a small popover open at your cursor position, showing the last 5 items. Use this for quick paste while you're working.
 - Drag any entry from the drawer into any other app — Notion, VS Code, Figma, Finder, browser address bar, anywhere that accepts file or text drops
-- Click an entry to re-copy it (then ⌘V elsewhere as normal)
+- Click an entry to re-copy it (then ⌘V elsewhere as normal). Styled text keeps its formatting — a clip that carries any is marked `styled`. Hold **⌥/Alt** while clicking to copy it as plain text instead
 - **Pin items** (★) to keep them across restarts — pinned clips live in their own section at the top and don't count toward the 100-item cap
 - **Auto-paste from dock** (optional, off by default) — when enabled, picking an item from the dock automatically pastes it into the focused app. Requires Accessibility permission on macOS
 - Search, filter by type (including "pinned" and "prompt"), delete individual items or clear all
@@ -202,7 +202,7 @@ Since regular history is memory-only, quitting Stash clears everything unpinned 
 ## Known limitations
 
 - **Text drag into code editors**: Some editors (e.g. VS Code, Cursor) drop a file reference rather than inserting text. Workaround: click the entry to put it on the real clipboard, then ⌘V. Or use the dock with auto-paste enabled.
-- **Rich text loses formatting**: Only plain text and images are captured. RTF/HTML clipboard formats are simplified to plain text.
+- **Very large formatting is dropped.** Styled text is kept, but Word, Excel and some web pages put hundreds of kilobytes of HTML on the clipboard for one paragraph. Anything past 256KB is dropped and the clip stays plain, rather than growing the store on disk without limit.
 - **Auto-paste may be blocked** by secure apps (password managers, banking sites, some terminals) that refuse synthetic keystrokes. The clip is on your clipboard — just paste manually with ⌘V.
 - **Hotkey conflicts**: `⌘⇧V` is used by some apps (Slack's plain-paste). `⌘⇧Space` may conflict with macOS Character Viewer. Both auto-retry registration on system resume and display changes.
 - **Text extraction needs macOS or Windows.** It uses the OS engine and there's no bundled fallback.

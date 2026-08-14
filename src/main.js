@@ -532,6 +532,12 @@ function updatePrompt(id, patch) {
   if (typeof patch.content === 'string') {
     // refuse to empty a prompt — that's a delete, and there's a button for it
     if (!patch.content.trim()) return false;
+    if (entry.content !== patch.content) {
+      // the styled copies describe the old words; keeping them would paste
+      // something the editor no longer shows
+      delete entry.html;
+      delete entry.rtf;
+    }
     entry.content = patch.content;
   }
   if (patch.tags !== undefined) entry.tags = normalizeTags(patch.tags);
@@ -852,7 +858,11 @@ function pollClipboard() {
 
     const text = clipboard.readText();
     if (!text) return;
-    const sig = 'txt:' + hash(Buffer.from(text));
+    const styled = readStyled();
+    // Formatting is part of what was copied: the same sentence in bold and in
+    // italic are different clips, and hashing only the plain text made the
+    // second one look like a re-copy of the first and silently lose its styling.
+    const sig = 'txt:' + hash(Buffer.from(text + (styled.html || '') + (styled.rtf || '')));
     if (sig === lastSig) return;
     lastSig = sig;
 
@@ -890,10 +900,51 @@ function pollClipboard() {
       type: sniffType(text),
       content: text,
       ts: Date.now(),
+      ...styled,
     });
   } catch (err) {
     console.error('poll error:', err);
   }
+}
+
+// ---------- styled text ----------
+// Word, Excel and most web pages put tens or hundreds of kilobytes of HTML on
+// the clipboard for a single paragraph — style blocks, base64 images, editor
+// scaffolding. Pinned clips, prompts and sessions all persist to disk and never
+// shrink, so anything past the cap is dropped and the clip stays plain rather
+// than quietly turning the store into a formatting archive.
+const STYLED_MAX = 256 * 1024;
+
+function readStyled() {
+  const out = {};
+  try {
+    const html = clipboard.readHTML();
+    if (html && html.length <= STYLED_MAX) out.html = html;
+    else if (html) console.log(`[Stash] dropped ${(html.length / 1024).toFixed(0)}KB of HTML — over the cap`);
+  } catch (_) { /* a clipboard without HTML is the normal case */ }
+  try {
+    // RTF is what native macOS apps and Office read back most faithfully
+    const rtf = clipboard.readRTF();
+    if (rtf && rtf.length <= STYLED_MAX) out.rtf = rtf;
+  } catch (_) {}
+  return out;
+}
+
+// Put a clip back on the clipboard with whatever flavours it kept. `plain`
+// forces text only, which is the paste-without-formatting path.
+function writeClip(entry, plain) {
+  if (entry.type === 'img' && entry.filepath && fs.existsSync(entry.filepath)) {
+    clipboard.writeImage(nativeImage.createFromPath(entry.filepath));
+    return;
+  }
+  if (!plain && (entry.html || entry.rtf)) {
+    const payload = { text: entry.content };
+    if (entry.html) payload.html = entry.html;
+    if (entry.rtf) payload.rtf = entry.rtf;
+    clipboard.write(payload);
+    return;
+  }
+  clipboard.writeText(entry.content);
 }
 
 function broadcastPromote(entry) {
@@ -1051,11 +1102,7 @@ ipcMain.handle('clip:unprompt', (_e, id) => {
 // Dock selection: copy the item, hide the dock, optionally auto-paste
 ipcMain.handle('dock:pick', (_e, entry) => {
   lastSig = entry.id;
-  if (entry.type === 'img' && entry.filepath && fs.existsSync(entry.filepath)) {
-    clipboard.writeImage(nativeImage.createFromPath(entry.filepath));
-  } else {
-    clipboard.writeText(entry.content);
-  }
+  writeClip(entry);
   if (dockWindow) dockWindow.hide();
   if (settings.autoPasteFromDock) tryAutoPaste();
   return true;
@@ -1123,13 +1170,9 @@ ipcMain.handle('settings:set', (_e, patch) => {
   return settings;
 });
 
-ipcMain.handle('clip:write', (_e, entry) => {
+ipcMain.handle('clip:write', (_e, entry, plain) => {
   lastSig = entry.id;
-  if (entry.type === 'img' && entry.filepath && fs.existsSync(entry.filepath)) {
-    clipboard.writeImage(nativeImage.createFromPath(entry.filepath));
-  } else {
-    clipboard.writeText(entry.content);
-  }
+  writeClip(entry, plain);
   // promote on intentional re-use — check pinned first, then history
   const pinnedIdx = pinned.findIndex(p => p.id === entry.id);
   if (pinnedIdx > 0) {

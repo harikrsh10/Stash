@@ -524,6 +524,17 @@
       text-transform: uppercase;
     }
     .item-meta .dot { color: var(--muted2); }
+    /* a clip carrying formatting, so pasting it will not be plain */
+    .styled-mark {
+      color: #8fb4d8;
+      border: 1px solid #24384a;
+      background: #101a22;
+      border-radius: 2px;
+      padding: 1px 4px;
+      font-size: 8.5px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
     .item-meta .time { color: var(--muted2); }
 
     /* image preview — bigger, more prominent */
@@ -2105,6 +2116,8 @@
 
       // prompts are permanent by definition, so they say so instead of aging
       const stamp = c.isPrompt ? 'prompt' : (isPinned ? 'pinned' : timeAgo(c.ts));
+      // a clip that kept its formatting says so, since pasting it will carry that
+      const styled = !!(c.html || c.rtf);
 
       // Build per-type content. The hierarchy is consistent:
       //   [drag] [type badge] [headline + meta + (optional thumb)]
@@ -2148,6 +2161,9 @@
         }
       }
 
+      if (styled) {
+        metaParts.push(`<span class="dot">·</span><span class="styled-mark" title="keeps its formatting — hold ⌥ to copy as plain text">styled</span>`);
+      }
       const metaHtml = `<div class="item-meta">${metaParts.join('')}</div>`;
       // tags ride under the meta line so the library can be skimmed
       const tagsHtml = (c.tags && c.tags.length)
@@ -2202,8 +2218,9 @@
 
       el.querySelector('[data-act="copy"]').addEventListener('click', async (e) => {
         e.stopPropagation();
-        await window.api.write(c);
-        toast('copied — paste with ⌘V');
+        const plain = e.altKey;
+        await window.api.write(c, plain);
+        toast(plain ? 'copied as plain text' : 'copied — paste with ⌘V');
       });
 
       el.querySelector('[data-act="del"]').addEventListener('click', async (e) => {
@@ -2279,8 +2296,10 @@
           return;
         }
         if (selected.size > 0) clearSelection();
-        await window.api.write(c);
-        toast('copied — paste with ⌘V');
+        // alt drops the formatting on the way out — the paste-plain path
+        const plain = e.altKey;
+        await window.api.write(c, plain);
+        toast(plain ? 'copied as plain text' : 'copied — paste with ⌘V');
       });
 
       if (c._new) setTimeout(() => { c._new = false; }, 400);
