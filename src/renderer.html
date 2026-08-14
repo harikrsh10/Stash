@@ -1317,7 +1317,12 @@
     // Resolve selected ids back to clips, in the order they appear on screen,
     // so a batch drop lands in the same order the user sees.
     function selectedClips() {
-      const byId = new Map([...pinned, ...history].map(c => [c.id, c]));
+      // Session clips live in their own store, so leaving them out of this
+      // lookup made selection inside a session resolve to nothing: the ids were
+      // held, the tray saw an empty list and hid itself, and a drag carried
+      // nothing. Sessions come last so their copy wins for a clip held in both —
+      // it's the one with the permanent image file.
+      const byId = new Map([...pinned, ...history, ...sessionClips].map(c => [c.id, c]));
       return renderedOrder.filter(id => selected.has(id)).map(id => byId.get(id)).filter(Boolean);
     }
 

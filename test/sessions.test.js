@@ -107,6 +107,7 @@ app.whenReady().then(async () => {
     const ok = (name, pass, detail) => out.push({ name, pass, detail });
     const tick = () => new Promise(r => setTimeout(r, 0));
     const calls = [];
+    let multiDrag = null;
     window.api = {
       write: async () => {}, delete: async () => {}, clear: async () => {}, hide: () => {},
       pin: async () => {}, unpin: async () => {}, markPrompt: async () => {}, unmarkPrompt: async () => {},
@@ -118,12 +119,15 @@ app.whenReady().then(async () => {
       setActiveSession: async (id) => { calls.push(['setActive', id]); return id; },
       addToSession: async (c, s) => { calls.push(['add', c, s]); return true; },
       removeFromSession: async (c, s) => { calls.push(['remove', c, s]); return true; },
-      startDrag: () => {}, startDragMulti: () => {}, drawerDragStart: () => {}, drawerDragEnd: () => {},
+      startDrag: () => {},
+      startDragMulti: (entries) => { multiDrag = entries; },
+      drawerDragStart: () => {}, drawerDragEnd: () => {},
     };
 
     sessions = [{ id: 'ses1', name: 'Redesign', createdAt: 1 }, { id: 'ses2', name: 'Research', createdAt: 2 }];
     sessionClips = [
       { id: 'sc1', sessionId: 'ses1', type: 'text', content: 'collected while working', ts: Date.now() },
+      { id: 'sc1b', sessionId: 'ses1', type: 'text', content: 'a second collected clip', ts: Date.now() },
       { id: 'sc2', sessionId: 'ses2', type: 'text', content: 'from the other session', ts: Date.now() },
     ];
     activeSessionId = 'ses1';
@@ -147,7 +151,8 @@ app.whenReady().then(async () => {
     goTo('ses1');
     ok('the header names the session', document.getElementById('scopeName').textContent === 'Redesign',
        document.getElementById('scopeName').textContent);
-    ok('it holds only that session', rows().length === 1 && rows()[0].dataset.id === 'sc1',
+    ok('it holds only that session\\'s clips',
+       rows().map(r => r.dataset.id).join(',') === 'sc1,sc1b',
        rows().map(r => r.dataset.id).join(','));
 
     const inSes = rows()[0];
@@ -226,6 +231,33 @@ app.whenReady().then(async () => {
     sessions = sessions.filter(s => s.id !== 'ses2');
     render();
     ok('deleting the place you were in returns you to everything', activeScope === 'all', activeScope);
+
+    // selecting inside a session has to build a stack like anywhere else —
+    // session clips live in their own store, so an id lookup that only knows
+    // history and pinned finds nothing and the tray silently stays hidden
+    goTo('ses1');
+    const sesRows = rows();
+    sesRows[0].dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+    ok('a clip inside a session can be selected', selected.size === 1, selected.size + '');
+    ok('the stack tray appears inside a session',
+       document.getElementById('stackTray').classList.contains('show'),
+       document.getElementById('stackTray').classList.contains('show') ? '' : 'hidden — selectedClips found nothing');
+    ok('the deck holds the session clip', document.querySelectorAll('.stack-card').length === 1,
+       document.querySelectorAll('.stack-card').length + '');
+    ok('the count reads 1', document.getElementById('stackCount').textContent === '1',
+       document.getElementById('stackCount').textContent);
+
+    // and dragging it out carries the session's own copy
+    multiDrag = null;
+    if (sesRows.length > 1) {
+      sesRows[1].dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+      sesRows[0].dispatchEvent(new DragEvent('dragstart', { bubbles: true }));
+      ok('dragging from a session carries both clips',
+         Array.isArray(multiDrag) && multiDrag.length === 2,
+         multiDrag ? multiDrag.map(c => c.id).join(',') : 'nothing was sent');
+      sesRows[0].dispatchEvent(new DragEvent('dragend', { bubbles: true }));
+    }
+    clearSelection();
 
     // one clip, one entry in the selection order, wherever it shows
     sessions.push({ id: 'ses2', name: 'Research', createdAt: 2 });
