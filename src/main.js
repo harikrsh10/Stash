@@ -51,6 +51,20 @@ function applyAppearance() {
   [mainWindow, dockWindow].forEach(w => {
     if (w && !w.isDestroyed()) w.setBackgroundColor(bg);
   });
+  // the drawer has its own switch, so it has to hear about changes made from
+  // the tray — and about the system flipping underneath a 'system' choice
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('appearance:changed', { choice, dark });
+  }
+}
+
+function setAppearance(choice) {
+  if (!['system', 'dark', 'light'].includes(choice)) return false;
+  settings.appearance = choice;
+  saveSettings();
+  applyAppearance();
+  refreshTrayMenu();
+  return true;
 }
 
 // ---------- sessions ----------
@@ -229,12 +243,7 @@ function refreshTrayMenu() {
         label: choice === 'system' ? 'Match the system' : choice[0].toUpperCase() + choice.slice(1),
         type: 'radio',
         checked: (settings.appearance || 'system') === choice,
-        click: () => {
-          settings.appearance = choice;
-          saveSettings();
-          applyAppearance();
-          refreshTrayMenu();
-        },
+        click: () => setAppearance(choice),
       })),
     },
     {
@@ -1020,6 +1029,12 @@ function addEntry(entry) {
 
 // ---------- ipc ----------
 ipcMain.handle('history:get', () => ({ history, pinned, ...sessionState() }));
+
+ipcMain.handle('appearance:get', () => ({
+  choice: settings.appearance || 'system',
+  dark: nativeTheme.shouldUseDarkColors,
+}));
+ipcMain.handle('appearance:set', (_e, choice) => setAppearance(choice));
 
 function broadcastState() {
   if (mainWindow && !mainWindow.isDestroyed()) {

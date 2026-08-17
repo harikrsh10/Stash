@@ -445,6 +445,22 @@
     }
     .close-btn:hover { color: var(--text); background: var(--surface2); }
 
+    /* The appearance switch belongs where people look for it. The tray menu
+       still has the three-way choice; this cycles the same setting. */
+    .theme-btn {
+      -webkit-app-region: no-drag;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 3px 6px;
+      border-radius: 3px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .theme-btn:hover { color: var(--text); background: var(--surface2); }
+
     .controls {
       padding: 14px 18px 10px;
       border-bottom: 1px solid var(--border);
@@ -1290,6 +1306,7 @@
           <span class="dot"></span>
           <span id="pauseLabel">live</span>
         </button>
+        <button class="theme-btn" id="themeBtn" title="appearance"></button>
         <button class="close-btn" id="closeBtn" title="hide (⌘⇧V)">×</button>
       </div>
     </div>
@@ -2683,6 +2700,33 @@
       // applyPausedState will be called via onPauseChanged
     });
     window.api.onPauseChanged((v) => applyPausedState(v));
+
+    // appearance. The icon shows what a click gives you rather than what you
+    // are looking at — a sun while dark, a moon while light — and the third
+    // state (follow the system) is reachable by cycling past them.
+    const themeBtn = document.getElementById('themeBtn');
+    const THEME_FACE = {
+      system: { icon: '◐', title: 'appearance: matching the system — click for light' },
+      light: { icon: '☾', title: 'appearance: light — click for dark' },
+      dark: { icon: '☀', title: 'appearance: dark — click to match the system' },
+    };
+    const THEME_NEXT = { system: 'light', light: 'dark', dark: 'system' };
+    let themeChoice = 'system';
+
+    function showAppearance({ choice }) {
+      themeChoice = THEME_FACE[choice] ? choice : 'system';
+      themeBtn.textContent = THEME_FACE[themeChoice].icon;
+      themeBtn.title = THEME_FACE[themeChoice].title;
+    }
+    themeBtn.addEventListener('click', async () => {
+      const next = THEME_NEXT[themeChoice];
+      // paint immediately; the main process echoes the change back anyway
+      showAppearance({ choice: next });
+      await window.api?.setAppearance?.(next);
+    });
+    window.api?.onAppearanceChanged?.((state) => showAppearance(state));
+    window.api?.getAppearance?.().then(showAppearance).catch(() => {});
+    showAppearance({ choice: themeChoice });
 
     // listen for history cleared from tray menu
     window.api.onHistoryCleared(() => {

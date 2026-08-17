@@ -48,6 +48,8 @@ contextBridge.exposeInMainWorld('api', {
   setPaused: (v) => ipcRenderer.invoke('paused:set', v),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
+  getAppearance: () => ipcRenderer.invoke('appearance:get'),
+  setAppearance: (choice) => ipcRenderer.invoke('appearance:set', choice),
 
   // listeners
   // `collected` is the session's own copy when a session took the clip too
@@ -58,6 +60,7 @@ contextBridge.exposeInMainWorld('api', {
   onHistoryCleared: (cb) => ipcRenderer.on('history:cleared', () => cb()),
   onStateUpdated: (cb) => ipcRenderer.on('state:updated', (_e, state) => cb(state)),
   onUpdateAvailable: (cb) => ipcRenderer.on('update:available', (_e, info) => cb(info)),
+  onAppearanceChanged: (cb) => ipcRenderer.on('appearance:changed', (_e, s) => cb(s)),
 
   // updates
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),

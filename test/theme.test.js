@@ -74,6 +74,25 @@ ok('main sets themeSource', /nativeTheme\.themeSource\s*=/.test(main), '');
 ok('appearance is a persisted setting', /appearance:\s*'system'/.test(main), '');
 ok('following the system means following changes',
    /nativeTheme\.on\('updated'/.test(main), '');
+ok('the choice is settable over ipc', /ipcMain\.handle\('appearance:set'/.test(main), '');
+ok('and readable, so the drawer can show it',
+   /ipcMain\.handle\('appearance:get'/.test(main), '');
+ok('a change made from the tray reaches the drawer',
+   /send\('appearance:changed'/.test(main), '');
+
+// The switch has to be somewhere a person will look. The tray menu is not
+// that place — this was reported as "there is no option to switch".
+const preload = fs.readFileSync(path.join(__dirname, '..', 'src', 'preload.js'), 'utf8');
+for (const api of ['getAppearance', 'setAppearance', 'onAppearanceChanged']) {
+  ok(`preload exposes ${api}`, new RegExp(`${api}:`).test(preload), '');
+}
+
+const drawer = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer.html'), 'utf8');
+ok('the drawer has a visible appearance switch', /id="themeBtn"/.test(drawer), '');
+ok('and it cycles all three choices',
+   /THEME_NEXT\s*=\s*\{[^}]*system[^}]*light[^}]*dark/.test(drawer), '');
+ok('missing api does not break the drawer at boot',
+   /setAppearance\?\.|getAppearance\?\./.test(drawer), 'optional-called');
 
 let failed = 0;
 for (const r of results) {
