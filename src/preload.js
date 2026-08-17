@@ -50,8 +50,9 @@ contextBridge.exposeInMainWorld('api', {
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
 
   // listeners
-  onNewClip: (cb) => ipcRenderer.on('clip:new', (_e, entry) => cb(entry)),
-  onPromoted: (cb) => ipcRenderer.on('clip:promoted', (_e, entry) => cb(entry)),
+  // `collected` is the session's own copy when a session took the clip too
+  onNewClip: (cb) => ipcRenderer.on('clip:new', (_e, entry, collected) => cb(entry, collected)),
+  onPromoted: (cb) => ipcRenderer.on('clip:promoted', (_e, entry, collected) => cb(entry, collected)),
   onSkipped: (cb) => ipcRenderer.on('clip:skipped', (_e, info) => cb(info)),
   onPauseChanged: (cb) => ipcRenderer.on('paused:changed', (_e, v) => cb(v)),
   onHistoryCleared: (cb) => ipcRenderer.on('history:cleared', () => cb()),

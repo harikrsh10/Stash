@@ -2477,15 +2477,28 @@
     });
 
     // listen for new clips from main
-    window.api.onNewClip((entry) => {
+    window.api.onNewClip((entry, collected) => {
       entry._new = true;
       history = history.filter(h => h.id !== entry.id);
       history.unshift(entry);
+      takeCollected(collected);
       render();
     });
 
+    // A session keeps its own copy of a clip, in its own list. Without this the
+    // clip was collected and saved in main, but the session on screen stayed
+    // empty until some other action forced a full state broadcast.
+    function takeCollected(collected) {
+      if (!collected) return;
+      sessionClips = [
+        collected,
+        ...sessionClips.filter(c => !(c.id === collected.id && c.sessionId === collected.sessionId)),
+      ];
+    }
+
     // listen for promoted (re-copied) clips — bump to top with flash animation
-    window.api.onPromoted((entry) => {
+    window.api.onPromoted((entry, collected) => {
+      takeCollected(collected);
       // check if it's in pinned or history
       const pinnedIdx = pinned.findIndex(p => p.id === entry.id);
       if (pinnedIdx > -1) {

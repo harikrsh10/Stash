@@ -824,7 +824,8 @@ function pollClipboard() {
             existing.pinnedAt = Date.now();
             pinned.unshift(existing);
             savePinned();
-            broadcastPromote(existing);
+            // copying it again counts as copying it, so a live session takes it too
+      broadcastPromote(existing, collectIfActive(existing));
             return;
           }
 
@@ -834,7 +835,8 @@ function pollClipboard() {
             const existing = history.splice(existingIdx, 1)[0];
             existing.ts = Date.now();
             history.unshift(existing);
-            broadcastPromote(existing);
+            // copying it again counts as copying it, so a live session takes it too
+      broadcastPromote(existing, collectIfActive(existing));
             return;
           }
 
@@ -881,7 +883,8 @@ function pollClipboard() {
       existing.pinnedAt = Date.now();
       pinned.unshift(existing);
       savePinned();
-      broadcastPromote(existing);
+      // copying it again counts as copying it, so a live session takes it too
+      broadcastPromote(existing, collectIfActive(existing));
       return;
     }
 
@@ -891,7 +894,8 @@ function pollClipboard() {
       const existing = history.splice(existingIdx, 1)[0];
       existing.ts = Date.now();
       history.unshift(existing);
-      broadcastPromote(existing);
+      // copying it again counts as copying it, so a live session takes it too
+      broadcastPromote(existing, collectIfActive(existing));
       return;
     }
 
@@ -947,19 +951,26 @@ function writeClip(entry, plain) {
   clipboard.writeText(entry.content);
 }
 
-function broadcastPromote(entry) {
+// An active session collects whatever is copied, before history's cap can age
+// the entry out from under it. Returns the session's own copy so it can travel
+// with the notification: the drawer keeps its own list of session clips, and
+// telling it only about the history entry left the session looking empty until
+// something else forced a full state broadcast.
+function collectIfActive(entry) {
+  const id = settings.activeSessionId;
+  if (!id || !sessions.some(s => s.id === id)) return null;
+  return addToSession(entry, id) ? sessionClips[0] : null;
+}
+
+function broadcastPromote(entry, collected) {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('clip:promoted', entry);
+    mainWindow.webContents.send('clip:promoted', entry, collected || null);
   }
   refreshTrayMenu();
 }
 
 function addEntry(entry) {
-  // an active session collects whatever is copied, before history's cap can
-  // age the entry out from under it
-  if (settings.activeSessionId && sessions.some(s => s.id === settings.activeSessionId)) {
-    addToSession(entry, settings.activeSessionId);
-  }
+  const collected = collectIfActive(entry);
 
   history = history.filter(h => h.id !== entry.id);
   history.unshift(entry);
@@ -972,7 +983,7 @@ function addEntry(entry) {
     });
   }
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('clip:new', entry);
+    mainWindow.webContents.send('clip:new', entry, collected);
   }
   if (dockWindow && dockWindow.isVisible()) refreshDock();
   refreshTrayMenu();

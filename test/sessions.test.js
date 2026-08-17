@@ -95,6 +95,40 @@ ok('the file survives while another session still holds it', fs.existsSync(store
 s5.api.removeFromSession('img', 'b');
 ok('the file goes once nothing points at it', !fs.existsSync(stored), '');
 
+// ---------- collecting reaches the drawer ----------
+// The clip was being collected and saved, but the drawer keeps its own list of
+// session clips and was only told about the history entry, so the session on
+// screen stayed empty until something forced a full state broadcast.
+const cap = freshContext();
+cap.sessions.push({ id: 'live', name: 'Live', createdAt: Date.now() });
+cap.settings.activeSessionId = 'live';
+const sent = [];
+Object.assign(cap, {
+  HISTORY_LIMIT: 100,
+  mainWindow: { isDestroyed: () => false, webContents: { send: (...a) => sent.push(a) } },
+  dockWindow: null,
+  refreshDock: () => {},
+  refreshTrayMenu: () => {},
+});
+vm.runInContext([grab('collectIfActive'), grab('addEntry')].join('\n')
+  + '\nthis.api.collectIfActive = collectIfActive; this.api.addEntry = addEntry;', cap);
+
+cap.api.addEntry({ id: 'c1', type: 'text', content: 'copied while collecting', ts: Date.now() });
+ok('a copied clip joins the live session', cap.sessionClips.length === 1, cap.sessionClips.length + '');
+ok('it lands in history too', cap.history.length === 1, cap.history.length + '');
+const newMsg = sent.find(m => m[0] === 'clip:new');
+ok('the drawer is told about the clip', !!newMsg, '');
+ok('the session copy travels with it',
+   !!newMsg && !!newMsg[2] && newMsg[2].sessionId === 'live',
+   newMsg ? JSON.stringify(newMsg[2] && newMsg[2].sessionId) : 'no message');
+
+cap.settings.activeSessionId = null;
+cap.api.addEntry({ id: 'c2', type: 'text', content: 'copied with nothing collecting', ts: Date.now() });
+const second = sent.filter(m => m[0] === 'clip:new')[1];
+ok('with nothing collecting, no copy travels', !!second && second[2] === null,
+   second ? JSON.stringify(second[2]) : 'no message');
+ok('and nothing is added to any session', cap.sessionClips.length === 1, cap.sessionClips.length + '');
+
 fs.rmSync(STORE, { recursive: true, force: true });
 
 app.disableHardwareAcceleration();
@@ -232,6 +266,24 @@ app.whenReady().then(async () => {
     render();
     ok('deleting the place you were in returns you to everything', activeScope === 'all', activeScope);
 
+    // a clip collected while you watch must appear in the session immediately,
+    // without needing a full state broadcast to shake it loose
+    sessions.push({ id: 'ses2', name: 'Research', createdAt: 2 }); // put back the one just deleted
+    render();
+    goTo('ses2');
+    const beforeLive = rows().length;
+    // exactly what the clip:new handler does when main reports a collected clip
+    history.unshift({ id: 'live1', type: 'text', content: 'copied just now', ts: Date.now() });
+    takeCollected({ id: 'live1', sessionId: 'ses2', type: 'text', content: 'copied just now', ts: Date.now() });
+    render();
+    ok('a clip collected while watching appears at once', rows().length === beforeLive + 1,
+       beforeLive + ' -> ' + rows().length);
+    ok('it went into the session being viewed',
+       rows()[0].dataset.id === 'live1', rows()[0].dataset.id);
+    goTo('all');
+    ok('and it is in everything as well',
+       !!rows().find(r => r.dataset.id === 'live1'), '');
+
     // selecting inside a session has to build a stack like anywhere else —
     // session clips live in their own store, so an id lookup that only knows
     // history and pinned finds nothing and the tray silently stays hidden
@@ -260,7 +312,6 @@ app.whenReady().then(async () => {
     clearSelection();
 
     // one clip, one entry in the selection order, wherever it shows
-    sessions.push({ id: 'ses2', name: 'Research', createdAt: 2 });
     activeSessionId = 'ses1';
     sessionClips.push({ id: 'h1', sessionId: 'ses1', type: 'text', content: 'an ordinary clip', ts: Date.now() });
     goTo('all');
