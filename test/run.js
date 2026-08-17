@@ -18,6 +18,7 @@ const SUITES = [
   { file: 'inspector.test.js', runtime: 'electron', what: 'text extraction and the image inspector' },
   { file: 'sessions.test.js', runtime: 'electron', what: 'sessions, their store and the drawer' },
   { file: 'richtext.test.js', runtime: 'electron', what: 'keeping formatting, and pasting without it' },
+  { file: 'theme.test.js', runtime: 'node', what: 'the light and dark palettes staying in step' },
 ];
 
 const verbose = process.argv.includes('--verbose');

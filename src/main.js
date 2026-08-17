@@ -1,6 +1,6 @@
 // src/main.js — Stash main process
 // Handles: window lifecycle, global hotkey, tray, clipboard polling, native drag-out
-const { app, BrowserWindow, Tray, Menu, globalShortcut, clipboard, ipcMain, nativeImage, screen, shell, powerMonitor } = require('electron');
+const { app, BrowserWindow, Tray, Menu, globalShortcut, clipboard, ipcMain, nativeImage, nativeTheme, screen, shell, powerMonitor } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -36,7 +36,36 @@ let drawerDragSafetyTimer = null;
 let settings = {
   autoPasteFromDock: false, // default off — no permission prompt on first launch
   activeSessionId: null,    // capture into this session; null means ordinary copying
+  appearance: 'system',     // system | dark | light
 };
+
+// Setting themeSource is what flips prefers-color-scheme inside the windows, so
+// the stylesheets need no theme class of their own — and native bits like
+// scrollbars and menus follow at the same time.
+function applyAppearance() {
+  const choice = ['system', 'dark', 'light'].includes(settings.appearance) ? settings.appearance : 'system';
+  nativeTheme.themeSource = choice;
+  const dark = choice === 'system' ? nativeTheme.shouldUseDarkColors : choice === 'dark';
+  // without this the window paints its old ground for a frame when it opens
+  const bg = dark ? '#0a0a0a' : '#fcfcfd';
+  [mainWindow, dockWindow].forEach(w => {
+    if (w && !w.isDestroyed()) w.setBackgroundColor(bg);
+  });
+  // the drawer has its own switch, so it has to hear about changes made from
+  // the tray — and about the system flipping underneath a 'system' choice
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('appearance:changed', { choice, dark });
+  }
+}
+
+function setAppearance(choice) {
+  if (!['system', 'dark', 'light'].includes(choice)) return false;
+  settings.appearance = choice;
+  saveSettings();
+  applyAppearance();
+  refreshTrayMenu();
+  return true;
+}
 
 // ---------- sessions ----------
 // A session is a named folder that fills itself: while one is active, whatever
@@ -208,6 +237,15 @@ function refreshTrayMenu() {
       },
       toolTip: 'click to stop collecting',
     }] : []),
+    {
+      label: 'Appearance',
+      submenu: ['system', 'light', 'dark'].map(choice => ({
+        label: choice === 'system' ? 'Match the system' : choice[0].toUpperCase() + choice.slice(1),
+        type: 'radio',
+        checked: (settings.appearance || 'system') === choice,
+        click: () => setAppearance(choice),
+      })),
+    },
     {
       label: 'Auto-paste from dock',
       type: 'checkbox',
@@ -992,6 +1030,12 @@ function addEntry(entry) {
 // ---------- ipc ----------
 ipcMain.handle('history:get', () => ({ history, pinned, ...sessionState() }));
 
+ipcMain.handle('appearance:get', () => ({
+  choice: settings.appearance || 'system',
+  dark: nativeTheme.shouldUseDarkColors,
+}));
+ipcMain.handle('appearance:set', (_e, choice) => setAppearance(choice));
+
 function broadcastState() {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('state:updated', { history, pinned, ...sessionState() });
@@ -1704,9 +1748,16 @@ app.whenReady().then(() => {
     settings.activeSessionId = null;
   }
 
+  applyAppearance();
   createWindow();
   createDockWindow();
   createTray();
+  applyAppearance(); // again, now that the windows exist and can be repainted
+
+  // following the system means following it as it changes, not only at launch
+  nativeTheme.on('updated', () => {
+    if ((settings.appearance || 'system') === 'system') applyAppearance();
+  });
 
   console.log('[Stash] tray created:', tray ? 'yes' : 'no');
   console.log('[Stash] platform:', process.platform);
