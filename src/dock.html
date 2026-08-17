@@ -24,8 +24,40 @@
       --accent-border: rgba(212, 160, 106, 0.18);
       --green: #6dbf8c;
       --blue: #a0a0ff;
+      --badge-code-bg: #181826;
+      --badge-url-bg: #0f1c14;
+      --badge-img-bg: #1c1408;
+      --hairline: rgba(255, 255, 255, 0.06);
+      --shadow: rgba(0, 0, 0, 0.5);
       --font-sans: 'IBM Plex Sans', -apple-system, sans-serif;
       --font-mono: 'IBM Plex Mono', monospace;
+    }
+
+    /* The popover follows the same appearance as the drawer — the main process
+       sets themeSource, which is what flips this. */
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: rgba(252, 252, 253, 0.96);
+        --surface: #f4f6f8;
+        --surface2: #eef0f4;
+        --surface3: #e3e7ec;
+        --border: #e2e6ea;
+        --border2: #cbd2da;
+        --text: #191c21;
+        --text2: #454b54;
+        --muted: #6f767f;
+        --muted2: #a4aab3;
+        --accent: #8f6210;
+        --accent-bg: rgba(143, 98, 16, 0.07);
+        --accent-border: rgba(143, 98, 16, 0.22);
+        --green: #157a4a;
+        --blue: #3f3fc0;
+        --badge-code-bg: #ececfb;
+        --badge-url-bg: #e6f4ec;
+        --badge-img-bg: #fbf1de;
+        --hairline: rgba(0, 0, 0, 0.08);
+        --shadow: rgba(20, 24, 32, 0.16);
+      }
     }
 
     html, body {
@@ -50,7 +82,7 @@
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      box-shadow: 0 24px 50px rgba(0, 0, 0, 0.55), 0 0 0 0.5px rgba(255, 255, 255, 0.06);
+      box-shadow: 0 24px 50px var(--shadow), 0 0 0 0.5px var(--hairline);
     }
 
     .dock-header {
@@ -151,7 +183,7 @@
     }
     .dock-item.pinned-row:hover,
     .dock-item.pinned-row.active {
-      background: rgba(212, 160, 106, 0.10);
+      background: var(--accent-bg);
     }
     .dock-item.dragging {
       opacity: 0.4;
@@ -193,10 +225,10 @@
       font-weight: 500;
       align-self: center;
     }
-    .dock-item .badge.text { background: #1f1f1f; color: #a0a0a0; }
-    .dock-item .badge.code { background: #181826; color: var(--blue); }
-    .dock-item .badge.url  { background: #0f1c14; color: var(--green); }
-    .dock-item .badge.img  { background: #1c1408; color: var(--accent); }
+    .dock-item .badge.text { background: var(--surface2); color: var(--text2); }
+    .dock-item .badge.code { background: var(--badge-code-bg); color: var(--blue); }
+    .dock-item .badge.url  { background: var(--badge-url-bg); color: var(--green); }
+    .dock-item .badge.img  { background: var(--badge-img-bg); color: var(--accent); }
 
     /* main content column — first line is the headline */
     .dock-item .content {
@@ -249,7 +281,7 @@
       font-family: var(--font-mono);
       font-size: 11.5px;
       color: var(--text2);
-      background: rgba(255,255,255,0.025);
+      background: var(--hairline);
       padding: 3px 6px;
       border-radius: 4px;
       border: 1px solid var(--border);
