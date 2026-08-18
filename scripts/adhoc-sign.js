@@ -1,17 +1,20 @@
-// electron-builder afterPack hook — ad-hoc signs the macOS app.
+// electron-builder afterPack hook — ad-hoc signs the macOS app for local builds.
 //
 // Apple Silicon refuses to run a binary carrying no signature at all. Without
 // this the .app doesn't merely warn on first launch: macOS reports it as
 // malware and moves it to the Trash, and no amount of clearing the quarantine
 // attribute helps, because the missing signature is a separate problem.
 //
-// An ad-hoc signature ("-") costs nothing and needs no Apple account. It is not
-// notarization: the first launch still has to be approved once under System
-// Settings > Privacy & Security. That last step needs a paid Developer ID, which
-// is a decision about money rather than code.
+// An ad-hoc signature ("-") costs nothing and needs no Apple account, but it is
+// not a real identity: Gatekeeper still treats the app as unknown software and
+// the first launch has to be approved under System Settings > Privacy & Security.
 //
-// This runs after the .app is assembled and before the .dmg is built, so what
-// gets packaged is the signed copy.
+// Release builds don't go through here. When a Developer ID certificate is
+// present in the environment, electron-builder signs and notarizes properly and
+// this hook stands down — see the guard below.
+//
+// This runs after the .app is assembled and before electron-builder signs it,
+// so for local builds what gets packaged is the ad-hoc signed copy.
 const { execFileSync } = require('child_process');
 const path = require('path');
 
@@ -19,6 +22,14 @@ exports.default = async function adhocSign(context) {
   const { electronPlatformName, appOutDir } = context;
   if (electronPlatformName !== 'darwin') {
     console.log(`[sign] ${electronPlatformName} needs no ad-hoc signature, skipping`);
+    return;
+  }
+
+  // A real Developer ID is configured, so electron-builder is about to sign this
+  // properly. Ad-hoc signing first would only be overwritten, and it makes the
+  // build log read as though something signed the app twice.
+  if (process.env.CSC_LINK || process.env.CSC_NAME) {
+    console.log('[sign] Developer ID present, leaving the signature to electron-builder');
     return;
   }
 

@@ -39,3 +39,13 @@ pinned-images/
 
 # compiled macOS OCR helper, built during the Mac release
 build/
+
+# Signing material — never commit these. Losing the private key means revoking
+# the certificate and starting over; leaking it is worse.
+*.p12
+*.p8
+*.cer
+*.pem
+*.certSigningRequest
+stash-signing.key
+p12-base64.txt
