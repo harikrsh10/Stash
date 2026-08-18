@@ -9,7 +9,7 @@
 
 ## Download
 
-### [→ Download latest release](https://github.com/harikrsh10/Stash/releases/latest)
+### [→ Download latest release](https://github.com/harikrsh10/Stash-releases/releases/latest)
 
 | Platform | File |
 |----------|------|
@@ -24,7 +24,7 @@
 > On recent macOS the old right-click → Open trick no longer works.
 > **Windows**: **More info** → **Run anyway** on the SmartScreen prompt.
 
-See [all releases](https://github.com/harikrsh10/Stash/releases) for older versions.
+See [all releases](https://github.com/harikrsh10/Stash-releases/releases) for older versions.
 
 ---
 
@@ -90,9 +90,10 @@ read 6 of 26 words on a dark marketing screenshot where Windows read 22.
 
 ---
 
-## Build from source
+## Building it yourself
 
-If you'd rather run it yourself (or contribute):
+The source is private. These steps are for the maintainer and anyone granted
+access to the repository:
 
 ```bash
 git clone https://github.com/harikrsh10/Stash.git
@@ -113,7 +114,7 @@ npm run dev
 npm test
 ```
 
-175 assertions, about a minute. They drive the real renderer in a hidden window
+317 assertions, about a minute. They drive the real renderer in a hidden window
 rather than a copy of it — see [test/README.md](test/README.md).
 
 ### Package for distribution
@@ -225,6 +226,9 @@ Since regular history is memory-only, quitting Stash clears everything unpinned 
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+Proprietary — see [LICENSE](LICENSE). Stash is not open source; all rights are
+reserved. Releases before 2026 went out under the MIT License and stay that way.
+
+For licensing enquiries, get in touch.
 
 Built by [HariKrish](https://github.com/harikrsh10).

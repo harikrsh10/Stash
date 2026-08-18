@@ -4,7 +4,7 @@
   "description": "Minimal clipboard history with drag-and-drop to any app",
   "main": "src/main.js",
   "author": "HariKrish",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
@@ -17,7 +17,7 @@
   },
   "devDependencies": {
     "electron": "^31.0.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^26.15.3"
   },
   "build": {
     "appId": "com.harikrish.stash",
@@ -27,7 +27,18 @@
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "assets/icon.png",
-      "identity": null,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "sign/entitlements.mac.plist",
+      "entitlementsInherit": "sign/entitlements.mac.inherit.plist",
+      "notarize": true,
+      "binaries": [
+        "Contents/Resources/stash-ocr"
+      ],
+      "minimumSystemVersion": "10.15",
+      "extendInfo": {
+        "NSAppleEventsUsageDescription": "Stash needs this to press Command-V in the app you were last using, so a clip you pick can paste itself."
+      },
       "extraResources": [
         {
           "from": "build/mac/stash-ocr",
