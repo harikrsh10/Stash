@@ -1111,6 +1111,41 @@ ipcMain.handle('session:remove', (_e, clipId, sessionId) => {
   if (ok) broadcastState();
   return ok;
 });
+
+// ---------- manual order ----------
+// `ids` is the new relative order of some subset of `list` — the rows the
+// drawer was actually showing. The drawer filters (search, tags, prompts vs
+// pinned), so the subset is rarely the whole array: the ids are reassigned to
+// the slots they already occupy between them, which leaves everything filtered
+// out sitting exactly where it was. Anything unknown is ignored rather than
+// dropped, so a stale drag can't delete a clip.
+function reorderWithin(list, ids) {
+  const wanted = ids.filter(id => list.some(c => c.id === id));
+  if (wanted.length < 2) return false;
+  const slots = [];
+  const held = new Set(wanted);
+  list.forEach((c, i) => { if (held.has(c.id)) slots.push(i); });
+  const byId = new Map(list.map(c => [c.id, c]));
+  const before = slots.map(i => list[i].id).join();
+  wanted.forEach((id, k) => { list[slots[k]] = byId.get(id); });
+  return before !== wanted.join();
+}
+
+ipcMain.handle('order:pinned', (_e, ids) => {
+  if (!Array.isArray(ids)) return false;
+  const moved = reorderWithin(pinned, ids);
+  if (moved) { savePinned(); broadcastState(); }
+  return moved;
+});
+
+ipcMain.handle('order:session', (_e, sessionId, ids) => {
+  if (!Array.isArray(ids) || !sessions.some(s => s.id === sessionId)) return false;
+  // a session's clips share one array with every other session's, so the ids
+  // are matched against that session's slots only
+  const moved = reorderWithin(sessionClips, ids);
+  if (moved) { saveSessions(); broadcastState(); }
+  return moved;
+});
 ipcMain.handle('paused:get', () => isPaused);
 ipcMain.handle('paused:set', (_e, v) => { setPaused(!!v); return isPaused; });
 

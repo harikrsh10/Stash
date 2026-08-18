@@ -594,6 +594,75 @@
       border-radius: 50%;
     }
 
+    /* Where an order can be kept, the whole row is the handle: press and hold
+       anywhere on it. The grip stays as the shortcut that lifts immediately,
+       for anyone who goes looking for one. */
+    /* The dots are 4px wide — fine to look at, hopeless to hit. The target is a
+       full-height strip down the row's left edge, laid over the row rather than
+       sitting in the layout, because widening the handle itself would push
+       every row's content sideways. */
+    .item.orderable .drag-handle { cursor: grab; opacity: 0.2; }
+    .item.orderable .drag-handle::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 26px;
+      border-radius: 6px 0 0 6px;
+      transition: background 0.12s;
+    }
+    .item.orderable:hover .drag-handle { opacity: 0.45; }
+    /* and it shows when the pointer is on it, so the moment it arms stops being
+       a guess — the strip tints and the dots come up to full strength */
+    .item.orderable .drag-handle:hover { opacity: 1; }
+    .item.orderable .drag-handle:hover::before { background: var(--select-wash-2); }
+    .item.orderable .drag-handle:active::before { background: var(--select-wash-3); }
+    /* history rows sit in the same list but keep no order, so their grip stays
+       the faint decoration it was rather than inviting a drag that won't hold */
+    .item:not(.orderable) .drag-handle { cursor: default; }
+
+    /* the press settles the row down a touch, so the hold is felt before the
+       lift happens rather than looking like nothing responded */
+    .item.arming {
+      transform: scale(0.988);
+      transition: transform 0.16s ease-out;
+    }
+
+    /* the row travelling with the pointer */
+    .item.lifting {
+      position: fixed;
+      pointer-events: none;
+      z-index: 30;
+      cursor: grabbing;
+      background: var(--surface);
+      box-shadow: 0 14px 34px var(--shadow);
+      border-radius: 8px;
+      transform: scale(1.02);
+      transition: transform 0.16s cubic-bezier(0.2, 0.9, 0.3, 1.2),
+                  box-shadow 0.16s ease-out;
+    }
+    .item.lifting.landing {
+      transform: scale(1);
+      box-shadow: 0 2px 8px var(--shadow);
+      transition: all 0.19s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    /* The row keeps its place in the list while it is being carried, emptied
+       out and outlined. That hole IS the answer to "where will this land" — it
+       travels with the drag and the other rows slide around it. */
+    .item.slot > * { visibility: hidden; }
+    .item.slot {
+      background: var(--select-wash);
+      /* outline rather than border: it must not change the row's height, or
+         every other row would jump by two pixels the moment you picked it up */
+      outline: 1px dashed var(--select-dim);
+      outline-offset: -2px;
+      border-radius: 6px;
+    }
+    /* rows sliding out of the way to open the gap */
+    .item.shifting { transition: transform 0.19s cubic-bezier(0.2, 0.8, 0.2, 1); }
+
     .item-icon-col {
       flex-shrink: 0;
       align-self: flex-start;
@@ -1568,6 +1637,23 @@
       return [...pinned.filter(c => c.isPrompt), ...pinned.filter(c => !c.isPrompt), ...history];
     }
 
+    // Which run of rows a clip belongs to. Everything shows three lists stacked
+    // — prompts, then pinned, then the running history — and each is its own
+    // array, so a row can only be reordered among its own kind.
+    function blockOf(clip, isPinned, sessionId) {
+      if (sessionId) return 'session';
+      if (clip.isPrompt) return 'prompt';
+      // which array it actually lives in decides this, not the pinnedAt stamp
+      // the row was drawn from — the two must not be able to disagree
+      if (isPinned || pinned.some(p => p.id === clip.id)) return 'pinned';
+      return 'history';
+    }
+
+    // Everything else keeps an order; history cannot. It is memory-only and
+    // capped, every new copy lands at the top, and it is gone at the next
+    // restart — an order arranged there would quietly undo itself.
+    const canOrderBlock = (block) => block !== 'history';
+
     function railItem(id, label, icon, cls) {
       const b = document.createElement('button');
       b.className = 'rail-item ' + (cls || '') + (activeScope === id ? ' on' : '');
@@ -2264,6 +2350,180 @@
       stackIconUrl = canvas.toDataURL('image/png');
     }
 
+    // ---------- manual order ----------
+    // The row itself is draggable, and that drag is handed to the OS so a clip
+    // can be dropped into another app — which means the browser's own drop
+    // events never arrive and cannot be used to reorder. So reordering is its
+    // own pointer gesture, and the grip is what starts it.
+    let lift = null;
+    let arming = null;       // a press waiting to become a lift
+    let suppressClick = false;
+    const HOLD_MS = 170;     // long enough not to fire on a click, short enough to feel instant
+
+    // A press anywhere on the row arms a lift. If the pointer moves first the
+    // browser starts its own drag instead and the press is abandoned — that is
+    // what keeps "drag this clip into another app" working on the same row.
+    function armLift(e, el, clip, sessionId) {
+      if (e.button !== 0 || lift || e.target.closest('button')) return;
+      cancelArm();
+      el.classList.add('arming');
+      arming = {
+        el, clip, sessionId,
+        x: e.clientX, y: e.clientY,
+        timer: setTimeout(() => {
+          arming = null;
+          el.classList.remove('arming');
+          beginLift({ clientX: e.clientX, clientY: e.clientY }, el, clip, sessionId);
+        }, HOLD_MS),
+      };
+      window.addEventListener('mousemove', onArmMove);
+      window.addEventListener('mouseup', cancelArm);
+    }
+
+    // moving during the hold means this was a drag, not a press
+    function onArmMove(e) {
+      if (!arming) return;
+      if (Math.abs(e.clientX - arming.x) > 4 || Math.abs(e.clientY - arming.y) > 4) cancelArm();
+    }
+
+    function cancelArm() {
+      if (!arming) return;
+      clearTimeout(arming.timer);
+      arming.el.classList.remove('arming');
+      arming = null;
+      window.removeEventListener('mousemove', onArmMove);
+      window.removeEventListener('mouseup', cancelArm);
+    }
+
+    function beginLift(e, el, clip, sessionId) {
+      if (lift) return;
+      cancelArm();
+      const rect = el.getBoundingClientRect();
+
+      // the row travels with the pointer as a copy
+      const ghost = el.cloneNode(true);
+      ghost.classList.add('lifting');
+      ghost.classList.remove('selected', 'arming');
+      ghost.style.width = rect.width + 'px';
+      ghost.style.left = rect.left + 'px';
+      ghost.style.top = rect.top + 'px';
+      document.body.appendChild(ghost);
+
+      // and the row itself stays in the list as the hole it will drop into
+      el.classList.add('slot');
+      el.draggable = false; // no native drag-out while carrying it
+
+      lift = {
+        el, ghost, clip, sessionId,
+        block: el.dataset.block,
+        grabDy: e.clientY - rect.top,
+        from: rowsIn().indexOf(el),
+        moved: false,
+      };
+      document.body.style.cursor = 'grabbing';
+      window.addEventListener('mousemove', onLiftMove);
+      window.addEventListener('mouseup', endLift);
+    }
+
+    const rowsIn = () => [...listEl.querySelectorAll('.item')];
+
+    // Move the slot to a new place and let every row that had to shift animate
+    // from where it was to where it now is, rather than jumping. Measure, move,
+    // then play the difference backwards — the rows only ever move once.
+    function slideTo(mutate) {
+      const others = rowsIn().filter(r => r !== lift.el);
+      const before = new Map(others.map(r => [r, r.getBoundingClientRect().top]));
+      mutate();
+      for (const r of others) {
+        const dy = before.get(r) - r.getBoundingClientRect().top;
+        if (!dy) continue;
+        r.classList.remove('shifting');
+        r.style.transform = `translateY(${dy}px)`;
+        requestAnimationFrame(() => {
+          r.classList.add('shifting');
+          r.style.transform = '';
+        });
+      }
+    }
+
+    function onLiftMove(e) {
+      if (!lift) return;
+      lift.moved = true;
+      lift.ghost.style.top = (e.clientY - lift.grabDy) + 'px';
+
+      // Only rows of the same block are candidates, so a prompt cannot be
+      // dropped among the pinned and a pinned clip cannot land in history —
+      // those are different arrays, and the drop would spring back.
+      const others = rowsIn().filter(r => r !== lift.el && r.dataset.block === lift.block);
+      if (!others.length) return;
+      const target = others.find(r => {
+        const b = r.getBoundingClientRect();
+        return e.clientY < b.top + b.height / 2;
+      });
+      // past the last row of the block, the slot goes at the block's end rather
+      // than the list's, which is what keeps the drag penned in
+      const next = target || others[others.length - 1].nextElementSibling;
+      if (lift.el.nextElementSibling !== next) {
+        slideTo(() => listEl.insertBefore(lift.el, next));
+      }
+
+      // dragging near an edge scrolls, so a row can travel further than one
+      // screenful without letting go
+      const lb = listEl.getBoundingClientRect();
+      if (e.clientY < lb.top + 40) listEl.scrollTop -= 8;
+      else if (e.clientY > lb.bottom - 40) listEl.scrollTop += 8;
+    }
+
+    async function endLift() {
+      if (!lift) return;
+      const { el, ghost, clip, sessionId, from, moved, block } = lift;
+      lift = null;
+      window.removeEventListener('mousemove', onLiftMove);
+      window.removeEventListener('mouseup', endLift);
+      document.body.style.cursor = '';
+      if (moved) suppressClick = true;
+
+      // the carried copy drops into the hole instead of vanishing mid-air
+      const home = el.getBoundingClientRect();
+      ghost.classList.add('landing');
+      ghost.style.top = home.top + 'px';
+      ghost.style.left = home.left + 'px';
+      const settle = () => {
+        ghost.remove();
+        el.classList.remove('slot');
+        rowsIn().forEach(r => { r.classList.remove('shifting'); r.style.transform = ''; });
+      };
+      ghost.addEventListener('transitionend', settle, { once: true });
+      setTimeout(settle, 260); // transitionend can be skipped if nothing changed
+
+      el.draggable = true;
+      const to = rowsIn().indexOf(el);
+      if (!moved || to === from) return;
+
+      // The DOM already shows the new order, so it is read straight off the
+      // list — just the block that moved, since the store reassigns ids to the
+      // slots they already hold and everything else must keep its place.
+      const ids = rowsIn()
+        .filter(n => n.dataset.block === block)
+        .map(n => n.dataset.id);
+      applyOrder(sessionId ? sessionClips : pinned, ids);
+
+      const ok = sessionId
+        ? await window.api.reorderSession?.(sessionId, ids)
+        : await window.api.reorderPinned?.(ids);
+      if (ok === false) render(); // rejected — fall back to what the store says
+    }
+
+    // the drawer's copy of the same reassignment the main process does, so the
+    // optimistic render matches what comes back
+    function applyOrder(list, ids) {
+      const held = new Set(ids.filter(id => list.some(c => c.id === id)));
+      const slots = [];
+      list.forEach((c, i) => { if (held.has(c.id)) slots.push(i); });
+      const byId = new Map(list.map(c => [c.id, c]));
+      ids.filter(id => held.has(id)).forEach((id, k) => { list[slots[k]] = byId.get(id); });
+    }
+
     function buildItemEl(c, isPinned, sessionId) {
       const el = document.createElement('div');
       let cls = 'item';
@@ -2273,6 +2533,9 @@
       el.className = cls;
       el.draggable = true;
       el.dataset.id = c.id;
+      // a row can only be reordered among the rows of its own block
+      const block = blockOf(c, isPinned, sessionId);
+      el.dataset.block = block;
       // a clip shows in Recent and again in its session; the selection model is
       // keyed by id, so the order must list each id once
       if (!renderedOrder.includes(c.id)) renderedOrder.push(c.id);
@@ -2359,10 +2622,29 @@
         </div>
       `;
 
+      // Hold anywhere on the row to reorder it; move straight away and it is a
+      // drag-out instead. The grip skips the wait for anyone who reaches for it.
+      if (canOrderBlock(block)) {
+        el.classList.add('orderable');
+        el.title = 'hold to reorder · drag to drop into another app';
+        el.addEventListener('mousedown', (e) => armLift(e, el, c, sessionId));
+        const grip = el.querySelector('.drag-handle');
+        grip.title = 'drag to reorder';
+        grip.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          beginLift(e, el, c, sessionId);
+        });
+      }
+
       // native drag-out — dragging a row that's part of a multi-selection
       // carries the whole selection; dragging anything else carries just it,
       // matching how Finder and Explorer behave.
       el.addEventListener('dragstart', (e) => {
+        // the browser only starts this once the pointer has moved, which is
+        // precisely the case where the press was never meant as a hold
+        cancelArm();
+        if (lift) { e.preventDefault(); return; }
         e.preventDefault();
         window.api.drawerDragStart();
         if (selected.has(c.id) && selected.size > 1) {
@@ -2443,6 +2725,9 @@
       // click anywhere else re-copies — unless a selection modifier is held,
       // in which case the click is about building a selection, not copying
       el.addEventListener('click', async (e) => {
+        // a reorder ends in a mouseup on the row, which would otherwise read as
+        // a click and copy the clip you just finished moving
+        if (suppressClick) { suppressClick = false; return; }
         if (e.metaKey || e.ctrlKey) {
           if (selected.has(c.id)) selected.delete(c.id);
           else selected.add(c.id);
