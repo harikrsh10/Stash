@@ -9,7 +9,7 @@
 
 ## Download
 
-### [→ Download latest release](https://github.com/harikrsh10/Stash-releases/releases/latest)
+### [→ Download latest release](https://github.com/harikrsh10/Stash/releases/latest)
 
 | Platform | File |
 |----------|------|
@@ -24,7 +24,7 @@
 > On recent macOS the old right-click → Open trick no longer works.
 > **Windows**: **More info** → **Run anyway** on the SmartScreen prompt.
 
-See [all releases](https://github.com/harikrsh10/Stash-releases/releases) for older versions.
+See [all releases](https://github.com/harikrsh10/Stash/releases) for older versions.
 
 ---
 
@@ -92,8 +92,8 @@ read 6 of 26 words on a dark marketing screenshot where Windows read 22.
 
 ## Building it yourself
 
-The source is private. These steps are for the maintainer and anyone granted
-access to the repository:
+The source is here to read, but Stash isn't open source — see
+[LICENSE](LICENSE) before you do anything else with it. To run your own copy:
 
 ```bash
 git clone https://github.com/harikrsh10/Stash.git

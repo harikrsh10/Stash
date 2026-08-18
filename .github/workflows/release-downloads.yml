@@ -120,30 +120,11 @@ jobs:
       - name: Show what will be published
         run: ls -lh dist
 
-      # The source repo is private, and release assets inherit repo visibility —
-      # so publishing here would put the downloads somewhere nobody can reach.
-      # Binaries go to a separate public repo that holds no source.
+      # Release assets inherit this repo's visibility, so the repo has to stay
+      # public for the download links to work.
       - name: Publish
         uses: softprops/action-gh-release@v3
         with:
-          repository: harikrsh10/Stash-releases
-          # GITHUB_TOKEN only reaches this repo; cross-repo needs a PAT scoped
-          # to Stash-releases with Contents: write and nothing else.
-          token: ${{ secrets.RELEASE_REPO_TOKEN }}
-          # the tag lives in this repo, so the target repo has to be told what
-          # to call the release it is creating
-          tag_name: ${{ github.ref_name }}
           files: dist/*
+          generate_release_notes: true
           make_latest: true
-          # not generate_release_notes: it reads the *target* repo's commits,
-          # and Stash-releases has none, so the notes would come out empty
-          body: |
-            Download the build for your Mac or PC below.
-
-            - macOS (Apple Silicon) — `Stash-mac-arm64.dmg`
-            - macOS (Intel) — `Stash-mac-x64.dmg`
-            - Windows — `Stash-win-x64.exe`
-
-            Upgrading and using auto-paste? macOS ties Accessibility permission
-            to an app's signature, so remove Stash under System Settings →
-            Privacy & Security → Accessibility and add it back.
