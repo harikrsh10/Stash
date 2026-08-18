@@ -17,12 +17,11 @@
 | macOS (Intel) | `Stash-mac-x64.dmg` |
 | Windows | `Stash-win-x64.exe` |
 
-> **First launch will be blocked.** Stash is signed only ad-hoc, not notarized —
-> that needs a paid Apple Developer account. It isn't a virus, it's unverified.
+> **macOS**: open the `.dmg` and drag Stash to Applications.
+> Signed and notarized by Apple — no security warning to click through.
 >
-> **macOS**: System Settings → **Privacy & Security** → scroll down → **Open Anyway**.
-> On recent macOS the old right-click → Open trick no longer works.
-> **Windows**: **More info** → **Run anyway** on the SmartScreen prompt.
+> **Windows**: not yet signed, so SmartScreen will warn on first launch.
+> Click **More info** → **Run anyway**.
 
 See [all releases](https://github.com/harikrsh10/Stash/releases) for older versions.
 
@@ -205,6 +204,7 @@ Since regular history is memory-only, quitting Stash clears everything unpinned 
 - **Text drag into code editors**: Some editors (e.g. VS Code, Cursor) drop a file reference rather than inserting text. Workaround: click the entry to put it on the real clipboard, then ⌘V. Or use the dock with auto-paste enabled.
 - **Very large formatting is dropped.** Styled text is kept, but Word, Excel and some web pages put hundreds of kilobytes of HTML on the clipboard for one paragraph. Anything past 256KB is dropped and the clip stays plain, rather than growing the store on disk without limit.
 - **Auto-paste may be blocked** by secure apps (password managers, banking sites, some terminals) that refuse synthetic keystrokes. The clip is on your clipboard — just paste manually with ⌘V.
+- **Upgrading from a pre-0.1.23 build?** macOS ties Accessibility permission to the app's signature, and this release is signed differently than earlier ones. Remove Stash under System Settings → Privacy & Security → Accessibility and add it back, or auto-paste will fail silently.
 - **Hotkey conflicts**: `⌘⇧V` is used by some apps (Slack's plain-paste). `⌘⇧Space` may conflict with macOS Character Viewer. Both auto-retry registration on system resume and display changes.
 - **Text extraction needs macOS or Windows.** It uses the OS engine and there's no bundled fallback.
 - **Extraction is only as good as the OS engine.** Both are strong on ordinary UI text and still mistake `10X` for `IOX` or `AI` for `Al` on stylised type. Very small or very low-contrast text can be missed entirely.
