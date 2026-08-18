@@ -128,3 +128,7 @@ jobs:
           files: dist/*
           generate_release_notes: true
           make_latest: true
+          # TEMPORARY — remove this line once the signing pipeline is proven.
+          # Keeps this first test tag from replacing v0.1.22 as the "latest"
+          # download while the certificate is still being verified.
+          prerelease: true
