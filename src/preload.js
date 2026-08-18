@@ -22,6 +22,10 @@ contextBridge.exposeInMainWorld('api', {
   addToSession: (clipId, sessionId) => ipcRenderer.invoke('session:add', clipId, sessionId),
   removeFromSession: (clipId, sessionId) => ipcRenderer.invoke('session:remove', clipId, sessionId),
 
+  // manual order — `ids` is the new order of the rows the drawer was showing
+  reorderPinned: (ids) => ipcRenderer.invoke('order:pinned', ids),
+  reorderSession: (sessionId, ids) => ipcRenderer.invoke('order:session', sessionId, ids),
+
   // OCR
   ocr: (id) => ipcRenderer.invoke('ocr:run', id),
   expandWindow: (v) => ipcRenderer.invoke('window:expand', v),
