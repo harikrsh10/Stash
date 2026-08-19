@@ -38,6 +38,7 @@ See [all releases](https://github.com/harikrsh10/Stash/releases) for older versi
 - Drag any entry from the drawer into any other app — Notion, VS Code, Figma, Finder, browser address bar, anywhere that accepts file or text drops
 - Click an entry to re-copy it (then ⌘V elsewhere as normal). Styled text keeps its formatting — a clip that carries any is marked `styled`. Hold **⌥/Alt** while clicking to copy it as plain text instead
 - **Pin items** (★) to keep them across restarts — pinned clips live in their own section at the top and don't count toward the 100-item cap
+- **Catch the screenshots you take** (macOS, optional) — screenshots saved to disk turn up in Stash like anything you copy
 - **Pull colours out of an image** — hover a screenshot, press **color**, and get its palette as clickable swatches with hex values
 - **Auto-paste from dock** (optional, off by default) — when enabled, picking an item from the dock automatically pastes it into the focused app. Requires Accessibility permission on macOS
 - Search, filter by type (including "pinned" and "prompt"), delete individual items or clear all
@@ -90,6 +91,33 @@ read 6 of 26 words on a dark marketing screenshot where Windows read 22.
 
 ---
 
+## Catching the screenshots you take
+
+**macOS only, and off until you turn it on** — tray menu → *Keep screenshots I take*.
+
+On Windows the usual screenshot gesture puts the picture straight on the
+clipboard, so Stash sees it like any other copy. On macOS the default
+(**⌘⇧3 / ⌘⇧4 / ⌘⇧5**) writes a file to your Desktop and never touches the
+clipboard — you have to remember to hold **⌃** as well. So the screenshots
+people actually take are the ones Stash never sees.
+
+With this on, Stash watches wherever macOS saves them and picks each one up as
+an ordinary image clip — draggable, pinnable, and readable by both the text and
+colour extractors. Nothing about how you take screenshots changes.
+
+- The folder and the filename prefix are read from macOS rather than assumed, so
+  a custom `screencapture` location is followed
+- Anything already sitting in that folder when Stash starts is left alone
+- A file is only read once it has stopped being written to — macOS can publish
+  the directory entry before the bytes land, and half a PNG is not a clip
+- **Pause capture** pauses this too
+
+It stays off by default because switching it on is what makes macOS ask for
+access to the folder, and a permission prompt on first launch — for something
+you haven't asked for yet — is the wrong trade. Same reasoning as auto-paste.
+
+---
+
 ## Pull the colours out of an image
 
 Copy a screenshot, hover it, press **color**.
@@ -136,7 +164,7 @@ npm run dev
 npm test
 ```
 
-403 assertions, about a minute. They drive the real renderer in a hidden window
+432 assertions, about a minute. They drive the real renderer in a hidden window
 rather than a copy of it — see [test/README.md](test/README.md).
 
 ### Package for distribution

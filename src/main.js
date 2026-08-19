@@ -35,6 +35,7 @@ let drawerDragSafetyTimer = null;
 // User settings (persisted to disk)
 let settings = {
   autoPasteFromDock: false, // default off — no permission prompt on first launch
+  watchScreenshots: false,  // macOS only, and off for the same reason
   activeSessionId: null,    // capture into this session; null means ordinary copying
   appearance: 'system',     // system | dark | light
 };
@@ -259,6 +260,21 @@ function refreshTrayMenu() {
         }
       },
     },
+    // macOS only: on Windows the screenshot gesture already reaches the
+    // clipboard, so there is nothing here to fix and no toggle to explain.
+    ...(process.platform === 'darwin' ? [{
+      label: 'Keep screenshots I take',
+      type: 'checkbox',
+      checked: settings.watchScreenshots,
+      click: (item) => {
+        settings.watchScreenshots = item.checked;
+        saveSettings();
+        // Turning it on is what asks macOS for access to the folder, so the
+        // prompt lands on the click that asked for it.
+        if (settings.watchScreenshots) startScreenshotWatcher();
+        else stopScreenshotWatcher();
+      },
+    }] : []),
     {
       label: `${history.length} clip${history.length === 1 ? '' : 's'}${pinCount ? ` · ${pinCount} pinned` : ''}${promptCount ? ` · ${promptCount} prompt${promptCount === 1 ? '' : 's'}` : ''}${isPaused ? ' (paused)' : ''}`,
       enabled: false,
@@ -833,6 +849,174 @@ function refreshDock() {
 }
 
 // ---------- clipboard watcher ----------
+// ---------- macOS screenshots ----------
+// On Windows the usual screenshot gesture puts the picture straight on the
+// clipboard, so Stash sees it like any other copy. On macOS the default
+// (⌘⇧3 / ⌘⇧4 / ⌘⇧5) writes a file and never touches the clipboard — you have
+// to remember to hold Ctrl as well. So the screenshots people actually take
+// are the ones Stash never sees. Watching where macOS puts them closes that
+// gap without asking anyone to change a habit.
+//
+// Off by default: reading the screenshot folder is what triggers the macOS
+// permission prompt, and a prompt on first launch for something the user
+// hasn't asked for yet is the wrong trade. Same reasoning as auto-paste.
+
+let screenshotWatcher = null;
+const seenShots = new Set();
+const SHOT_EXT = /\.(png|jpg|jpeg|gif|tiff|heic|pdf)$/i;
+
+// Where macOS drops screenshots, and what it calls them — both are settable by
+// the user through `defaults`, so read rather than assume. An unset key exits
+// non-zero, which is the signal to use the documented default.
+function screenshotLocation() {
+  const readPref = (key, fallback) => {
+    try {
+      const { execFileSync } = require('child_process');
+      const out = execFileSync('defaults', ['read', 'com.apple.screencapture', key],
+        { encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] });
+      const value = (out || '').trim();
+      return value || fallback;
+    } catch (_) {
+      return fallback;
+    }
+  };
+  const dir = readPref('location', path.join(os.homedir(), 'Desktop'));
+  return {
+    dir: dir.startsWith('~') ? path.join(os.homedir(), dir.slice(1)) : dir,
+    prefix: readPref('name', 'Screenshot'),
+  };
+}
+
+// macOS writes the file only once its floating thumbnail has finished, and
+// writes it in one go rather than growing it — but a watcher can still see the
+// entry before the bytes land. Wait for the size to hold steady before reading,
+// or we hash a half-written PNG and store a broken clip.
+function whenFileSettles(filepath, done) {
+  let last = -1;
+  let tries = 0;
+  const tick = () => {
+    let size;
+    try {
+      size = fs.statSync(filepath).size;
+    } catch (_) {
+      return; // vanished again — a preview file, or the user undid the shot
+    }
+    if (size > 0 && size === last) return done();
+    if (++tries > 40) return; // ~8s; something else is writing this file
+    last = size;
+    setTimeout(tick, 200);
+  };
+  setTimeout(tick, 200);
+}
+
+function handleNewScreenshot(dir, filename) {
+  if (!filename || !SHOT_EXT.test(filename)) return;
+  const filepath = path.join(dir, filename);
+  if (seenShots.has(filepath)) return;
+  seenShots.add(filepath);
+
+  whenFileSettles(filepath, () => {
+    // Pausing capture has to mean pausing all of it, not just the clipboard.
+    if (isPaused) return;
+    try {
+      const png = nativeImage.createFromPath(filepath).toPNG();
+      if (png && png.length) ingestImage(png);
+    } catch (err) {
+      console.error('[Stash] could not read screenshot:', err.message);
+    }
+  });
+}
+
+function stopScreenshotWatcher() {
+  if (!screenshotWatcher) return;
+  try { screenshotWatcher.close(); } catch (_) {}
+  screenshotWatcher = null;
+  seenShots.clear();
+}
+
+function startScreenshotWatcher() {
+  stopScreenshotWatcher();
+  if (process.platform !== 'darwin' || !settings.watchScreenshots) return;
+
+  const { dir, prefix } = screenshotLocation();
+  if (!fs.existsSync(dir)) {
+    console.warn('[Stash] screenshot folder not found:', dir);
+    return;
+  }
+
+  // Everything already sitting there predates this watcher. Without this the
+  // first event would drag in whatever the folder happens to contain.
+  try {
+    fs.readdirSync(dir).forEach(f => seenShots.add(path.join(dir, f)));
+  } catch (err) {
+    console.error('[Stash] cannot read screenshot folder:', err.message);
+    return;
+  }
+
+  try {
+    screenshotWatcher = fs.watch(dir, (_event, filename) => {
+      if (!filename) return;
+      // Only files macOS named as a screenshot — not everything that lands on
+      // a Desktop that people also use as a working folder.
+      if (prefix && !filename.startsWith(prefix)) return;
+      handleNewScreenshot(dir, filename);
+    });
+    console.log(`[Stash] watching for screenshots in ${dir}`);
+  } catch (err) {
+    console.error('[Stash] could not watch screenshot folder:', err.message);
+  }
+}
+
+// One picture, one path in. The clipboard poller and the macOS screenshot
+// watcher both land here, so a screenshot behaves exactly like a copied image —
+// same de-duplication, same promote-on-recopy, same session collection.
+// Returns the clip's signature, or null if the buffer wasn't an image.
+function ingestImage(png) {
+  if (!png || !png.length) return null;
+  const img = nativeImage.createFromBuffer(png);
+  if (img.isEmpty()) return null;
+
+  const sig = 'img:' + hash(png);
+
+  // If the same picture is already pinned, just bump it rather than making a
+  // second copy of it in history.
+  const pinnedIdx = pinned.findIndex(p => p.id === sig);
+  if (pinnedIdx > -1) {
+    const existing = pinned.splice(pinnedIdx, 1)[0];
+    existing.pinnedAt = Date.now();
+    pinned.unshift(existing);
+    savePinned();
+    // seeing it again counts as copying it, so a live session takes it too
+    broadcastPromote(existing, collectIfActive(existing));
+    return sig;
+  }
+
+  const existingIdx = history.findIndex(h => h.id === sig);
+  if (existingIdx > -1) {
+    const existing = history.splice(existingIdx, 1)[0];
+    existing.ts = Date.now();
+    history.unshift(existing);
+    broadcastPromote(existing, collectIfActive(existing));
+    return sig;
+  }
+
+  const size = img.getSize();
+  const filename = `clip-${Date.now()}.png`;
+  const filepath = path.join(TMP_DIR, filename);
+  fs.writeFileSync(filepath, png);
+
+  addEntry({
+    id: sig,
+    type: 'img',
+    content: filename,
+    filepath,
+    dataUrl: img.resize({ width: 240 }).toDataURL(),
+    meta: `${size.width}×${size.height}`,
+    ts: Date.now(),
+  });
+  return sig;
+}
+
 function pollClipboard() {
   if (isPaused) {
     rememberPausedClipboard();
@@ -854,43 +1038,7 @@ function pollClipboard() {
 
         if (!(text && isTinyIncidental)) {
           lastSig = sig;
-
-          // If user re-copies a pinned image, just bump it in pinned
-          const pinnedIdx = pinned.findIndex(p => p.id === sig);
-          if (pinnedIdx > -1) {
-            const existing = pinned.splice(pinnedIdx, 1)[0];
-            existing.pinnedAt = Date.now();
-            pinned.unshift(existing);
-            savePinned();
-            // copying it again counts as copying it, so a live session takes it too
-      broadcastPromote(existing, collectIfActive(existing));
-            return;
-          }
-
-          // Promote-on-recopy for images in history
-          const existingIdx = history.findIndex(h => h.id === sig);
-          if (existingIdx > -1) {
-            const existing = history.splice(existingIdx, 1)[0];
-            existing.ts = Date.now();
-            history.unshift(existing);
-            // copying it again counts as copying it, so a live session takes it too
-      broadcastPromote(existing, collectIfActive(existing));
-            return;
-          }
-
-          const filename = `clip-${Date.now()}.png`;
-          const filepath = path.join(TMP_DIR, filename);
-          fs.writeFileSync(filepath, png);
-
-          addEntry({
-            id: sig,
-            type: 'img',
-            content: filename,
-            filepath,
-            dataUrl: img.resize({ width: 240 }).toDataURL(),
-            meta: `${size.width}×${size.height}`,
-            ts: Date.now(),
-          });
+          ingestImage(png);
           return;
         }
       }
@@ -2072,6 +2220,10 @@ app.whenReady().then(() => {
 
   registerShortcuts();
 
+  // Only actually watches when the setting is on, so a fresh install asks
+  // macOS for nothing.
+  startScreenshotWatcher();
+
   // Update check — wait a few seconds so the window is ready to receive the
   // IPC message, then run again every 6 hours while the app is alive.
   setTimeout(checkForUpdate, 5000);
@@ -2130,6 +2282,7 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   if (pollTimer) clearInterval(pollTimer);
+  stopScreenshotWatcher();
   // Clean up temp drag files, but leave pinned-images directory alone
   const pinnedImagePaths = new Set(pinned.filter(p => p.filepath).map(p => p.filepath));
   try {
