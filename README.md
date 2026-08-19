@@ -37,6 +37,7 @@ See [all releases](https://github.com/harikrsh10/Stash/releases) for older versi
   - **Dock** — Press **⌘⇧Space** (Cmd+Shift+Space / Ctrl+Shift+Space) to pop a small popover open at your cursor position, showing the last 5 items. Use this for quick paste while you're working.
 - Drag any entry from the drawer into any other app — Notion, VS Code, Figma, Finder, browser address bar, anywhere that accepts file or text drops
 - Click an entry to re-copy it (then ⌘V elsewhere as normal). Styled text keeps its formatting — a clip that carries any is marked `styled`. Hold **⌥/Alt** while clicking to copy it as plain text instead
+- **Name any clip** — press **name** on a row to give it a title of your own; the derived one moves out of the way rather than disappearing
 - **Pin items** (★) to keep them across restarts — pinned clips live in their own section at the top and don't count toward the 100-item cap
 - **Updates itself** — new versions download in the background; the titlebar badge becomes a restart when one is ready
 - **Catches the screenshots you take** (macOS) — screenshots saved to disk turn up in Stash like anything you copy
@@ -60,6 +61,26 @@ Dropping six screenshots into Figma used to mean six drags.
 - Images drop as their real files; text, code and links as one `.txt` each
 
 A plain click still just copies, so nothing changes if you never use the modifiers. `Esc` clears the selection.
+
+---
+
+## Naming what you keep
+
+Hover a clip, press **name**, type, press enter.
+
+A headline Stash works out for itself is fine while you still remember copying
+the thing. It stops being fine for exactly what's worth keeping — a pinned
+screenshot titled `1000×1500` tells you nothing a week later.
+
+- The name replaces the headline. Nothing that was visible is lost: an image's
+  dimensions move down to the meta line, and any other kind of clip keeps its
+  preview underneath the name
+- Clearing the name puts the derived headline back
+- A clip can sit in history, in pinned, and in several sessions at once —
+  renaming it renames every copy, so it isn't called two things in one drawer
+- Names show in the dock too
+- Names last as long as the clip does: forever for pinned clips, prompts and
+  session clips; until you quit for ordinary history, same as the clip itself
 
 ---
 
@@ -193,7 +214,7 @@ npm run dev
 npm test
 ```
 
-466 assertions, about a minute. They drive the real renderer in a hidden window
+493 assertions, about a minute. They drive the real renderer in a hidden window
 rather than a copy of it — see [test/README.md](test/README.md).
 
 ### Package for distribution
