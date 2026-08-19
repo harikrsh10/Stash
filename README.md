@@ -38,6 +38,7 @@ See [all releases](https://github.com/harikrsh10/Stash/releases) for older versi
 - Drag any entry from the drawer into any other app — Notion, VS Code, Figma, Finder, browser address bar, anywhere that accepts file or text drops
 - Click an entry to re-copy it (then ⌘V elsewhere as normal). Styled text keeps its formatting — a clip that carries any is marked `styled`. Hold **⌥/Alt** while clicking to copy it as plain text instead
 - **Pin items** (★) to keep them across restarts — pinned clips live in their own section at the top and don't count toward the 100-item cap
+- **Updates itself** — new versions download in the background; the titlebar badge becomes a restart when one is ready
 - **Catch the screenshots you take** (macOS, optional) — screenshots saved to disk turn up in Stash like anything you copy
 - **Pull colours out of an image** — hover a screenshot, press **color**, and get its palette as clickable swatches with hex values
 - **Auto-paste from dock** (optional, off by default) — when enabled, picking an item from the dock automatically pastes it into the focused app. Requires Accessibility permission on macOS
@@ -140,6 +141,27 @@ image gives you two.
 
 ---
 
+## Updating itself
+
+Stash checks for a new version at startup and every six hours, downloads it in
+the background while you carry on working, and swaps it in when you restart.
+The badge in the titlebar shows the download's progress, then turns into
+**restart** once the new version is ready — clicking it before then does
+nothing, deliberately, since quitting mid-download would cost you your
+unpinned history for no reason.
+
+- **macOS** updates through Squirrel, which needs the app signed (it is) and a
+  `.zip` in the release beside the `.dmg`. The dmg is what you download the
+  first time; the zip is what gets installed over it afterwards
+- **Windows** updates through NSIS, and fetches only the changed blocks rather
+  than the whole installer again
+- Dev runs skip the check entirely — there's no packaged copy to replace
+
+Nothing is installed without you restarting, and an update already downloaded
+when you quit is applied then.
+
+---
+
 ## Building it yourself
 
 The source is here to read, but Stash isn't open source — see
@@ -164,7 +186,7 @@ npm run dev
 npm test
 ```
 
-432 assertions, about a minute. They drive the real renderer in a hidden window
+466 assertions, about a minute. They drive the real renderer in a hidden window
 rather than a copy of it — see [test/README.md](test/README.md).
 
 ### Package for distribution
