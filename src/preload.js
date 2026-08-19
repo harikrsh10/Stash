@@ -70,4 +70,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // updates
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  // restart into the version already downloaded in the background
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+  getUpdateState: () => ipcRenderer.invoke('update:get'),
 });

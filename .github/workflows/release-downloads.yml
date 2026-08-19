@@ -28,11 +28,24 @@ jobs:
           - platform: windows
             os: windows-latest
             command: npm run dist:win
-            files: dist/*.exe
+            # The installer, plus what the auto-updater reads: latest.yml is the
+            # feed, and the blockmap lets an existing install fetch only the
+            # changed parts instead of all 67MB again.
+            files: |
+              dist/*.exe
+              dist/*.blockmap
+              dist/latest.yml
           - platform: macos
             os: macos-latest
             command: npm run dist:mac
-            files: dist/*.dmg
+            # The dmg is what a person downloads the first time. The zip is what
+            # Squirrel installs on top of an existing copy — without it the Mac
+            # build finds an update it cannot apply.
+            files: |
+              dist/*.dmg
+              dist/*.zip
+              dist/*.blockmap
+              dist/latest-mac.yml
 
     steps:
       - name: Checkout

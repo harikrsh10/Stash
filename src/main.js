@@ -2102,62 +2102,87 @@ ipcMain.handle('palette:run', async (_e, id) => {
   }
 });
 
-// ---------- update check ----------
-// Lightweight check: ask GitHub for the latest release tag, compare to our
-// own version, tell the renderer if there's something newer. Runs once at
-// startup and again every 6 hours. Failures are silent — if GitHub is down
-// or the user is offline, the app just behaves as if no update exists.
+// ---------- updates ----------
+// Stash used to check GitHub's API for a newer tag and, if it found one, send
+// the user to the releases page to fetch 90MB by hand. Most people never came
+// back from that trip.
 //
-// We use the public GitHub Releases API (unauthenticated, 60 req/hour per IP),
-// which is more than enough for this poll cadence.
+// electron-updater does the whole thing in the background: it reads the update
+// feed electron-builder publishes alongside each release, downloads the new
+// version while you carry on working, and swaps it in on the next quit. The
+// only thing asked of the user is the restart.
+//
+// macOS updates through Squirrel, which needs the app to be signed — it is —
+// and needs a zip in the release next to the dmg, which the build config now
+// produces. Windows updates through NSIS and can fetch only the changed blocks
+// rather than the whole installer.
 
-const GITHUB_RELEASES_URL = 'https://api.github.com/repos/harikrsh10/Stash/releases/latest';
+const { autoUpdater } = require('electron-updater');
 const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
-// Strip leading "v" and split into numbers so "0.1.10" > "0.1.9" (string
-// compare would get this wrong).
-function parseVersion(v) {
-  return String(v).replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
-}
+// The updater has no business restarting the app underneath someone mid-copy.
+// Download quietly, then let them choose the moment.
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+autoUpdater.logger = null;
 
-function isNewerVersion(remote, local) {
-  const a = parseVersion(remote);
-  const b = parseVersion(local);
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    const x = a[i] || 0;
-    const y = b[i] || 0;
-    if (x > y) return true;
-    if (x < y) return false;
-  }
-  return false;
-}
+let updateState = null; // null | {status, version}
 
-async function checkForUpdate() {
-  try {
-    const res = await fetch(GITHUB_RELEASES_URL, {
-      headers: { 'User-Agent': `Stash/${app.getVersion()}` },
-    });
-    if (!res.ok) return;
-    const data = await res.json();
-    const latestTag = data.tag_name; // e.g. "v0.1.4"
-    const currentVersion = app.getVersion();
-
-    if (isNewerVersion(latestTag, currentVersion)) {
-      console.log(`[Stash] update available: ${currentVersion} → ${latestTag}`);
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('update:available', {
-          version: latestTag,
-          url: data.html_url, // release page on github.com
-        });
-      }
-    } else {
-      console.log(`[Stash] up to date (${currentVersion})`);
-    }
-  } catch (err) {
-    // Offline, rate-limited, or GitHub having a bad day — silently ignore.
-    console.log('[Stash] update check failed:', err.message);
+function sendUpdateState(state) {
+  updateState = state;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update:available', state);
   }
 }
+
+autoUpdater.on('update-available', (info) => {
+  console.log(`[Stash] update available: ${app.getVersion()} -> ${info.version}`);
+  sendUpdateState({ status: 'downloading', version: info.version });
+});
+
+autoUpdater.on('download-progress', (p) => {
+  // Only the percentage is worth showing; the badge is small.
+  sendUpdateState({
+    status: 'downloading',
+    version: (updateState && updateState.version) || '',
+    percent: Math.round(p.percent || 0),
+  });
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+  console.log(`[Stash] update ready: ${info.version}`);
+  sendUpdateState({ status: 'ready', version: info.version });
+});
+
+autoUpdater.on('update-not-available', () => {
+  console.log(`[Stash] up to date (${app.getVersion()})`);
+});
+
+autoUpdater.on('error', (err) => {
+  // Offline, rate-limited, or a release without an update feed. Nothing the
+  // user can act on, so the badge stays hidden and the app carries on.
+  console.log('[Stash] update check failed:', (err && err.message) || err);
+});
+
+function checkForUpdate() {
+  // A dev run has no update feed to read and no installed copy to replace.
+  if (isDev || !app.isPackaged) {
+    console.log('[Stash] dev build — skipping update check');
+    return;
+  }
+  autoUpdater.checkForUpdates().catch(() => { /* handled by the error event */ });
+}
+
+// The renderer asks for this when someone clicks the badge. Quitting is the
+// install: Squirrel and NSIS both swap the files in as the app exits.
+ipcMain.handle('update:install', () => {
+  if (!updateState || updateState.status !== 'ready') return false;
+  setImmediate(() => autoUpdater.quitAndInstall());
+  return true;
+});
+
+// So a window opened after the download still learns about it.
+ipcMain.handle('update:get', () => updateState);
 
 // Renderer asks us to open a URL in the user's default browser.
 ipcMain.handle('shell:openExternal', (_e, url) => {

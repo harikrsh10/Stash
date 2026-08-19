@@ -1071,8 +1071,9 @@
     }
     .pause-btn.paused .dot { background: var(--pinned-2); }
 
-    /* update-available badge — sits left of pause btn, only shown when a
-       newer release exists on github. clicking opens the release page. */
+    /* update badge — sits left of pause btn. While the new version downloads
+       in the background it shows progress and does nothing when clicked;
+       once it's ready it becomes the restart. */
     .update-badge {
       -webkit-app-region: no-drag;
       background: none;
@@ -1095,6 +1096,9 @@
       background: var(--session-wash);
       border-color: var(--live-dim);
     }
+    /* still downloading: visible, but not something to click at */
+    .update-badge:not(.ready) { cursor: default; opacity: 0.75; }
+    .update-badge:not(.ready):hover { background: none; color: var(--live); }
     .update-badge .update-arrow {
       font-size: 11px;
       line-height: 1;
@@ -3221,18 +3225,37 @@
     // listen for update-available notification from main process
     // (fired once at startup if a newer release exists on github, and again
     // every 6 hours while the app is running)
+    // The new version downloads itself in the background; the badge only shows
+    // where that has got to, and turns into the restart when it's ready.
     const updateBadge = document.getElementById('updateBadge');
     const updateLabel = document.getElementById('updateLabel');
-    let updateUrl = null;
-    window.api.onUpdateAvailable(({ version, url }) => {
-      updateUrl = url;
-      updateLabel.textContent = version;
-      updateBadge.title = `new version ${version} available — click to download`;
+    let updateReady = false;
+
+    function showUpdateState(state) {
+      if (!state) return;
+      const version = String(state.version || '').replace(/^v/, '');
+      updateReady = state.status === 'ready';
+      if (updateReady) {
+        updateLabel.textContent = 'restart';
+        updateBadge.title = `version ${version} is ready — click to restart into it`;
+      } else {
+        updateLabel.textContent = typeof state.percent === 'number' && state.percent > 0
+          ? `${state.percent}%` : version || 'update';
+        updateBadge.title = `downloading version ${version}…`;
+      }
+      updateBadge.classList.toggle('ready', updateReady);
       updateBadge.style.display = 'flex';
+    }
+
+    window.api.onUpdateAvailable(showUpdateState);
+    updateBadge.addEventListener('click', async () => {
+      // Nothing to do while it's still coming down — clicking then would only
+      // be an invitation to lose whatever is on the clipboard.
+      if (!updateReady) return;
+      await window.api.installUpdate();
     });
-    updateBadge.addEventListener('click', () => {
-      if (updateUrl) window.api.openExternal(updateUrl);
-    });
+    // a window opened after the download finished still has to learn about it
+    window.api.getUpdateState().then(showUpdateState);
 
     // initial load
     (async () => {

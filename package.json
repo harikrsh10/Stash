@@ -48,13 +48,22 @@
           "to": "stash-ocr"
         }
       ],
-      "target": {
-        "target": "dmg",
-        "arch": [
-          "x64",
-          "arm64"
-        ]
-      },
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
       "electronLanguages": [
         "en-US"
       ]
@@ -71,6 +80,16 @@
       "assets/**/*",
       "package.json"
     ],
-    "asarUnpack": []
+    "asarUnpack": [],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "harikrsh10",
+        "repo": "Stash"
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }
