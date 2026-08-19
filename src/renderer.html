@@ -371,6 +371,70 @@
       box-shadow: 0 0 0 1px var(--select-wash-3);
     }
 
+    /* ---------- extracted colours ----------
+       The chrome here is deliberately neutral. An accent hue beside the
+       swatches would shift how every one of them reads, and the whole point
+       is showing the colours truthfully. */
+    .insp-swatches {
+      display: none;
+      flex-shrink: 0;
+      margin: 10px 14px 0;
+      gap: 6px;
+      grid-template-columns: repeat(2, 1fr);
+      max-height: 232px;
+      overflow-y: auto;
+    }
+    .inspector[data-mode="color"] .insp-swatches { display: grid; }
+    .inspector[data-mode="color"] .insp-canvas { flex: 0 1 auto; max-height: 34vh; }
+    .insp-swatches::-webkit-scrollbar { width: 3px; }
+    .insp-swatches::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    .swatch {
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+      border: 1px solid var(--border2);
+      border-radius: 5px;
+      overflow: hidden;
+      cursor: pointer;
+      background: var(--surface2);
+      transition: border-color 0.12s, box-shadow 0.12s, transform 0.12s;
+    }
+    .swatch:hover { border-color: var(--muted); transform: translateY(-1px); }
+    .swatch.picked {
+      border-color: var(--select-dim);
+      box-shadow: 0 0 0 1px var(--select-wash-3);
+    }
+    /* the colour itself, printed with its own hex over it — reading the value
+       against the colour is the check a person actually makes */
+    .swatch-chip {
+      flex: 1;
+      min-width: 0;
+      padding: 10px 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      letter-spacing: 0.04em;
+    }
+    .swatch-meta {
+      flex-shrink: 0;
+      width: 46px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1px;
+      background: var(--surface2);
+      border-left: 1px solid var(--border2);
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--muted);
+    }
+    .swatch.picked .swatch-meta { color: var(--text-2); }
+    .swatch-share { font-size: 10px; color: var(--text-2); }
+
     .insp-out {
       flex-shrink: 0;
       margin: 12px 14px 0;
@@ -1346,15 +1410,16 @@
 </head>
 <body>
   <div class="shell">
-  <div class="inspector" id="inspector">
+  <div class="inspector" id="inspector" data-mode="text">
     <div class="insp-head">
-      <span class="insp-title">select text from image</span>
+      <span class="insp-title" id="inspTitle">select text from image</span>
       <span class="insp-hint" id="inspHint">tap the highlighted areas</span>
       <button class="close-btn" id="inspClose" title="close (Esc)">×</button>
     </div>
     <div class="insp-canvas">
       <div class="insp-stage" id="inspStage"></div>
     </div>
+    <div class="insp-swatches" id="inspSwatches"></div>
     <div class="insp-out empty" id="inspOut">selected text appears here</div>
     <div class="insp-actions">
       <button class="insp-btn" id="inspCopy" disabled>copy text</button>
@@ -1897,6 +1962,13 @@
     const inspHintEl = document.getElementById('inspHint');
     const inspCopyEl = document.getElementById('inspCopy');
     const inspPromptEl = document.getElementById('inspPrompt');
+    const inspTitleEl = document.getElementById('inspTitle');
+    const inspSwatchesEl = document.getElementById('inspSwatches');
+    // 'text' draws boxes over the picture; 'color' lists what it's made of.
+    // Both are the same panel — one image, one set of things to pick from it.
+    let inspMode = 'text';
+    let inspColors = [];
+    const inspPickedColors = new Set();
     let inspBlocks = [];
     // pixel dimensions of the image OCR read — the space block boxes live in
     let inspSrcW = 0;
@@ -1912,29 +1984,88 @@
       if (!inspectorEl.classList.contains('show')) return;
       inspectorEl.classList.remove('show');
       inspStageEl.innerHTML = '';
+      inspSwatchesEl.innerHTML = '';
       inspBlocks = [];
+      inspColors = [];
       inspPicked.clear();
+      inspPickedColors.clear();
+      inspMode = 'text';
+      inspectorEl.dataset.mode = 'text';
       syncInspOut();
       window.api.expandWindow(false);
     }
 
-    // `src` is the full-size image OCR actually read, and w/h are the pixel
-    // dimensions the block coordinates belong to — never the on-screen size.
-    async function openInspector(src, blocks, w, h) {
-      inspBlocks = blocks;
+    // Both modes show the same picture at the same size, so opening it is
+    // shared; only what gets drawn on top differs.
+    async function showInspectorImage(src, w, h, onLoad) {
       inspSrcW = w || 0;
       inspSrcH = h || 0;
-      inspPicked.clear();
       inspStageEl.innerHTML = '';
-      // widen the OS window first so the picture is measured at its real size
       await window.api.expandWindow(true);
       inspectorEl.classList.add('show');
 
       const img = new Image();
       img.alt = '';
       inspStageEl.appendChild(img);
-      img.onload = () => drawRegions(img);
+      if (onLoad) img.onload = () => onLoad(img);
       img.src = src;
+    }
+
+    async function openPalette(src, colors, w, h) {
+      inspMode = 'color';
+      inspectorEl.dataset.mode = 'color';
+      inspColors = colors || [];
+      inspPickedColors.clear();
+      inspTitleEl.textContent = 'colours in this image';
+      await showInspectorImage(src, w, h);
+      drawSwatches();
+      syncInspOut();
+    }
+
+    function drawSwatches() {
+      inspSwatchesEl.innerHTML = '';
+      inspColors.forEach((c, i) => {
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = 'swatch' + (inspPickedColors.has(i) ? ' picked' : '');
+        el.title = `${c.hex} · rgb(${c.rgb.join(', ')})`;
+
+        const chip = document.createElement('span');
+        chip.className = 'swatch-chip';
+        // The one place a literal colour belongs: it *is* the extracted value.
+        chip.style.background = c.hex;
+        chip.style.color = c.light ? 'var(--bg)' : 'var(--text)';
+        chip.textContent = c.hex;
+
+        const meta = document.createElement('span');
+        meta.className = 'swatch-meta';
+        const share = document.createElement('span');
+        share.className = 'swatch-share';
+        share.textContent = Math.round(c.share * 100) + '%';
+        meta.appendChild(share);
+
+        el.appendChild(chip);
+        el.appendChild(meta);
+        el.addEventListener('click', () => {
+          if (inspPickedColors.has(i)) inspPickedColors.delete(i);
+          else inspPickedColors.add(i);
+          el.classList.toggle('picked', inspPickedColors.has(i));
+          syncInspOut();
+        });
+        inspSwatchesEl.appendChild(el);
+      });
+    }
+
+    // `src` is the full-size image OCR actually read, and w/h are the pixel
+    // dimensions the block coordinates belong to — never the on-screen size.
+    async function openInspector(src, blocks, w, h) {
+      inspMode = 'text';
+      inspectorEl.dataset.mode = 'text';
+      inspBlocks = blocks;
+      inspPicked.clear();
+      inspTitleEl.textContent = 'select text from image';
+      // widen the OS window first so the picture is measured at its real size
+      await showInspectorImage(src, w, h, drawRegions);
 
       inspHintEl.textContent = blocks.length
         ? `${blocks.length} area${blocks.length === 1 ? '' : 's'} found`
@@ -1977,15 +2108,31 @@
     }
 
     function pickedText() {
+      if (inspMode === 'color') {
+        // in the order they sit in the palette, so a copied set keeps the
+        // dominant colour first rather than the order they were tapped
+        return [...inspPickedColors].sort((a, b) => a - b)
+          .map(i => inspColors[i].hex).join('\n');
+      }
       return [...inspPicked].sort((a, b) => a - b).map(i => inspBlocks[i].text).join('\n\n');
     }
 
     function syncInspOut() {
+      const isColor = inspMode === 'color';
       const text = pickedText();
-      inspOutEl.textContent = text || 'selected text appears here';
+      inspOutEl.textContent = text || (isColor ? 'tap the colours you want' : 'selected text appears here');
       inspOutEl.classList.toggle('empty', !text);
       inspCopyEl.disabled = !text;
       inspPromptEl.disabled = !text;
+      inspCopyEl.textContent = isColor ? 'copy hex' : 'copy text';
+
+      if (isColor) {
+        if (!inspColors.length) return;
+        inspHintEl.textContent = inspPickedColors.size
+          ? `${inspPickedColors.size} of ${inspColors.length} selected`
+          : `${inspColors.length} colour${inspColors.length === 1 ? '' : 's'} found`;
+        return;
+      }
       if (inspBlocks.length) {
         inspHintEl.textContent = inspPicked.size
           ? `${inspPicked.size} of ${inspBlocks.length} selected`
@@ -2040,6 +2187,37 @@
         // without this a fault here leaves nothing on screen at all: the
         // progress sheet has already stepped aside and the panel never opened
         console.error('inspector failed:', err);
+        closeInspector();
+        ocrSheetEl.classList.add('show');
+        ocrListEl.innerHTML = `<div class="ocr-empty">something went wrong reading that image</div>`;
+        ocrCountEl.textContent = '';
+      } finally {
+        ocrBusyId = null;
+      }
+    }
+
+    // Colours take the same route as text: the progress sheet while main works,
+    // then the inspector takes over. Reading pixels is fast enough that the
+    // sheet is usually a flash, but it's the same shape either way.
+    async function runPalette(id) {
+      if (ocrBusyId) return;
+      ocrBusyId = id;
+      closeEditor();
+      ocrSheetEl.classList.add('show');
+      ocrCountEl.classList.add('show');
+      ocrCountEl.textContent = 'reading…';
+      showOcrStatus('picking out the colours…', 0.3);
+      try {
+        const res = await window.api.palette(id);
+        if (!res || !res.ok) {
+          ocrListEl.innerHTML = `<div class="ocr-empty">${esc((res && res.error) || 'could not read that image')}</div>`;
+          ocrCountEl.textContent = '';
+          return;
+        }
+        ocrSheetEl.classList.remove('show');
+        await openPalette(res.imageUrl || res.dataUrl, res.colors || [], res.width, res.height);
+      } catch (err) {
+        console.error('palette failed:', err);
         closeInspector();
         ocrSheetEl.classList.add('show');
         ocrListEl.innerHTML = `<div class="ocr-empty">something went wrong reading that image</div>`;
@@ -2615,6 +2793,7 @@
           <button class="pin-btn prompt-btn ${c.isPrompt ? 'on' : ''}" data-act="prompt" title="${c.isPrompt ? 'stop keeping this as a prompt' : 'save as a prompt — kept forever'}">✦</button>
           ${c.isPrompt ? `<button class="act-btn" data-act="edit" title="edit text and tags">edit</button>` : `<button class="pin-btn ${isPinned ? 'pinned' : ''}" data-act="pin" title="${isPinned ? 'unpin' : 'pin'}">${isPinned ? '★' : '☆'}</button>`}
           ${c.type === 'img' ? `<button class="act-btn" data-act="ocr" title="pull the text out of this image">text</button>` : ''}
+          ${c.type === 'img' ? `<button class="act-btn" data-act="palette" title="pull the colours out of this image">color</button>` : ''}
           ${(activeSessionId && !sessionId && !isInSession(c.id, activeSessionId))
             ? `<button class="act-btn" data-act="ses" title="add to the session you're collecting into">+ses</button>` : ''}
           <button class="act-btn" data-act="copy" title="copy">copy</button>
@@ -2703,6 +2882,11 @@
       el.querySelector('[data-act="ocr"]')?.addEventListener('click', (e) => {
         e.stopPropagation();
         runOcr(c.id);
+      });
+
+      el.querySelector('[data-act="palette"]')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        runPalette(c.id);
       });
 
       el.querySelector('[data-act="edit"]')?.addEventListener('click', (e) => {
