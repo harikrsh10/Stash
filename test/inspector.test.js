@@ -140,15 +140,23 @@ app.whenReady().then(async () => {
 
     const imgRow = document.querySelector('.item[data-id=\\"img1\\"]');
     const txtRow = document.querySelector('.item[data-id=\\"t1\\"]');
-    ok('image rows get a text button', !!imgRow.querySelector('[data-act=\\"ocr\\"]'), '');
-    ok('text rows do not', !txtRow.querySelector('[data-act=\\"ocr\\"]'), '');
+    ok('every row can be opened', !!imgRow.querySelector('[data-act=\\"view\\"]')
+       && !!txtRow.querySelector('[data-act=\\"view\\"]'), '');
+    // Extraction moved into the preview panel — you press it beside the image
+    // rather than on a row where you cannot see what you are extracting from.
+    const extract = async (what) => {
+      imgRow.querySelector('[data-act=\\"view\\"]').click();
+      await tick(60);
+      document.getElementById(what).click();
+    };
+
 
     const sheet = document.getElementById('ocrSheet');
     ok('sheet starts hidden', !sheet.classList.contains('show'), '');
 
     const insp = document.getElementById('inspector');
     ok('inspector starts hidden', !insp.classList.contains('show'), '');
-    imgRow.querySelector('[data-act=\\"ocr\\"]').click();
+    await extract('detailText');
     ok('progress sheet opens immediately', sheet.classList.contains('show'), '');
     ok('shows progress while working', !!document.querySelector('.ocr-status'), '');
     await tick(120);
@@ -217,7 +225,7 @@ app.whenReady().then(async () => {
 
     // hiding the drawer must also collapse it
     respond = { ok: true, imageUrl: PNG, width: 8, height: 8, blocks: [{ text: 'x', bbox: { x0: 0, y0: 0, x1: 1, y1: 1 } }] };
-    imgRow.querySelector('[data-act=\\"ocr\\"]').click();
+    await extract('detailText');
     await tick(120);
     ok('inspector open again', insp.classList.contains('show'), '');
     Object.defineProperty(document, 'hidden', { value: true, configurable: true });
@@ -228,7 +236,7 @@ app.whenReady().then(async () => {
 
     // empty result
     respond = { ok: true, imageUrl: PNG, width: 8, height: 8, blocks: [] };
-    imgRow.querySelector('[data-act=\\"ocr\\"]').click();
+    await extract('detailText');
     await tick(120);
     ok('empty result still opens the panel and says so',
        insp.classList.contains('show') && document.getElementById('inspHint').textContent === 'no text found',
@@ -237,12 +245,13 @@ app.whenReady().then(async () => {
 
     // failure path
     respond = { ok: false, error: 'that image is no longer on disk' };
-    imgRow.querySelector('[data-act=\\"ocr\\"]').click();
+    await extract('detailText');
     await tick(120);
     ok('errors are surfaced, not silent',
        document.querySelector('.ocr-empty').textContent.includes('no longer on disk'),
        document.querySelector('.ocr-empty').textContent);
-    ok('a failure does not widen the window', !insp.classList.contains('show'), '');
+    ok('a failure leaves the picture up rather than closing on you',
+       insp.classList.contains('show') && insp.dataset.mode === 'detail', insp.dataset.mode);
 
     return out;
   })()`;
