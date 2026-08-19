@@ -35,7 +35,7 @@ let drawerDragSafetyTimer = null;
 // User settings (persisted to disk)
 let settings = {
   autoPasteFromDock: false, // default off — no permission prompt on first launch
-  watchScreenshots: false,  // macOS only, and off for the same reason
+  watchScreenshots: true,   // macOS only — see the watcher for why this one is on
   activeSessionId: null,    // capture into this session; null means ordinary copying
   appearance: 'system',     // system | dark | light
 };
@@ -269,8 +269,8 @@ function refreshTrayMenu() {
       click: (item) => {
         settings.watchScreenshots = item.checked;
         saveSettings();
-        // Turning it on is what asks macOS for access to the folder, so the
-        // prompt lands on the click that asked for it.
+        // Switching it back on re-asks macOS for the folder if the permission
+        // was refused earlier, so the prompt lands on the click that wanted it.
         if (settings.watchScreenshots) startScreenshotWatcher();
         else stopScreenshotWatcher();
       },
@@ -857,9 +857,17 @@ function refreshDock() {
 // are the ones Stash never sees. Watching where macOS puts them closes that
 // gap without asking anyone to change a habit.
 //
-// Off by default: reading the screenshot folder is what triggers the macOS
-// permission prompt, and a prompt on first launch for something the user
-// hasn't asked for yet is the wrong trade. Same reasoning as auto-paste.
+// On by default, unlike auto-paste. The two look similar — both macOS-only,
+// both needing a permission — but they are not the same bargain. Auto-paste
+// changes what happens when you click something; this only decides whether a
+// screenshot you already took is somewhere you can find it, which is what the
+// app does with everything else you copy. Leaving it off meant the default
+// experience on a Mac was the broken one, and the feature existed only for
+// people who went looking for it.
+//
+// The cost is a permission prompt near first launch. The Info.plist string
+// says plainly what it is for, and refusing it costs nothing: the watcher
+// fails to read the folder, logs, and the rest of the app carries on.
 
 let screenshotWatcher = null;
 const seenShots = new Set();
