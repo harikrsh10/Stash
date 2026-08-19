@@ -16,9 +16,10 @@ const grab = (n) => {
 };
 const ctx = { console };
 vm.createContext(ctx);
-vm.runInContext(
-  [grab('samplePixels'), grab('histogramOf'), grab('medianCut'), grab('hexOf'), grab('luminanceOf'), grab('extractPalette')].join('\n')
-  + '\nthis.api={samplePixels,histogramOf,medianCut,hexOf,luminanceOf,extractPalette};', ctx);
+const QUANTISER = ['samplePixels', 'histogramOf', 'medianCut', 'hexOf',
+  'luminanceOf', 'saturationOf', 'hueOf', 'hueGap', 'extractPalette'];
+vm.runInContext(QUANTISER.map(grab).join('\n')
+  + '\nthis.api={' + QUANTISER.join(',') + '};', ctx);
 const api = ctx.api;
 
 const results = [];
@@ -100,6 +101,74 @@ ok('swatches are ordered by how much of the image they are',
    shares.every((c, i) => i === 0 || shares[i - 1].share >= c.share),
    shares.map(c => Math.round(c.share * 100) + '%').join(' '));
 
+// ---------- picking colours worth showing ----------
+// The shape that broke it: a page of vivid gradient tiles on a dark ground.
+// Cutting straight to eight boxes spent every split on the 90% background and
+// returned four greys, with none of the colour anyone opened the panel for.
+
+const poster = repeat([10, 10, 10], 5400).concat(
+  repeat([230, 30, 40], 100),   // red
+  repeat([40, 200, 90], 100),   // green
+  repeat([50, 90, 230], 100),   // blue
+  repeat([230, 180, 30], 100),  // amber
+  repeat([200, 50, 190], 100),  // magenta
+  repeat([40, 200, 210], 100),  // cyan
+);
+const posterPal = api.extractPalette(poster, 8);
+const posterVivid = posterPal.filter(c => api.saturationOf(c.rgb[0], c.rgb[1], c.rgb[2]) > 0.3);
+ok('a colourful image on a dark ground gives back its colours',
+   posterVivid.length >= 4, posterPal.map(c => c.hex).join(' '));
+ok('and still says what it mostly is',
+   posterPal[0] && posterPal[0].hex === '#0A0A0A', posterPal[0] && posterPal[0].hex);
+
+// six near-identical reds against one green and one blue: ranking on coverage
+// and saturation alone fills the palette with reds and never reaches the rest
+const manyReds = [];
+for (let i = 0; i < 6; i++) manyReds.push(...repeat([200 + i * 8, 30, 34 + i * 3], 120));
+const crowd = repeat([12, 12, 12], 4000)
+  .concat(manyReds, repeat([40, 200, 90], 200), repeat([50, 90, 230], 200));
+const crowdPal = api.extractPalette(crowd, 8);
+const crowdHues = crowdPal
+  .filter(c => api.saturationOf(c.rgb[0], c.rgb[1], c.rgb[2]) > 0.25)
+  .map(c => api.hueOf(c.rgb[0], c.rgb[1], c.rgb[2]));
+const near = (h, t) => crowdHues.some(x => Math.min(Math.abs(x - t), 360 - Math.abs(x - t)) < 40);
+ok('a crowd of one hue does not squeeze out the others',
+   near(0, 0) && near(0, 130) && near(0, 220),
+   crowdPal.map(c => c.hex).join(' '));
+// Same hue at a different lightness is a legitimate second swatch; same hue at
+// the same lightness is the same colour twice.
+const vividCrowd = crowdPal.filter(c => api.saturationOf(c.rgb[0], c.rgb[1], c.rgb[2]) > 0.25);
+const twins = vividCrowd.some((a, i) => vividCrowd.some((b, j) => {
+  if (i === j) return false;
+  const ha = api.hueOf(a.rgb[0], a.rgb[1], a.rgb[2]);
+  const hb = api.hueOf(b.rgb[0], b.rgb[1], b.rgb[2]);
+  const la = api.luminanceOf(a.rgb[0], a.rgb[1], a.rgb[2]);
+  const lb = api.luminanceOf(b.rgb[0], b.rgb[1], b.rgb[2]);
+  return api.hueGap({ hue: ha }, { hue: hb }) < 30 && Math.abs(la - lb) < 0.15;
+}));
+ok('no swatch is another one over again', !twins, crowdPal.map(c => c.hex).join(' '));
+
+// two stray pixels are antialiasing, not a colour the picture is made of
+const speckled = repeat([20, 20, 20], 9998).concat(repeat([255, 0, 255], 2));
+const speckledPal = api.extractPalette(speckled, 8);
+ok('a couple of stray pixels are not a palette colour',
+   !speckledPal.some(c => c.hex === '#FF00FF'), speckledPal.map(c => c.hex).join(' '));
+ok('the palette would rather be short than padded with noise',
+   speckledPal.length < 8, speckledPal.length + ' swatches');
+
+// a flat two-colour image must still come back whole
+const flat = api.extractPalette(repeat([255, 255, 255], 800).concat(repeat([20, 30, 200], 200)), 8);
+ok('a real second colour is never mistaken for noise', flat.length === 2, flat.map(c => c.hex).join(' '));
+
+ok('saturation ignores how dark a colour is',
+   api.saturationOf(255, 0, 0) === 1 && api.saturationOf(80, 0, 0) === 1, '');
+ok('a grey has no saturation', api.saturationOf(90, 90, 90) === 0, '');
+ok('and no hue to crowd anything with', api.hueOf(90, 90, 90) === -1, '');
+ok('hue lands where the wheel says', Math.round(api.hueOf(0, 255, 0)) === 120,
+   String(api.hueOf(0, 255, 0)));
+ok('hue distance wraps round the wheel',
+   api.hueGap({ hue: 350 }, { hue: 10 }) === 20, String(api.hueGap({ hue: 350 }, { hue: 10 })));
+
 // ---------- the values a swatch carries ----------
 
 ok('hex is padded and upper case', api.hexOf(0, 10, 255) === '#000AFF', api.hexOf(0, 10, 255));
@@ -118,14 +187,77 @@ ok('rgb comes back alongside the hex',
    rgbCarried && JSON.stringify(rgbCarried.rgb) === JSON.stringify([12, 34, 56]),
    JSON.stringify(rgbCarried && rgbCarried.rgb));
 
+// ---------- finding the clip at all ----------
+// A session's clips are the only copy that survives a restart, so a reader
+// that looks in history and pinned alone reports a picture sitting on disk as
+// missing. That was the bug; these are the cases.
+
+const lookupCtx = {
+  console,
+  history: [],
+  pinned: [],
+  sessionClips: [],
+  fs: { existsSync: (p) => !/gone/.test(p) },
+};
+vm.createContext(lookupCtx);
+vm.runInContext([grab('findClip'), grab('imageClipFor')].join('\n')
+  + '\nthis.api={findClip,imageClipFor};', lookupCtx);
+
+const setStores = (h, p, s) => {
+  lookupCtx.history = h; lookupCtx.pinned = p; lookupCtx.sessionClips = s;
+};
+
+setStores([], [], [{ id: 'a', type: 'img', filepath: '/perm/a.png', sessionId: 's1' }]);
+ok('a clip that only exists in a session is found',
+   !!lookupCtx.api.findClip('a'), '');
+ok('and it is offered up as a readable image',
+   lookupCtx.api.imageClipFor('a').entry !== undefined,
+   JSON.stringify(lookupCtx.api.imageClipFor('a').error));
+
+// history keeps a temp file that gets cleaned up; the session copy was moved
+// somewhere permanent. Same id, and only one of them still has a picture.
+setStores(
+  [{ id: 'b', type: 'img', filepath: '/tmp/gone.png' }],
+  [],
+  [{ id: 'b', type: 'img', filepath: '/perm/b.png', sessionId: 's1' }]);
+ok('the copy that still has its file wins',
+   lookupCtx.api.findClip('b').filepath === '/perm/b.png',
+   lookupCtx.api.findClip('b').filepath);
+
+setStores([{ id: 'c', type: 'img', filepath: '/tmp/c.png' }], [], []);
+ok('an ordinary history image still resolves',
+   lookupCtx.api.findClip('c').filepath === '/tmp/c.png', '');
+
+setStores([], [{ id: 'd', type: 'img', filepath: '/perm/d.png' }], []);
+ok('so does a pinned one', !!lookupCtx.api.findClip('d'), '');
+
+setStores([], [], []);
+ok('a clip that is gone entirely says so',
+   /no longer in Stash/.test(lookupCtx.api.imageClipFor('missing').error),
+   lookupCtx.api.imageClipFor('missing').error);
+
+setStores([{ id: 'e', type: 'text', content: 'hi' }], [], []);
+ok('asking a text clip for its colours is refused clearly',
+   /not an image/.test(lookupCtx.api.imageClipFor('e').error),
+   lookupCtx.api.imageClipFor('e').error);
+
+setStores([], [], [{ id: 'f', type: 'img', filepath: '/perm/gone.png', sessionId: 's1' }]);
+ok('a genuinely missing file still blames the disk',
+   /no longer on disk/.test(lookupCtx.api.imageClipFor('f').error),
+   lookupCtx.api.imageClipFor('f').error);
+
 // ---------- the wiring a person actually clicks ----------
 
 const preload = fs.readFileSync(path.join(SRCDIR, 'preload.js'), 'utf8');
 const renderer = fs.readFileSync(path.join(SRCDIR, 'renderer.html'), 'utf8');
 
 ok('main answers palette:run', /ipcMain\.handle\('palette:run'/.test(MAIN), '');
-ok('it refuses anything that is not an image on disk',
-   /palette:run[\s\S]*?type !== 'img'[\s\S]*?fs\.existsSync/.test(MAIN), '');
+ok('colour looks in sessions too, not just history and pinned',
+   /palette:run[\s\S]{0,200}imageClipFor\(id\)/.test(MAIN), '');
+ok('so does text — the same bug applied to both',
+   /ocr:run[\s\S]{0,200}imageClipFor\(id\)/.test(MAIN), '');
+ok('neither reader hunts through history and pinned alone',
+   !/\[\.\.\.history, \.\.\.pinned\]\.find/.test(MAIN), '');
 ok('it sends the full image, not the preview thumbnail',
    /palette:run[\s\S]*?pathToFileURL\(entry\.filepath\)/.test(MAIN), '');
 ok('preload exposes palette', /palette:\s*\(id\)\s*=>\s*ipcRenderer\.invoke\('palette:run'/.test(preload), '');

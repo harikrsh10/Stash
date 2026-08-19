@@ -2041,7 +2041,10 @@
         meta.className = 'swatch-meta';
         const share = document.createElement('span');
         share.className = 'swatch-share';
-        share.textContent = Math.round(c.share * 100) + '%';
+        // An accent colour is genuinely a fraction of a percent of the picture.
+        // Rounding it to "0%" reads as a bug rather than as a small share.
+        const pct = c.share * 100;
+        share.textContent = pct < 1 ? '<1%' : Math.round(pct) + '%';
         meta.appendChild(share);
 
         el.appendChild(chip);

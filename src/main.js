@@ -1724,12 +1724,51 @@ function luminanceOf(r, g, b) {
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 }
 
+// HSL saturation — how much colour a value carries, independent of how dark it
+// is. #0A0A0A and #1A1A1A both score 0; a vivid red scores 1.
+function saturationOf(r, g, b) {
+  const mx = Math.max(r, g, b) / 255;
+  const mn = Math.min(r, g, b) / 255;
+  if (mx === mn) return 0;
+  const l = (mx + mn) / 2;
+  return l > 0.5 ? (mx - mn) / (2 - mx - mn) : (mx - mn) / (mx + mn);
+}
+
+// Hue in degrees, or -1 for a grey. Used to stop a palette coming back as six
+// versions of the same red while the greens and blues in the picture go unlisted.
+function hueOf(r, g, b) {
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+  const d = mx - mn;
+  if (!d) return -1;
+  let h;
+  if (mx === r) h = ((g - b) / d) % 6;
+  else if (mx === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  h *= 60;
+  return h < 0 ? h + 360 : h;
+}
+
+// Shortest way round the colour wheel. Greys have no hue to crowd, so they
+// never block anything.
+function hueGap(a, b) {
+  if (a.hue < 0 || b.hue < 0) return 360;
+  const d = Math.abs(a.hue - b.hue);
+  return Math.min(d, 360 - d);
+}
+
 // Boxes either side of a cut can land on colours nobody would call different.
 // Merging them keeps the list to colours worth showing separately, and hands
 // the merged share to the more populous of the pair rather than averaging the
 // two into a colour that appears nowhere in the picture.
 function extractPalette(pixels, want) {
-  const boxes = medianCut(histogramOf(pixels), want || 8);
+  const target = want || 8;
+
+  // Cut far past the number of swatches we mean to show. A poster that is 90%
+  // dark background and 10% vivid tiles spends every early cut carving up the
+  // background, so stopping at eight boxes returns eight greys and none of the
+  // colour anyone opened the panel to find. Over-segmenting gives the small
+  // vivid regions boxes of their own; picking between them comes after.
+  const boxes = medianCut(histogramOf(pixels), Math.max(32, target * 6));
   const total = pixels.length || 1;
 
   const swatches = boxes.map(box => {
@@ -1755,10 +1794,53 @@ function extractPalette(pixels, want) {
     kept.push(s);
   }
 
-  return kept.map(s => ({
+  // Coverage alone picks the background every time. What makes a picture
+  // recognisable is usually the small saturated part of it, so rank on three
+  // things: how much of the image it is, how much colour it carries, and how
+  // near mid-tone it sits. The quarter-power flattens coverage enough that a
+  // 1% vivid tile can beat a 30% grey, while still keeping a large flat colour
+  // ahead of a stray pixel. Without the mid-tone term a muddy dark brown wins
+  // over a bright green, because saturation alone can't tell them apart.
+  for (const s of kept) {
+    s.share = s.count / total;
+    s.sat = saturationOf(s.r, s.g, s.b);
+    s.hue = hueOf(s.r, s.g, s.b);
+    s.luma = luminanceOf(s.r, s.g, s.b);
+    const punch = Math.max(0.15, 1 - Math.abs(s.luma - 0.5) * 1.6);
+    s.score = Math.pow(s.share, 0.22) * (0.15 + s.sat) * punch;
+  }
+
+  // Whatever the image is mostly made of always earns its place — a palette
+  // that omits the background isn't the palette of that image either. The
+  // second ground colour joins it only if it covers enough to be one.
+  const FLOOR = 0.0005;
+  const byShare = [...kept].sort((a, b) => b.share - a.share);
+  const chosen = byShare.slice(0, 1);
+  if (byShare[1] && byShare[1].share >= FLOOR) chosen.push(byShare[1]);
+
+  // Then fill on score, refusing anything that would read as a colour already
+  // on the list. Same hue *and* much the same lightness is a duplicate — but
+  // same hue at a different lightness is not, or a photo shot in one colour
+  // would come back as two swatches instead of the ramp it actually is.
+  //
+  // Anything under a twentieth of a percent is edge antialiasing rather than a
+  // colour the picture is made of. Padding the list out with those gives eight
+  // swatches where three read "0%" and none of them are in the image to the
+  // eye — five true colours is the better answer.
+  const ranked = [...kept].sort((a, b) => b.score - a.score);
+  for (const s of ranked) {
+    if (chosen.length >= target) break;
+    if (chosen.includes(s) || s.share < FLOOR) continue;
+    const duplicate = s.sat > 0.18 && chosen.some(c =>
+      c.sat > 0.18 && hueGap(s, c) < 30 && Math.abs(s.luma - c.luma) < 0.15);
+    if (!duplicate) chosen.push(s);
+  }
+
+  // Shown most-of-the-image first, so the percentages read in order.
+  return chosen.sort((a, b) => b.share - a.share).map(s => ({
     hex: hexOf(s.r, s.g, s.b),
     rgb: [Math.round(s.r), Math.round(s.g), Math.round(s.b)],
-    share: s.count / total,
+    share: s.share,
     light: luminanceOf(s.r, s.g, s.b) > 0.55,
   }));
 }
@@ -1787,11 +1869,38 @@ ipcMain.handle('prompt:create', (_e, content) => {
   return true;
 });
 
-ipcMain.handle('ocr:run', async (_e, id) => {
-  const entry = [...history, ...pinned].find(c => c.id === id);
-  if (!entry || entry.type !== 'img' || !entry.filepath || !fs.existsSync(entry.filepath)) {
-    return { ok: false, error: 'that image is no longer on disk' };
+// A clip can be in history, kept as a pin or a prompt, or sitting in a session
+// — and after a restart a session's clips are the only place it still exists.
+// Looking in only two of the three is why reading a session's image reported
+// the file as missing when it was on disk the whole time.
+//
+// The same id can appear twice: history's copy points at a temp file that gets
+// cleaned up, while the session's copy was moved somewhere permanent. Prefer
+// whichever still has its picture.
+function findClip(id) {
+  const matches = [...history, ...pinned, ...sessionClips].filter(c => c.id === id);
+  if (!matches.length) return null;
+  return matches.find(c => c.type !== 'img' || (c.filepath && fs.existsSync(c.filepath)))
+    || matches[0];
+}
+
+// Both readers want the same thing: an image whose file is still there. They
+// also want to say which of the two went wrong, rather than blaming the disk
+// for a clip that was never found.
+function imageClipFor(id) {
+  const entry = findClip(id);
+  if (!entry) return { error: 'that clip is no longer in Stash' };
+  if (entry.type !== 'img') return { error: 'that clip is not an image' };
+  if (!entry.filepath || !fs.existsSync(entry.filepath)) {
+    return { error: 'that image is no longer on disk' };
   }
+  return { entry };
+}
+
+ipcMain.handle('ocr:run', async (_e, id) => {
+  const found = imageClipFor(id);
+  if (found.error) return { ok: false, error: found.error };
+  const entry = found.entry;
   const send = (msg) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('ocr:progress', msg);
   };
@@ -1820,10 +1929,9 @@ ipcMain.handle('ocr:run', async (_e, id) => {
 });
 
 ipcMain.handle('palette:run', async (_e, id) => {
-  const entry = [...history, ...pinned].find(c => c.id === id);
-  if (!entry || entry.type !== 'img' || !entry.filepath || !fs.existsSync(entry.filepath)) {
-    return { ok: false, error: 'that image is no longer on disk' };
-  }
+  const found = imageClipFor(id);
+  if (found.error) return { ok: false, error: found.error };
+  const entry = found.entry;
   try {
     // Same as OCR: the renderer shows the full image, not entry.dataUrl, which
     // is only a 240px preview.

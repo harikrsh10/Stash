@@ -136,7 +136,7 @@ npm run dev
 npm test
 ```
 
-381 assertions, about a minute. They drive the real renderer in a hidden window
+403 assertions, about a minute. They drive the real renderer in a hidden window
 rather than a copy of it — see [test/README.md](test/README.md).
 
 ### Package for distribution
