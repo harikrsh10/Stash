@@ -54,11 +54,17 @@
           "x64",
           "arm64"
         ]
-      }
+      },
+      "electronLanguages": [
+        "en-US"
+      ]
     },
     "win": {
       "target": "nsis",
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon.ico",
+      "electronLanguages": [
+        "en-US"
+      ]
     },
     "files": [
       "src/**/*",
