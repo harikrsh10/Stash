@@ -3,7 +3,7 @@
 > A clipboard manager that keeps what you copy, and gets it back out again.
 > Mac / Windows · built with Electron.
 
-**Everything you copy, quietly kept. Gather a stack of it, pull text out of screenshots, keep your prompts forever.**
+**Everything you copy, quietly kept. Gather a stack of it, pull text and colours out of screenshots, keep your prompts forever.**
 
 ---
 
@@ -38,6 +38,7 @@ See [all releases](https://github.com/harikrsh10/Stash/releases) for older versi
 - Drag any entry from the drawer into any other app — Notion, VS Code, Figma, Finder, browser address bar, anywhere that accepts file or text drops
 - Click an entry to re-copy it (then ⌘V elsewhere as normal). Styled text keeps its formatting — a clip that carries any is marked `styled`. Hold **⌥/Alt** while clicking to copy it as plain text instead
 - **Pin items** (★) to keep them across restarts — pinned clips live in their own section at the top and don't count toward the 100-item cap
+- **Pull colours out of an image** — hover a screenshot, press **color**, and get its palette as clickable swatches with hex values
 - **Auto-paste from dock** (optional, off by default) — when enabled, picking an item from the dock automatically pastes it into the focused app. Requires Accessibility permission on macOS
 - Search, filter by type (including "pinned" and "prompt"), delete individual items or clear all
 - **Pause capture** — toggle the live/paused indicator in the titlebar (or from the tray menu) when you're copying sensitive stuff you don't want recorded. Anything copied while paused stays ignored after you resume.
@@ -89,6 +90,28 @@ read 6 of 26 words on a dark marketing screenshot where Windows read 22.
 
 ---
 
+## Pull the colours out of an image
+
+Copy a screenshot, hover it, press **color**.
+
+The same panel opens beside the drawer, this time listing what the picture is
+made of — each swatch printed with its own hex over it, and how much of the
+image that colour covers. Click the ones you want; they gather underneath,
+ready to **copy** or **add to prompts**. A palette you'll reuse can be kept
+permanently the same way a prompt is.
+
+Colours are found by median cut over the image's own histogram, not by counting
+the most common pixel values — a UI screenshot is thousands of near-identical
+shades of one background, and counting raw values just returns eight greys.
+Each swatch is the colour that actually dominates its region rather than the
+average of it, so every hex you copy is one the picture genuinely contains: a
+red and a blue never average into a purple that appears nowhere.
+
+Near-identical swatches are merged, so asking for eight colours on a two-colour
+image gives you two.
+
+---
+
 ## Building it yourself
 
 The source is here to read, but Stash isn't open source — see
@@ -113,7 +136,7 @@ npm run dev
 npm test
 ```
 
-317 assertions, about a minute. They drive the real renderer in a hidden window
+381 assertions, about a minute. They drive the real renderer in a hidden window
 rather than a copy of it — see [test/README.md](test/README.md).
 
 ### Package for distribution

@@ -1629,6 +1629,140 @@ function clusterLines(lines) {
     }));
 }
 
+// ---------- colours out of an image ----------
+// The same bargain as the text side: a picture goes in, a small set of things
+// you can act on comes out.
+//
+// Not "count the most common pixel values" — a screenshot is thousands of
+// near-identical shades of one background, so counting raw values returns
+// eight versions of grey and calls it a palette. Median cut splits colour
+// space itself, so each swatch stands for a region of the image rather than
+// an exact value that happened to repeat.
+
+// Electron hands back BGRA. Striding over the buffer keeps a 4000×3000 photo
+// to the same work as a small screenshot — proportions between colours survive
+// sampling long before the sample gets this coarse.
+function samplePixels(bitmap, maxSamples) {
+  const total = Math.floor(bitmap.length / 4);
+  const step = Math.max(1, Math.floor(total / (maxSamples || 20000)));
+  const out = [];
+  for (let i = 0; i < total; i += step) {
+    const o = i * 4;
+    if (bitmap[o + 3] < 128) continue; // a transparent pixel isn't a colour
+    out.push([bitmap[o + 2], bitmap[o + 1], bitmap[o]]);
+  }
+  return out;
+}
+
+// Collapse to unique colours before splitting anything. A UI screenshot is a
+// handful of exact values repeated thousands of times, and a sampled photo is
+// at most a few thousand entries — either way this is far smaller than the
+// pixel list, and it lets a split be weighted by how much of the picture each
+// colour actually covers.
+function histogramOf(pixels) {
+  const counts = new Map();
+  for (const p of pixels) {
+    const key = (p[0] << 16) | (p[1] << 8) | p[2];
+    const hit = counts.get(key);
+    if (hit) hit.count++;
+    else counts.set(key, { r: p[0], g: p[1], b: p[2], count: 1 });
+  }
+  return [...counts.values()];
+}
+
+// Repeatedly take the box of colours with the widest spread and cut it in two
+// along that spread's own axis. Each box settles onto one region of colour.
+function medianCut(entries, want) {
+  if (!entries.length) return [];
+  const CH = ['r', 'g', 'b'];
+  const boxes = [entries];
+  while (boxes.length < want) {
+    let target = -1, axis = 'r', widest = -1;
+    for (let i = 0; i < boxes.length; i++) {
+      const box = boxes[i];
+      if (box.length < 2) continue;
+      for (const ch of CH) {
+        let lo = 255, hi = 0;
+        for (let p = 0; p < box.length; p++) {
+          const v = box[p][ch];
+          if (v < lo) lo = v;
+          if (v > hi) hi = v;
+        }
+        if (hi - lo > widest) { widest = hi - lo; target = i; axis = ch; }
+      }
+    }
+    // every remaining box is a single colour — splitting further buys nothing
+    if (target < 0 || widest <= 0) break;
+
+    // Cut where half the *pixels* lie, not half the distinct colours. Splitting
+    // by colour count lets one stray pixel weigh as much as the background.
+    const sorted = boxes[target].slice().sort((a, b) => a[axis] - b[axis]);
+    const total = sorted.reduce((n, e) => n + e.count, 0);
+    // Stop one short of the end: both sides have to keep at least one colour,
+    // or the "split" hands everything back to one side and the box never
+    // divides — two colours in, one swatch out.
+    const last = sorted.length - 2;
+    let acc = 0, cut = 0;
+    for (; cut < last; cut++) {
+      acc += sorted[cut].count;
+      if (acc * 2 >= total) break;
+    }
+    boxes.splice(target, 1, sorted.slice(0, cut + 1), sorted.slice(cut + 1));
+  }
+  return boxes.filter(b => b.length);
+}
+
+function hexOf(r, g, b) {
+  return '#' + [r, g, b]
+    .map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0'))
+    .join('').toUpperCase();
+}
+
+// Rec. 601 weighting, so the renderer knows whether to print the hex over the
+// swatch in ink or in white. Green reads far brighter than blue at the same value.
+function luminanceOf(r, g, b) {
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+}
+
+// Boxes either side of a cut can land on colours nobody would call different.
+// Merging them keeps the list to colours worth showing separately, and hands
+// the merged share to the more populous of the pair rather than averaging the
+// two into a colour that appears nowhere in the picture.
+function extractPalette(pixels, want) {
+  const boxes = medianCut(histogramOf(pixels), want || 8);
+  const total = pixels.length || 1;
+
+  const swatches = boxes.map(box => {
+    // The swatch is the colour that actually dominates the box, never the
+    // average of it. Averaging a box that still straddles two clusters reports
+    // a colour that appears nowhere in the picture — red and blue together
+    // come back as purple, and a designer copies a hex the image never had.
+    let best = box[0], count = 0;
+    for (const e of box) {
+      count += e.count;
+      if (e.count > best.count) best = e;
+    }
+    return { r: best.r, g: best.g, b: best.b, count };
+  }).sort((a, b) => b.count - a.count);
+
+  const kept = [];
+  for (const s of swatches) {
+    const near = kept.find(k => {
+      const dr = k.r - s.r, dg = k.g - s.g, db = k.b - s.b;
+      return dr * dr + dg * dg + db * db < 700; // ~26 apart in RGB
+    });
+    if (near) { near.count += s.count; continue; }
+    kept.push(s);
+  }
+
+  return kept.map(s => ({
+    hex: hexOf(s.r, s.g, s.b),
+    rgb: [Math.round(s.r), Math.round(s.g), Math.round(s.b)],
+    share: s.count / total,
+    light: luminanceOf(s.r, s.g, s.b) > 0.55,
+  }));
+}
+
 ipcMain.handle('window:expand', (_e, expanded) => setWindowExpanded(!!expanded));
 
 // "Add to prompt" from extracted text — the text was never a clip of its own,
@@ -1681,6 +1815,33 @@ ipcMain.handle('ocr:run', async (_e, id) => {
     };
   } catch (err) {
     console.error('[Stash] OCR failed:', err);
+    return { ok: false, error: err.message || 'could not read that image' };
+  }
+});
+
+ipcMain.handle('palette:run', async (_e, id) => {
+  const entry = [...history, ...pinned].find(c => c.id === id);
+  if (!entry || entry.type !== 'img' || !entry.filepath || !fs.existsSync(entry.filepath)) {
+    return { ok: false, error: 'that image is no longer on disk' };
+  }
+  try {
+    // Same as OCR: the renderer shows the full image, not entry.dataUrl, which
+    // is only a 240px preview.
+    const img = nativeImage.createFromPath(entry.filepath);
+    const size = img.getSize();
+    const colors = extractPalette(samplePixels(img.toBitmap(), 24000), 8);
+    if (!colors.length) {
+      return { ok: false, error: 'could not read any colour out of that image' };
+    }
+    return {
+      ok: true,
+      colors,
+      imageUrl: pathToFileURL(entry.filepath).href,
+      width: size.width,
+      height: size.height,
+    };
+  } catch (err) {
+    console.error('[Stash] palette failed:', err);
     return { ok: false, error: err.message || 'could not read that image' };
   }
 });
