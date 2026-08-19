@@ -37,7 +37,10 @@
       ],
       "minimumSystemVersion": "10.15",
       "extendInfo": {
-        "NSAppleEventsUsageDescription": "Stash needs this to press Command-V in the app you were last using, so a clip you pick can paste itself."
+        "NSAppleEventsUsageDescription": "Stash needs this to press Command-V in the app you were last using, so a clip you pick can paste itself.",
+        "NSDesktopFolderUsageDescription": "Stash watches where macOS saves your screenshots so they turn up in your clipboard history like anything else you copy.",
+        "NSDocumentsFolderUsageDescription": "Stash only reads this if you have told macOS to save your screenshots here.",
+        "NSDownloadsFolderUsageDescription": "Stash only reads this if you have told macOS to save your screenshots here."
       },
       "extraResources": [
         {
