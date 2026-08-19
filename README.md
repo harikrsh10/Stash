@@ -39,7 +39,7 @@ See [all releases](https://github.com/harikrsh10/Stash/releases) for older versi
 - Click an entry to re-copy it (then ⌘V elsewhere as normal). Styled text keeps its formatting — a clip that carries any is marked `styled`. Hold **⌥/Alt** while clicking to copy it as plain text instead
 - **Pin items** (★) to keep them across restarts — pinned clips live in their own section at the top and don't count toward the 100-item cap
 - **Updates itself** — new versions download in the background; the titlebar badge becomes a restart when one is ready
-- **Catch the screenshots you take** (macOS, optional) — screenshots saved to disk turn up in Stash like anything you copy
+- **Catches the screenshots you take** (macOS) — screenshots saved to disk turn up in Stash like anything you copy
 - **Pull colours out of an image** — hover a screenshot, press **color**, and get its palette as clickable swatches with hex values
 - **Auto-paste from dock** (optional, off by default) — when enabled, picking an item from the dock automatically pastes it into the focused app. Requires Accessibility permission on macOS
 - Search, filter by type (including "pinned" and "prompt"), delete individual items or clear all
@@ -94,7 +94,7 @@ read 6 of 26 words on a dark marketing screenshot where Windows read 22.
 
 ## Catching the screenshots you take
 
-**macOS only, and off until you turn it on** — tray menu → *Keep screenshots I take*.
+**macOS only, on by default** — tray menu → *Keep screenshots I take* to turn it off.
 
 On Windows the usual screenshot gesture puts the picture straight on the
 clipboard, so Stash sees it like any other copy. On macOS the default
@@ -113,9 +113,16 @@ colour extractors. Nothing about how you take screenshots changes.
   the directory entry before the bytes land, and half a PNG is not a clip
 - **Pause capture** pauses this too
 
-It stays off by default because switching it on is what makes macOS ask for
-access to the folder, and a permission prompt on first launch — for something
-you haven't asked for yet — is the wrong trade. Same reasoning as auto-paste.
+It's on by default, unlike auto-paste. The two look similar — both macOS-only,
+both needing a permission — but they aren't the same bargain. Auto-paste changes
+what happens when you click something; this only decides whether a screenshot
+you already took is somewhere you can find it, which is what Stash does with
+everything else you copy. Off by default meant the ordinary experience on a Mac
+was the broken one.
+
+The cost is a permission prompt near first launch. Refusing it costs nothing:
+the watcher can't read the folder, says so in the log, and the rest of the app
+carries on.
 
 ---
 

@@ -94,10 +94,22 @@ const after = (ms) => new Promise(r => setTimeout(r, ms));
 
   ok('the watcher is macOS-only',
      /process\.platform !== 'darwin'[\s\S]{0,80}return/.test(MAIN), '');
-  ok('and off until someone turns it on',
-     /watchScreenshots: false/.test(MAIN), '');
-  ok('turning it on is what asks macOS for the folder',
+  // On by default: leaving it off meant the default experience on a Mac was
+  // the broken one, and only people who went looking ever got the feature.
+  ok('it is on unless someone turns it off',
+     /watchScreenshots: true/.test(MAIN), '');
+  ok('and can still be turned off from the tray',
+     /settings\.watchScreenshots = item\.checked[\s\S]{0,400}stopScreenshotWatcher\(\)/.test(MAIN), '');
+  ok('toggling it on starts the watcher there and then',
      /settings\.watchScreenshots[\s\S]{0,200}startScreenshotWatcher\(\)/.test(MAIN), '');
+
+  // The cost of defaulting on is a permission prompt, and some people will say
+  // no. That has to be survivable rather than fatal — the folder read and the
+  // watch both sit inside their own try/catch, and the app carries on either way.
+  ok('a refused folder does not take the app down',
+     /try \{[\s\S]{0,80}fs\.readdirSync\(dir\)[\s\S]{0,220}catch \(err\)[\s\S]{0,160}return;/.test(MAIN), '');
+  ok('and neither does a watch that cannot be established',
+     /screenshotWatcher = fs\.watch\([\s\S]{0,400}catch \(err\)/.test(MAIN), '');
   ok('the toggle only appears on macOS',
      /process\.platform === 'darwin' \? \[\{[\s\S]{0,200}watchScreenshots/.test(MAIN), '');
 
