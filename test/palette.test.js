@@ -262,16 +262,16 @@ ok('it sends the full image, not the preview thumbnail',
    /palette:run[\s\S]*?pathToFileURL\(entry\.filepath\)/.test(MAIN), '');
 ok('preload exposes palette', /palette:\s*\(id\)\s*=>\s*ipcRenderer\.invoke\('palette:run'/.test(preload), '');
 
-ok('an image row offers colour beside text', /data-act="palette"/.test(renderer), '');
-ok('the button is wired', /\[data-act="palette"\][\s\S]{0,120}runPalette/.test(renderer), '');
-ok('colour only appears on images',
-   /c\.type === 'img' \?[^\n]*data-act="palette"/.test(renderer), '');
+ok('colour is offered from the preview panel', /id="detailColor"/.test(renderer), '');
+ok('the button is wired', /detailColor[\s\S]{0,160}runPalette/.test(renderer), '');
+ok('colour is only offered for images',
+   /detailColor'\)\.style\.display = c\.type === 'img'/.test(renderer), '');
 ok('the inspector has a colour mode', /data-mode="color"/.test(renderer), '');
 ok('swatches render into their own list', /inspSwatches/.test(renderer), '');
 ok('picking colours feeds the same output panel',
    /inspMode === 'color'[\s\S]{0,200}inspPickedColors/.test(renderer), '');
 ok('closing resets the mode so text opens as text',
-   /closeInspector[\s\S]{0,400}inspMode = 'text'/.test(renderer), '');
+   /closeInspector[\s\S]{0,800}inspMode = 'text'/.test(renderer), '');
 ok('one job at a time — colour shares the busy guard with text',
    /async function runPalette[\s\S]{0,120}if \(ocrBusyId\) return/.test(renderer), '');
 
@@ -319,12 +319,21 @@ app.whenReady().then(async () => {
 
     const imgRow = document.querySelector('.item[data-id=\\"img1\\"]');
     const txtRow = document.querySelector('.item[data-id=\\"t1\\"]');
-    ok('an image row offers colour', !!imgRow.querySelector('[data-act=\\"palette\\"]'), '');
-    ok('a text row does not', !txtRow.querySelector('[data-act=\\"palette\\"]'), '');
-    ok('colour sits beside text, not instead of it', !!imgRow.querySelector('[data-act=\\"ocr\\"]'), '');
+    ok('every row can be opened', !!imgRow.querySelector('[data-act=\\"view\\"]'), '');
+    ok('a text row too, since it has a preview worth reading',
+       !!txtRow.querySelector('[data-act=\\"view\\"]'), '');
+    // Extraction moved into the preview panel — you press it beside the image
+    // rather than on a row where you cannot see what you are extracting from.
+    const extract = async (what) => {
+      imgRow.querySelector('[data-act=\\"view\\"]').click();
+      await tick(60);
+      document.getElementById(what).click();
+      await tick(10);
+    };
+
 
     const insp = document.getElementById('inspector');
-    imgRow.querySelector('[data-act=\\"palette\\"]').click();
+    await extract('detailColor');
     await tick(60);
 
     ok('the button asks main for that clip', paletteCalledWith === 'img1', String(paletteCalledWith));
@@ -382,7 +391,7 @@ app.whenReady().then(async () => {
     ok('closing hides it', !insp.classList.contains('show'), '');
     ok('closing clears the swatches', document.querySelectorAll('.swatch').length === 0, '');
 
-    imgRow.querySelector('[data-act=\\"ocr\\"]').click();
+    await extract('detailText');
     await tick(60);
     ok('text still opens as text after a colour run', insp.dataset.mode === 'text', insp.dataset.mode);
     ok('and draws regions, not swatches',

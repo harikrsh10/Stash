@@ -95,6 +95,7 @@ app.whenReady().then(async () => {
     const out = [];
     const ok = (name, pass, detail) => out.push({ name, pass, detail });
     const tick = (ms) => new Promise(r => setTimeout(r, ms || 0));
+    const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAFklEQVR42mP8z8BQz0AEYBxVSF+FABJADveWkH6oAAAAAElFTkSuQmCC';
     let renamed = [];
 
     window.api = {
@@ -109,57 +110,90 @@ app.whenReady().then(async () => {
 
     pinned = [];
     history = [
-      { id: 'img1', type: 'img', content: 'image', meta: '1000×1500', ts: Date.now(), filepath: 'C:/x/a.png' },
-      { id: 'txt1', type: 'text', content: 'some copied sentence', ts: Date.now() },
+      { id: 'img1', type: 'img', content: 'image', meta: '1000×1500', ts: Date.now(), dataUrl: PNG },
+      { id: 'txt1', type: 'text', content: ['line one', 'line two', 'line three and a good deal more text than a row can show'].join(String.fromCharCode(10)), ts: Date.now() },
     ];
     render();
 
-    const imgRow = () => document.querySelector('.item[data-id=\\"img1\\"]');
-    ok('an image row shows its dimensions when unnamed',
-       imgRow().querySelector('.item-headline').textContent.includes('1000'),
-       imgRow().querySelector('.item-headline').textContent);
-    ok('every row offers a name button', !!imgRow().querySelector('[data-act=\\"rename\\"]'), '');
+    const imgRow = () => document.querySelector('.item[data-id=\"img1\"]');
+    const txtRow = () => document.querySelector('.item[data-id=\"txt1\"]');
+    const insp = document.getElementById('inspector');
+    const nameInput = document.getElementById('inspName');
 
-    // start renaming
-    imgRow().querySelector('[data-act=\\"rename\\"]').click();
-    await tick(10);
-    let input = document.querySelector('.item-rename');
-    ok('clicking name opens an input in the row', !!input, '');
-    ok('and focuses it', document.activeElement === input, '');
-    ok('the dimensions move to the meta line so they are not lost',
-       imgRow().querySelector('.item-meta').textContent.includes('1000'),
-       imgRow().querySelector('.item-meta').textContent);
+    // ---- the row action cluster ----
+    // It used to grow per type — an image carried seven buttons, and the two
+    // extractors sat where you could not see what you were extracting from.
+    const imgActs = [...imgRow().querySelectorAll('[data-act]')].map(b => b.dataset.act);
+    const txtActs = [...txtRow().querySelectorAll('[data-act]')].map(b => b.dataset.act);
+    ok('every row offers the same actions, whatever type it is',
+       JSON.stringify(imgActs) === JSON.stringify(txtActs), imgActs.join(',') + ' vs ' + txtActs.join(','));
+    ok('view is one of them', imgActs.includes('view'), imgActs.join(','));
+    ok('the per-type extractors have left the row',
+       !imgActs.includes('ocr') && !imgActs.includes('palette'), imgActs.join(','));
+    ok('and so has the old inline rename', !imgActs.includes('rename'), imgActs.join(','));
 
-    // typing, then a re-render underneath — the timer does this every 30s
-    input.value = 'Onboarding flow';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    render();
-    await tick(10);
-    input = document.querySelector('.item-rename');
-    ok('a re-render mid-typing keeps what was typed',
-       !!input && input.value === 'Onboarding flow', input && input.value);
-    ok('and keeps the cursor in it', document.activeElement === input, '');
+    // ---- opening an image ----
+    imgRow().querySelector('[data-act=\"view\"]').click();
+    await tick(60);
+    ok('view opens the panel', insp.classList.contains('show'), '');
+    ok('in preview mode', insp.dataset.mode === 'detail', insp.dataset.mode);
+    ok('the picture is shown', !!document.querySelector('.insp-stage img'), '');
+    ok('the name field is focused, ready to type into',
+       document.activeElement === nameInput, String(document.activeElement && document.activeElement.id));
+    ok('an image offers the extractors here instead',
+       document.getElementById('detailText').style.display !== 'none'
+       && document.getElementById('detailColor').style.display !== 'none', '');
 
-    // commit
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    // The bug that started this: the input rendered underneath the hover
+    // actions, which float over exactly that corner of the row.
+    const nameBox = nameInput.getBoundingClientRect();
+    const acts = imgRow().querySelector('.actions').getBoundingClientRect();
+    const overlaps = !(nameBox.right < acts.left || nameBox.left > acts.right
+                       || nameBox.bottom < acts.top || nameBox.top > acts.bottom);
+    ok('the name field is not underneath the row actions', !overlaps,
+       JSON.stringify({ name: [nameBox.left, nameBox.top], acts: [acts.left, acts.top] }));
+
+    // ---- naming from the panel ----
+    nameInput.value = 'Onboarding flow';
+    nameInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await tick(30);
     ok('enter saves the name', renamed.length === 1 && renamed[0][1] === 'Onboarding flow',
        JSON.stringify(renamed));
-    ok('and closes the input', !document.querySelector('.item-rename'), '');
 
-    // escape must not save
     renamed = [];
-    imgRow().querySelector('[data-act=\\"rename\\"]').click();
-    await tick(10);
-    const second = document.querySelector('.item-rename');
-    second.value = 'discard me';
-    second.dispatchEvent(new Event('input', { bubbles: true }));
-    second.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    history[0].name = 'Onboarding flow';
+    render();
+    imgRow().querySelector('[data-act=\"view\"]').click();
+    await tick(60);
+    nameInput.value = 'discard me';
+    nameInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await tick(20);
-    ok('escape abandons the rename', renamed.length === 0, JSON.stringify(renamed));
-    ok('and closes the input too', !document.querySelector('.item-rename'), '');
+    ok('escape puts the old name back and saves nothing',
+       renamed.length === 0 && nameInput.value === 'Onboarding flow',
+       JSON.stringify(renamed) + ' / ' + nameInput.value);
 
-    // a named clip displays that name, and keeps its content visible
+    // ---- reading a long clip in full ----
+    document.getElementById('inspClose').click();
+    await tick(20);
+    txtRow().querySelector('[data-act=\"view\"]').click();
+    await tick(60);
+    const full = document.getElementById('inspDetailText');
+    ok('a text clip shows all of itself, not two clamped lines',
+       full.classList.contains('show') && full.textContent.includes('a good deal more text'),
+       full.textContent.slice(0, 40));
+    ok('text has no extractors to offer',
+       document.getElementById('detailText').style.display === 'none', '');
+
+    // ---- closing ----
+    renamed = [];
+    nameInput.value = 'named on the way out';
+    document.getElementById('inspClose').click();
+    await tick(30);
+    ok('a name typed but not committed is saved when the panel closes',
+       renamed.length === 1 && renamed[0][1] === 'named on the way out', JSON.stringify(renamed));
+    ok('closing hides the panel', !insp.classList.contains('show'), '');
+
+    // ---- the row still shows names ----
     history[0].name = 'Onboarding flow';
     history[1].name = 'The sentence';
     render();
@@ -167,22 +201,22 @@ app.whenReady().then(async () => {
     ok('a named image shows the name as its headline',
        imgRow().querySelector('.item-headline').textContent === 'Onboarding flow',
        imgRow().querySelector('.item-headline').textContent);
-    const txtRow = document.querySelector('.item[data-id=\\"txt1\\"]');
-    ok('a named text clip still shows what it actually contains',
-       txtRow.textContent.includes('some copied sentence'), '');
-    ok('with the name above it',
-       txtRow.querySelector('.item-headline').textContent === 'The sentence',
-       txtRow.querySelector('.item-headline').textContent);
-    ok('the button says rename once there is a name to change',
-       imgRow().querySelector('[data-act=\\"rename\\"]').textContent === 'rename',
-       imgRow().querySelector('[data-act=\\"rename\\"]').textContent);
+    ok('and its dimensions move to the meta line',
+       imgRow().querySelector('.item-meta').textContent.includes('1000'),
+       imgRow().querySelector('.item-meta').textContent);
+    ok('a named text clip still shows what it contains',
+       txtRow().textContent.includes('line one'), '');
 
     return out;
   })()`;
 
+  win.webContents.on('console-message', (_e, _lvl, msg) => console.log('RENDERER: ' + msg));
   let rendered;
   try {
-    rendered = await win.webContents.executeJavaScript(probe, true);
+    rendered = await win.webContents.executeJavaScript(
+      // wrapped so a throw inside the probe comes back as a failing assertion
+      // with its message, rather than as an opaque "script failed to execute"
+      '(async()=>{try{ return await ' + probe + ' }catch(e){ return [{name:"probe threw: "+e.message, pass:false, detail:""}] }})()', true);
   } catch (err) {
     console.log('PROBE THREW: ' + err.message);
     app.exit(1);

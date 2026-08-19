@@ -435,6 +435,50 @@
     .swatch.picked .swatch-meta { color: var(--text-2); }
     .swatch-share { font-size: 10px; color: var(--text-2); }
 
+    /* ---------- preview & naming ----------
+       Naming used to happen inside the row, underneath the hover actions that
+       float over exactly that spot — you clicked name and the input appeared
+       behind the buttons. It belongs here instead, beside a view of the thing
+       being named, which is what you need in order to name it at all. */
+    .detail-name {
+      display: none;
+      flex-shrink: 0;
+      margin: 0 14px 10px;
+      padding: 8px 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 5px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      outline: none;
+    }
+    .detail-name::placeholder { color: var(--muted); font-weight: 400; }
+    .detail-name:focus { border-color: var(--session-line-2); }
+    .inspector[data-mode="detail"] .detail-name { display: block; }
+
+    /* the full text of a clip, rather than the two clamped lines a row shows */
+    .detail-text {
+      display: none;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12.5px;
+      line-height: 1.55;
+      color: var(--text-2);
+      padding: 12px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+    }
+    .inspector[data-mode="detail"] .detail-text.show { display: block; }
+
+    /* one action row per mode */
+    .detail-actions { display: none; }
+    .inspector[data-mode="detail"] .detail-actions { display: flex; }
+    .inspector[data-mode="detail"] .insp-actions:not(.detail-actions) { display: none; }
+    .inspector[data-mode="detail"] .insp-out { display: none; }
+
     .insp-out {
       flex-shrink: 0;
       margin: 12px 14px 0;
@@ -777,23 +821,6 @@
       font-size: 12px;
     }
     .item-derived .item-headline { font-size: 12px; font-weight: 400; color: var(--text-2); }
-
-    /* renaming happens in place, so the row doesn't jump as you type */
-    .item-rename {
-      width: 100%;
-      background: var(--surface2);
-      border: 1px solid var(--session-line-2);
-      border-radius: 4px;
-      color: var(--text);
-      font-family: inherit;
-      font-size: 13px;
-      font-weight: 500;
-      letter-spacing: -0.005em;
-      padding: 4px 7px;
-      outline: none;
-    }
-    .item-rename::placeholder { color: var(--muted); font-weight: 400; }
-    .item-rename:focus { border-color: var(--session); }
 
     .item-headline.clamp-2 {
       white-space: normal;
@@ -1448,14 +1475,22 @@
       <span class="insp-hint" id="inspHint">tap the highlighted areas</span>
       <button class="close-btn" id="inspClose" title="close (Esc)">×</button>
     </div>
+    <input class="detail-name" id="inspName" type="text" spellcheck="false"
+           placeholder="name this clip" maxlength="120" />
     <div class="insp-canvas">
       <div class="insp-stage" id="inspStage"></div>
+      <div class="detail-text" id="inspDetailText"></div>
     </div>
     <div class="insp-swatches" id="inspSwatches"></div>
     <div class="insp-out empty" id="inspOut">selected text appears here</div>
     <div class="insp-actions">
       <button class="insp-btn" id="inspCopy" disabled>copy text</button>
       <button class="insp-btn prompt" id="inspPrompt" disabled>add to prompts</button>
+    </div>
+    <div class="insp-actions detail-actions">
+      <button class="insp-btn" id="detailCopy">copy</button>
+      <button class="insp-btn" id="detailText">text</button>
+      <button class="insp-btn" id="detailColor">color</button>
     </div>
   </div>
 
@@ -1581,12 +1616,9 @@
     let activeTag = null;
     // prompt editor state — the id of the prompt whose sheet is open
     let editingId = null;
-    // Renaming happens inside the row, but the row list is rebuilt on a timer.
-    // Keeping the in-progress text out here means a re-render mid-typing
-    // redraws the input without losing what has been typed into it.
-    let renamingId = null;
-    let renamingValue = '';
-    let committingRename = false;
+    // Which clip the preview panel is showing. Naming happens there, beside a
+    // view of the thing, rather than in the row underneath the hover actions.
+    let detailId = null;
     let editorSaveTimer = null;
     const editorEl = document.getElementById('editor');
     const editorBodyEl = document.getElementById('editorBody');
@@ -1937,47 +1969,83 @@
       markEditingRow();
     }
 
-    function startRename(id, current) {
+    const inspNameEl = document.getElementById('inspName');
+    const inspDetailTextEl = document.getElementById('inspDetailText');
+
+    async function openDetail(id) {
+      const c = findClip(id);
+      if (!c) return;
       closeEditor();
-      renamingId = id;
-      renamingValue = current;
-      render();
-      focusRenameInput(true);
-    }
+      ocrSheetEl.classList.remove('show');
+      detailId = id;
+      inspMode = 'detail';
+      inspectorEl.dataset.mode = 'detail';
+      inspTitleEl.textContent = c.type === 'img' ? 'preview' : 'preview and name';
+      inspHintEl.textContent = c.meta || typeLabel(c);
 
-    // Called after every render so the input survives the periodic rebuild —
-    // and only selects the text the first time, or typing would be wiped out
-    // by the next tick.
-    function focusRenameInput(selectAll) {
-      const input = document.querySelector('.item-rename');
-      if (!input) return;
-      if (document.activeElement !== input) input.focus();
-      if (selectAll) input.select();
-    }
+      inspNameEl.value = c.name || '';
+      inspDetailTextEl.classList.remove('show');
+      inspStageEl.innerHTML = '';
 
-    function cancelRename() {
-      if (!renamingId) return;
-      renamingId = null;
-      renamingValue = '';
-      render();
-    }
+      // Only images get the extractors; there is nothing to read out of text
+      // that you cannot already see.
+      document.getElementById('detailText').style.display = c.type === 'img' ? '' : 'none';
+      document.getElementById('detailColor').style.display = c.type === 'img' ? '' : 'none';
 
-    async function commitRename() {
-      // The id is cleared before awaiting, so the blur that fires as the input
-      // is torn down doesn't come back round and save a second time.
-      if (committingRename || !renamingId) return;
-      committingRename = true;
-      const id = renamingId;
-      const name = renamingValue;
-      renamingId = null;
-      renamingValue = '';
-      try {
-        await window.api.renameClip(id, name);
-      } finally {
-        committingRename = false;
-        render();
+      if (c.type === 'img') {
+        // the full picture, not the 240px row thumbnail
+        await showInspectorImage(c.filepath ? toFileUrl(c.filepath) : c.dataUrl, 0, 0);
+      } else {
+        await window.api.expandWindow(true);
+        inspectorEl.classList.add('show');
+        inspDetailTextEl.textContent = c.content || '';
+        inspDetailTextEl.classList.add('show');
       }
+      inspNameEl.focus();
+      inspNameEl.select();
     }
+
+    function typeLabel(c) {
+      return c.type === 'img' ? 'image' : c.type === 'url' ? 'link' : c.type === 'code' ? 'code' : 'text';
+    }
+
+    // filepath is an OS path; the panel needs a URL it can load
+    function toFileUrl(p) {
+      return 'file:///' + String(p).split('\\').join('/').replace(/^\/+/, '');
+    }
+
+    async function commitDetailName() {
+      if (!detailId) return;
+      const c = findClip(detailId);
+      const next = inspNameEl.value.trim();
+      if (!c || (c.name || '') === next) return;
+      await window.api.renameClip(detailId, next);
+    }
+
+    inspNameEl.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); commitDetailName(); inspNameEl.blur(); }
+      else if (e.key === 'Escape') {
+        e.preventDefault();
+        const c = detailId ? findClip(detailId) : null;
+        inspNameEl.value = (c && c.name) || '';
+        inspNameEl.blur();
+      }
+    });
+    inspNameEl.addEventListener('blur', () => commitDetailName());
+
+    document.getElementById('detailCopy').addEventListener('click', async () => {
+      const c = detailId ? findClip(detailId) : null;
+      if (!c) return;
+      await window.api.write(c);
+      toast('copied — paste with ⌘V');
+    });
+    document.getElementById('detailText').addEventListener('click', () => {
+      if (detailId) runOcr(detailId);
+    });
+    document.getElementById('detailColor').addEventListener('click', () => {
+      if (detailId) runPalette(detailId);
+    });
 
     function markEditingRow() {
       document.querySelectorAll('.item').forEach(n => {
@@ -2069,6 +2137,11 @@
       inspColors = [];
       inspPicked.clear();
       inspPickedColors.clear();
+      // a name typed but not yet committed is saved on the way out, rather
+      // than silently dropped because the panel was closed instead of blurred
+      if (detailId) commitDetailName();
+      detailId = null;
+      inspDetailTextEl.classList.remove('show');
       inspMode = 'text';
       inspectorEl.dataset.mode = 'text';
       syncInspOut();
@@ -2853,12 +2926,7 @@
       // other type keeps its preview underneath. Nothing visible is lost by
       // naming something.
       const givenName = (c.name || '').trim();
-      if (renamingId === c.id) {
-        headlineHtml = `<input class="item-rename" type="text" spellcheck="false"
-          placeholder="name this clip — enter to save, esc to cancel"
-          value="${esc(renamingValue)}" />`;
-        if (c.type === 'img' && c.meta) metaParts.unshift(`<span>${esc(c.meta)}</span><span class="dot">·</span>`);
-      } else if (givenName) {
+      if (givenName) {
         if (c.type === 'img') {
           if (c.meta) metaParts.unshift(`<span>${esc(c.meta)}</span><span class="dot">·</span>`);
         } else {
@@ -2894,11 +2962,9 @@
         <div class="actions">
           <button class="pin-btn prompt-btn ${c.isPrompt ? 'on' : ''}" data-act="prompt" title="${c.isPrompt ? 'stop keeping this as a prompt' : 'save as a prompt — kept forever'}">✦</button>
           ${c.isPrompt ? `<button class="act-btn" data-act="edit" title="edit text and tags">edit</button>` : `<button class="pin-btn ${isPinned ? 'pinned' : ''}" data-act="pin" title="${isPinned ? 'unpin' : 'pin'}">${isPinned ? '★' : '☆'}</button>`}
-          ${c.type === 'img' ? `<button class="act-btn" data-act="ocr" title="pull the text out of this image">text</button>` : ''}
-          ${c.type === 'img' ? `<button class="act-btn" data-act="palette" title="pull the colours out of this image">color</button>` : ''}
+          <button class="act-btn" data-act="view" title="${c.type === 'img' ? 'see it full size, and name it' : 'read it in full, and name it'}">view</button>
           ${(activeSessionId && !sessionId && !isInSession(c.id, activeSessionId))
             ? `<button class="act-btn" data-act="ses" title="add to the session you're collecting into">+ses</button>` : ''}
-          <button class="act-btn" data-act="rename" title="${c.name ? 'change this clip’s name' : 'give this clip a name'}">${c.name ? 'rename' : 'name'}</button>
           <button class="act-btn" data-act="copy" title="copy">copy</button>
           <button class="act-btn danger" data-act="del" title="${sessionId ? 'remove from this session' : 'delete'}">${sessionId ? 'remove' : 'del'}</button>
         </div>
@@ -2982,33 +3048,10 @@
         }
       });
 
-      el.querySelector('[data-act="ocr"]')?.addEventListener('click', (e) => {
+      el.querySelector('[data-act="view"]')?.addEventListener('click', (e) => {
         e.stopPropagation();
-        runOcr(c.id);
+        openDetail(c.id);
       });
-
-      el.querySelector('[data-act="palette"]')?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        runPalette(c.id);
-      });
-
-      el.querySelector('[data-act="rename"]')?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        startRename(c.id, c.name || '');
-      });
-
-      const renameInput = el.querySelector('.item-rename');
-      if (renameInput) {
-        renameInput.addEventListener('click', (e) => e.stopPropagation());
-        renameInput.addEventListener('mousedown', (e) => e.stopPropagation());
-        renameInput.addEventListener('input', (e) => { renamingValue = e.target.value; });
-        renameInput.addEventListener('keydown', (e) => {
-          e.stopPropagation();
-          if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
-          else if (e.key === 'Escape') { e.preventDefault(); cancelRename(); }
-        });
-        renameInput.addEventListener('blur', () => commitRename());
-      }
 
       el.querySelector('[data-act="edit"]')?.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -3117,9 +3160,6 @@
 
       syncSelection();
       markEditingRow();
-      // the periodic rebuild would otherwise drop focus out of a rename
-      // half-typed; the text itself is held outside the DOM
-      if (renamingId) focusRenameInput(false);
     }
 
     // Each place says something different when it has nothing to show, because
