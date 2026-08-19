@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('api', {
   markPrompt: (id) => ipcRenderer.invoke('clip:prompt', id),
   unmarkPrompt: (id) => ipcRenderer.invoke('clip:unprompt', id),
   updatePrompt: (id, patch) => ipcRenderer.invoke('prompt:update', id, patch),
+  // give a clip a title of your own; an empty name restores the derived one
+  renameClip: (id, name) => ipcRenderer.invoke('clip:rename', id, name),
 
   // sessions
   createSession: (name) => ipcRenderer.invoke('sessions:create', name),

@@ -767,6 +767,34 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    /* a name the user gave it — sits where the derived headline was */
+    .item-headline.named { color: var(--text); }
+
+    /* and what it displaced, kept underneath rather than thrown away */
+    .item-derived {
+      margin-top: 3px;
+      opacity: 0.62;
+      font-size: 12px;
+    }
+    .item-derived .item-headline { font-size: 12px; font-weight: 400; color: var(--text-2); }
+
+    /* renaming happens in place, so the row doesn't jump as you type */
+    .item-rename {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--session-line-2);
+      border-radius: 4px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: -0.005em;
+      padding: 4px 7px;
+      outline: none;
+    }
+    .item-rename::placeholder { color: var(--muted); font-weight: 400; }
+    .item-rename:focus { border-color: var(--session); }
+
     .item-headline.clamp-2 {
       white-space: normal;
       display: -webkit-box;
@@ -1553,6 +1581,12 @@
     let activeTag = null;
     // prompt editor state — the id of the prompt whose sheet is open
     let editingId = null;
+    // Renaming happens inside the row, but the row list is rebuilt on a timer.
+    // Keeping the in-progress text out here means a re-render mid-typing
+    // redraws the input without losing what has been typed into it.
+    let renamingId = null;
+    let renamingValue = '';
+    let committingRename = false;
     let editorSaveTimer = null;
     const editorEl = document.getElementById('editor');
     const editorBodyEl = document.getElementById('editorBody');
@@ -1901,6 +1935,48 @@
       editingId = null;
       editorEl.classList.remove('show');
       markEditingRow();
+    }
+
+    function startRename(id, current) {
+      closeEditor();
+      renamingId = id;
+      renamingValue = current;
+      render();
+      focusRenameInput(true);
+    }
+
+    // Called after every render so the input survives the periodic rebuild —
+    // and only selects the text the first time, or typing would be wiped out
+    // by the next tick.
+    function focusRenameInput(selectAll) {
+      const input = document.querySelector('.item-rename');
+      if (!input) return;
+      if (document.activeElement !== input) input.focus();
+      if (selectAll) input.select();
+    }
+
+    function cancelRename() {
+      if (!renamingId) return;
+      renamingId = null;
+      renamingValue = '';
+      render();
+    }
+
+    async function commitRename() {
+      // The id is cleared before awaiting, so the blur that fires as the input
+      // is torn down doesn't come back round and save a second time.
+      if (committingRename || !renamingId) return;
+      committingRename = true;
+      const id = renamingId;
+      const name = renamingValue;
+      renamingId = null;
+      renamingValue = '';
+      try {
+        await window.api.renameClip(id, name);
+      } finally {
+        committingRename = false;
+        render();
+      }
     }
 
     function markEditingRow() {
@@ -2772,6 +2848,25 @@
         }
       }
 
+      // A name the user set outranks the derived headline. What it displaces
+      // isn't dropped: an image's dimensions move to the meta line, and any
+      // other type keeps its preview underneath. Nothing visible is lost by
+      // naming something.
+      const givenName = (c.name || '').trim();
+      if (renamingId === c.id) {
+        headlineHtml = `<input class="item-rename" type="text" spellcheck="false"
+          placeholder="name this clip — enter to save, esc to cancel"
+          value="${esc(renamingValue)}" />`;
+        if (c.type === 'img' && c.meta) metaParts.unshift(`<span>${esc(c.meta)}</span><span class="dot">·</span>`);
+      } else if (givenName) {
+        if (c.type === 'img') {
+          if (c.meta) metaParts.unshift(`<span>${esc(c.meta)}</span><span class="dot">·</span>`);
+        } else {
+          extraHtml = `<div class="item-derived">${headlineHtml}</div>` + extraHtml;
+        }
+        headlineHtml = `<div class="item-headline named">${esc(givenName)}</div>`;
+      }
+
       if (styled) {
         metaParts.push(`<span class="dot">·</span><span class="styled-mark" title="keeps its formatting — hold ⌥ to copy as plain text">styled</span>`);
       }
@@ -2803,6 +2898,7 @@
           ${c.type === 'img' ? `<button class="act-btn" data-act="palette" title="pull the colours out of this image">color</button>` : ''}
           ${(activeSessionId && !sessionId && !isInSession(c.id, activeSessionId))
             ? `<button class="act-btn" data-act="ses" title="add to the session you're collecting into">+ses</button>` : ''}
+          <button class="act-btn" data-act="rename" title="${c.name ? 'change this clip’s name' : 'give this clip a name'}">${c.name ? 'rename' : 'name'}</button>
           <button class="act-btn" data-act="copy" title="copy">copy</button>
           <button class="act-btn danger" data-act="del" title="${sessionId ? 'remove from this session' : 'delete'}">${sessionId ? 'remove' : 'del'}</button>
         </div>
@@ -2895,6 +2991,24 @@
         e.stopPropagation();
         runPalette(c.id);
       });
+
+      el.querySelector('[data-act="rename"]')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        startRename(c.id, c.name || '');
+      });
+
+      const renameInput = el.querySelector('.item-rename');
+      if (renameInput) {
+        renameInput.addEventListener('click', (e) => e.stopPropagation());
+        renameInput.addEventListener('mousedown', (e) => e.stopPropagation());
+        renameInput.addEventListener('input', (e) => { renamingValue = e.target.value; });
+        renameInput.addEventListener('keydown', (e) => {
+          e.stopPropagation();
+          if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+          else if (e.key === 'Escape') { e.preventDefault(); cancelRename(); }
+        });
+        renameInput.addEventListener('blur', () => commitRename());
+      }
 
       el.querySelector('[data-act="edit"]')?.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -3003,6 +3117,9 @@
 
       syncSelection();
       markEditingRow();
+      // the periodic rebuild would otherwise drop focus out of a rename
+      // half-typed; the text itself is held outside the DOM
+      if (renamingId) focusRenameInput(false);
     }
 
     // Each place says something different when it has nothing to show, because

@@ -498,6 +498,11 @@
         metaHtml = `<span class="meta-row"><span>${isPinned ? 'pinned' : timeAgo(c.ts)}</span></span>`;
       }
 
+      // A name set in the drawer has to read the same here, or the same clip
+      // is called two different things depending on which door you opened.
+      const givenName = (c.name || '').trim();
+      if (givenName) headlineHtml = `<span class="headline">${escHtml(givenName)}</span>`;
+
       el.innerHTML = `
         <span class="drag-handle">
           <span></span><span></span><span></span>

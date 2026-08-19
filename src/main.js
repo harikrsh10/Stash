@@ -1329,6 +1329,53 @@ ipcMain.handle('clip:prompt', (_e, id) => {
   return ok;
 });
 
+// A clip's headline is derived from what it is: an image says how big it is, a
+// snippet shows its first line. That works while you can still remember copying
+// it, and stops working for exactly the things worth keeping — a pinned
+// screenshot called "1000x1500" tells you nothing a week later.
+//
+// A name, when set, replaces that headline. The derived label isn't thrown
+// away: it moves down to the meta line, so nothing that was visible before is
+// lost. Clearing the name puts things back as they were.
+//
+// The same clip id can sit in history, in pinned, and in any number of
+// sessions at once. Renaming one copy and not the others would show the same
+// picture under two different names in one drawer, so every copy is updated.
+function renameClip(id, name) {
+  const clean = typeof name === 'string' ? name.trim().slice(0, 120) : '';
+  let touched = false;
+  let inPinned = false;
+  let inSessions = false;
+
+  const apply = (entry) => {
+    if (clean) entry.name = clean;
+    else delete entry.name;   // an empty name is a reset, not a blank title
+    touched = true;
+  };
+
+  history.forEach(h => { if (h.id === id) apply(h); });
+  pinned.forEach(p => { if (p.id === id) { apply(p); inPinned = true; } });
+  sessionClips.forEach(s => { if (s.id === id) { apply(s); inSessions = true; } });
+
+  // Only the kept things are written down; ordinary history is memory-only, so
+  // a name on an unpinned clip lives exactly as long as the clip does.
+  if (inPinned) savePinned();
+  if (inSessions) saveSessions();
+  return touched;
+}
+
+ipcMain.handle('clip:rename', (_e, id, name) => {
+  const ok = renameClip(id, name);
+  if (ok) {
+    refreshTrayMenu();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('state:updated', { history, pinned, ...sessionState() });
+    }
+    if (dockWindow && dockWindow.isVisible()) refreshDock();
+  }
+  return ok;
+});
+
 ipcMain.handle('prompt:update', (_e, id, patch) => {
   const ok = updatePrompt(id, patch);
   if (ok && mainWindow && !mainWindow.isDestroyed()) {
