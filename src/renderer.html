@@ -393,56 +393,20 @@
       max-height: 232px;
       overflow-y: auto;
     }
-    .inspector[data-mode="color"] .insp-swatches { display: grid; }
+    .inspector[data-mode="color"] .insp-swatches {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 0;
+      max-height: none;
+      margin: 0;
+    }
+    /* the grid is the content in colour mode -- nothing to prompt for */
+    .inspector[data-mode="color"] .out-slot { display: none; }
     .inspector[data-mode="color"] .insp-canvas { flex: 0 1 auto; max-height: 34vh; }
     .insp-swatches::-webkit-scrollbar { width: 3px; }
     .insp-swatches::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 
-    .swatch {
-      display: flex;
-      align-items: stretch;
-      gap: 0;
-      border: 1px solid var(--border2);
-      border-radius: 5px;
-      overflow: hidden;
-      cursor: pointer;
-      background: var(--surface2);
-      transition: border-color 0.12s, box-shadow 0.12s, transform 0.12s;
-    }
-    .swatch:hover { border-color: var(--muted); transform: translateY(-1px); }
-    .swatch.picked {
-      border-color: var(--select-dim);
-      box-shadow: 0 0 0 1px var(--select-wash-3);
-    }
-    /* the colour itself, printed with its own hex over it — reading the value
-       against the colour is the check a person actually makes */
-    .swatch-chip {
-      flex: 1;
-      min-width: 0;
-      padding: 10px 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: var(--font-mono);
-      font-size: 10.5px;
-      letter-spacing: 0.04em;
-    }
-    .swatch-meta {
-      flex-shrink: 0;
-      width: 46px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 1px;
-      background: var(--surface2);
-      border-left: 1px solid var(--border2);
-      font-family: var(--font-mono);
-      font-size: 9px;
-      color: var(--muted);
-    }
-    .swatch.picked .swatch-meta { color: var(--text-2); }
-    .swatch-share { font-size: 10px; color: var(--text-2); }
+
 
     /* ---------- preview & naming ----------
        Naming used to happen inside the row, underneath the hover actions that
@@ -892,6 +856,112 @@
     .type-badge.url  { color: var(--url); background: var(--session-tint); border: 1px solid var(--url-line); }
     .type-badge.img  { color: var(--pinned); background: var(--pinned-tint); border: 1px solid var(--pinned-line); }
     .type-badge.color { color: var(--pinned); background: var(--pinned-tint); border: 1px solid var(--pinned-line); }
+
+    /* every picked block is a row of its own, with its own two actions */
+    .out-blocks { display: none; flex-direction: column; gap: 10px; }
+    .inspector[data-mode="text"] .out-blocks:not(:empty) { display: flex; }
+    .out-block { display: flex; align-items: flex-start; gap: 12px; }
+    .out-block-text {
+      flex: 1;
+      min-width: 0;
+      padding: 14px;
+      border-radius: 8px;
+      background: var(--surface2);
+      font-size: 13px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .out-block-acts { display: flex; gap: 4px; flex: none; padding-top: 8px; }
+    .out-act {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border: 0;
+      border-radius: 7px;
+      background: none;
+      color: var(--muted);
+      cursor: pointer;
+      transition: color 0.12s, background 0.12s;
+    }
+    .out-act:hover { color: var(--text); background: var(--surface3); }
+    .out-act svg {
+      width: 15px;
+      height: 15px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    /* the prompt for what to do only stands while nothing is picked */
+    .inspector[data-mode="text"] .out-blocks:not(:empty) ~ .out-slot { display: none; }
+
+    /* the palette reads as a strip: the colour, its name, its value */
+    .swatch {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+      padding: 0 0 10px;
+      border: 0;
+      background: none;
+      cursor: pointer;
+      text-align: left;
+      min-width: 0;
+    }
+    .swatch-chip {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 46px;
+      border-radius: 0;
+    }
+    .swatch-cue {
+      opacity: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 5px;
+      background: var(--sheet-bg);
+      color: var(--text);
+      transition: opacity 0.12s;
+    }
+    .swatch-cue svg {
+      width: 13px;
+      height: 13px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .swatch:hover .swatch-cue, .swatch:focus-visible .swatch-cue { opacity: 1; }
+    .swatch-name {
+      margin-top: 7px;
+      padding: 0 4px;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.08em;
+      color: var(--text-2);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .swatch-hex {
+      padding: 2px 4px 0;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
     /* a colour clip leads with the colour itself, then its value */
     .colour-line { display: flex; align-items: center; gap: 10px; }
@@ -1894,6 +1964,7 @@
         font-size: 13px;
       }
       .insp-out.empty { display: flex; align-items: center; justify-content: center; }
+      .insp-out { overflow-y: auto; }
 
       /* icons alone -- the tooltip carries the word */
       .insp-actions { padding: 0; gap: 8px; flex: none; }
@@ -1946,7 +2017,6 @@
     </div>
     <!-- what the clip is, set out beneath the picture of it -->
     <div class="detail-meta" id="inspMeta"></div>
-    <div class="insp-swatches" id="inspSwatches"></div>
     </div><!-- /insp-card -->
 
     <!-- What you can pull out of this picture. A switch rather than an action,
@@ -1957,11 +2027,12 @@
     </div>
 
     <!-- what you have picked out so far, and the two things worth doing with it -->
-    <div class="insp-out empty" id="inspOut"></div>
-    <div class="insp-actions">
-      <button class="insp-btn" id="inspCopy" title="copy what you picked" aria-label="copy" disabled></button>
-      <button class="insp-btn prompt" id="inspPrompt" title="add to prompts" aria-label="add to prompts" disabled></button>
+    <div class="insp-out empty" id="inspOut">
+      <div class="insp-swatches" id="inspSwatches"></div>
+      <div class="out-blocks" id="inspBlocks"></div>
+      <div class="out-slot" id="inspEmpty"></div>
     </div>
+
   </div>
 
   <div class="app">
@@ -2809,12 +2880,20 @@
     const inspectorEl = document.getElementById('inspector');
     const inspStageEl = document.getElementById('inspStage');
     const inspOutEl = document.getElementById('inspOut');
+    const inspEmptyEl = document.getElementById('inspEmpty');
 
     // Nothing picked yet: say where to pick it from and what happens next,
     // rather than labelling the empty box.
     function setInspOut(text, isColor) {
+      // In colour mode the palette grid is the content, so the card is never
+      // empty -- leaving the class on would centre and shrink-wrap the grid.
+      if (isColor) {
+        inspOutEl.classList.remove('empty');
+        inspEmptyEl.replaceChildren();
+        return;
+      }
       inspOutEl.classList.toggle('empty', !text);
-      if (text) { inspOutEl.textContent = text; return; }
+      if (text) { inspEmptyEl.textContent = text; return; }
       const what = isColor ? "colours" : "text";
       const wrap = document.createElement('div');
       wrap.className = 'out-empty';
@@ -2829,11 +2908,10 @@
       wrap.appendChild(mark);
       wrap.appendChild(title);
       wrap.appendChild(hint);
-      inspOutEl.replaceChildren(wrap);
+      inspEmptyEl.replaceChildren(wrap);
     }
     const inspHintEl = document.getElementById('inspHint');
-    const inspCopyEl = document.getElementById('inspCopy');
-    const inspPromptEl = document.getElementById('inspPrompt');
+    const inspBlocksEl = document.getElementById('inspBlocks');
     const inspTitleEl = document.getElementById('inspTitle');
     const inspSwatchesEl = document.getElementById('inspSwatches');
     // 'text' draws boxes over the picture; 'color' lists what it's made of.
@@ -2901,41 +2979,67 @@
       syncInspOut();
     }
 
+    // Open-Color style: a hue family and a step from 0 (lightest) to 9.
+    // Two extracted colours can land on the same name; that is honest -- they
+    // really are the same family and weight -- and the hex below settles it.
+    const HUES = [[15, 'RED'], [45, 'ORANGE'], [70, 'YELLOW'], [160, 'GREEN'],
+                  [195, 'TEAL'], [240, 'BLUE'], [270, 'INDIGO'], [310, 'VIOLET'],
+                  [345, 'PINK'], [360, 'RED']];
+    function colourName(c) {
+      const rgb = c.rgb || [0, 0, 0];
+      const r = rgb[0] / 255, g = rgb[1] / 255, b = rgb[2] / 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      const l = (max + min) / 2;
+      const d = max - min;
+      const step = Math.min(9, Math.max(0, Math.round((1 - l) * 9)));
+      const sat = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+      if (sat < 0.12) return 'GRAY ' + step;
+      let h;
+      if (max === r) h = ((g - b) / d) % 6;
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h = (h * 60 + 360) % 360;
+      const fam = (HUES.find(([edge]) => h < edge) || HUES[0])[1];
+      return fam + ' ' + step;
+    }
+
     function drawSwatches() {
-      inspSwatchesEl.innerHTML = '';
-      inspColors.forEach((c, i) => {
+      const frag = document.createDocumentFragment();
+      inspColors.forEach((c) => {
         const el = document.createElement('button');
         el.type = 'button';
-        el.className = 'swatch' + (inspPickedColors.has(i) ? ' picked' : '');
-        el.title = `${c.hex} · rgb(${c.rgb.join(', ')})`;
+        el.className = 'swatch';
+        el.title = 'copy ' + c.hex;
 
         const chip = document.createElement('span');
         chip.className = 'swatch-chip';
-        // The one place a literal colour belongs: it *is* the extracted value.
-        chip.style.background = c.hex;
-        chip.style.color = c.light ? 'var(--bg)' : 'var(--text)';
-        chip.textContent = c.hex;
+        // the one literal colour that belongs here: it is the extracted value
+        chip.style.backgroundColor = c.hex;
+        const cue = document.createElement('span');
+        cue.className = 'swatch-cue';
+        cue.innerHTML = ICON.copy;
+        chip.appendChild(cue);
 
-        const meta = document.createElement('span');
-        meta.className = 'swatch-meta';
-        const share = document.createElement('span');
-        share.className = 'swatch-share';
-        // An accent colour is genuinely a fraction of a percent of the picture.
-        // Rounding it to "0%" reads as a bug rather than as a small share.
-        const pct = c.share * 100;
-        share.textContent = pct < 1 ? '<1%' : Math.round(pct) + '%';
-        meta.appendChild(share);
+        const name = document.createElement('span');
+        name.className = 'swatch-name';
+        name.textContent = colourName(c);
+        const hex = document.createElement('span');
+        hex.className = 'swatch-hex';
+        hex.textContent = c.hex;
 
         el.appendChild(chip);
-        el.appendChild(meta);
-        el.addEventListener('click', () => {
-          if (inspPickedColors.has(i)) inspPickedColors.delete(i);
-          else inspPickedColors.add(i);
-          el.classList.toggle('picked', inspPickedColors.has(i));
-          syncInspOut();
+        el.appendChild(name);
+        el.appendChild(hex);
+
+        // One colour, one copy. Colours never accumulate a selection the way
+        // text blocks do -- tapping one puts exactly it on the clipboard.
+        el.addEventListener('click', async () => {
+          await window.api.write({ type: 'text', content: c.hex });
+          toast('copied ' + c.hex);
         });
-        inspSwatchesEl.appendChild(el);
+        frag.appendChild(el);
       });
+      inspSwatchesEl.replaceChildren(frag);
     }
 
     // `src` is the full-size image OCR actually read, and w/h are the pixel
@@ -2992,12 +3096,9 @@
     }
 
     function pickedText() {
-      if (inspMode === 'color') {
-        // in the order they sit in the palette, so a copied set keeps the
-        // dominant colour first rather than the order they were tapped
-        return [...inspPickedColors].sort((a, b) => a - b)
-          .map(i => inspColors[i].hex).join('\n');
-      }
+      // Colours do not accumulate: a swatch copies itself on the spot, so
+      // there is never a colour selection to read back.
+      if (inspMode === 'color') return '';
       return [...inspPicked].sort((a, b) => a - b).map(i => inspBlocks[i].text).join('\n\n');
     }
 
@@ -3005,15 +3106,11 @@
       const isColor = inspMode === 'color';
       const text = pickedText();
       setInspOut(text, isColor);
-      inspCopyEl.disabled = !text;
-      inspPromptEl.disabled = !text;
-      inspCopyEl.title = isColor ? 'copy the hex values' : 'copy the selected text';
+      if (!isColor) drawPickedBlocks();
 
       if (isColor) {
         if (!inspColors.length) return;
-        inspHintEl.textContent = inspPickedColors.size
-          ? `${inspPickedColors.size} of ${inspColors.length} selected`
-          : `${inspColors.length} colour${inspColors.length === 1 ? '' : 's'} found`;
+        inspHintEl.textContent = `${inspColors.length} colour${inspColors.length === 1 ? '' : 's'} found`;
         return;
       }
       if (inspBlocks.length) {
@@ -3023,19 +3120,47 @@
       }
     }
 
-    inspCopyEl.addEventListener('click', async () => {
-      const text = pickedText();
-      if (!text) return;
-      await window.api.write({ type: 'text', content: text });
-      toast('copied — paste with ⌘V');
-    });
+    // Every block you pick becomes a row of its own, with its own copy and
+    // prompt. There is no combined selection to act on any more: you asked for
+    // this one line, so you get this one line.
+    function outAction(icon, title, run) {
+      const b = document.createElement('button');
+      b.className = 'out-act';
+      b.title = title;
+      b.innerHTML = icon;
+      b.addEventListener('click', run);
+      return b;
+    }
 
-    inspPromptEl.addEventListener('click', async () => {
-      const text = pickedText();
-      if (!text) return;
-      const ok = await window.api.createPrompt(text);
-      toast(ok ? 'saved as a prompt — kept forever' : 'could not save that');
-    });
+    function drawPickedBlocks() {
+      const frag = document.createDocumentFragment();
+      [...inspPicked].sort((a, b) => a - b).forEach(i => {
+        const block = inspBlocks[i];
+        if (!block) return;
+        const row = document.createElement('div');
+        row.className = 'out-block';
+
+        const body = document.createElement('div');
+        body.className = 'out-block-text';
+        body.textContent = block.text;
+
+        const acts = document.createElement('div');
+        acts.className = 'out-block-acts';
+        acts.appendChild(outAction(ICON.copy, 'copy this text', async () => {
+          await window.api.write({ type: 'text', content: block.text });
+          toast('copied — paste with ⌘V');
+        }));
+        acts.appendChild(outAction(ICON.prompt, 'add to prompts', async () => {
+          const ok = await window.api.createPrompt(block.text);
+          toast(ok ? 'saved as a prompt — kept forever' : 'could not save that');
+        }));
+
+        row.appendChild(body);
+        row.appendChild(acts);
+        frag.appendChild(row);
+      });
+      inspBlocksEl.replaceChildren(frag);
+    }
 
     document.getElementById('inspClose').addEventListener('click', closeInspector);
     // hiding the drawer must also shrink the window back, or it reopens wide
@@ -3605,8 +3730,7 @@
 
     document.getElementById('modeKeyText').innerHTML = ICON.text;
     document.getElementById('modeKeyColor').innerHTML = ICON.colour;
-    document.getElementById('inspCopy').innerHTML = ICON.copy;
-    document.getElementById('inspPrompt').innerHTML = ICON.prompt;
+
 
     function buildItemEl(c, isPinned, sessionId) {
       const el = document.createElement('div');

@@ -268,8 +268,10 @@ ok('colour is only offered for images',
    /setModes\(c\.type === 'img'/.test(renderer), '');
 ok('the inspector has a colour mode', /data-mode="color"/.test(renderer), '');
 ok('swatches render into their own list', /inspSwatches/.test(renderer), '');
-ok('picking colours feeds the same output panel',
-   /inspMode === 'color'[\s\S]{0,200}inspPickedColors/.test(renderer), '');
+ok('a swatch copies itself, one for one',
+   /addEventListener\('click'[\s\S]{0,220}content: c\.hex/.test(renderer), '');
+ok('and builds no colour selection to act on later',
+   !/inspPickedColors\.add/.test(renderer), '');
 ok('closing resets the mode so text opens as text',
    /closeInspector[\s\S]{0,800}inspMode = 'text'/.test(renderer), '');
 ok('one job at a time — colour shares the busy guard with text',
@@ -345,45 +347,33 @@ app.whenReady().then(async () => {
     const swatches = [...document.querySelectorAll('.swatch')];
     ok('every colour gets a swatch', swatches.length === 3, swatches.length + '');
     ok('the swatch shows its hex', swatches[0].textContent.includes('#1E1E1E'), swatches[0].textContent);
-    ok('and how much of the image it is', swatches[0].textContent.includes('62%'), swatches[0].textContent);
+    ok('and names it by family and weight', /GRAY 8/.test(swatches[0].textContent), swatches[0].textContent);
     ok('the chip is painted the colour it names',
-       swatches[0].querySelector('.swatch-chip').style.background.replace(/ /g, '') === 'rgb(30,30,30)',
-       swatches[0].querySelector('.swatch-chip').style.background);
-    ok('a light colour prints its hex in ink, not white',
-       swatches[1].querySelector('.swatch-chip').style.color.includes('--bg'),
-       swatches[1].querySelector('.swatch-chip').style.color);
+       swatches[0].querySelector('.swatch-chip').style.backgroundColor.replace(/ /g, '') === 'rgb(30,30,30)',
+       swatches[0].querySelector('.swatch-chip').style.backgroundColor);
+    ok('each swatch offers a copy cue', !!swatches[0].querySelector('.swatch-cue svg'), '');
     ok('the count is in the hint', /3 colours found/.test(document.getElementById('inspHint').textContent),
        document.getElementById('inspHint').textContent);
 
-    const outEl = document.getElementById('inspOut');
-    const copyEl = document.getElementById('inspCopy');
-    ok('nothing is picked to begin with', copyEl.disabled, '');
-    ok('the copy button says what it copies', copyEl.title === 'copy the hex values', copyEl.title);
+    // A colour is copied one for one: tapping a swatch puts exactly that hex
+    // on the clipboard. There is no selection to build up and no second step.
+    ok('no combined action to press', document.querySelectorAll('.insp-actions').length === 0, '');
 
-    // pick the third, then the first — the output should still read top-down
     swatches[2].click();
+    await tick(10);
+    ok('tapping a swatch copies that one colour',
+       written.length === 1 && written[0].content === '#C46A6A', JSON.stringify(written));
+    ok('and leaves nothing selected behind it',
+       document.querySelectorAll('.swatch.picked').length === 0, '');
+
     swatches[0].click();
     await tick(10);
-    ok('picking marks the swatch', swatches[2].classList.contains('picked'), '');
-    ok('picked colours come out in palette order, not tap order',
-       outEl.textContent === '#1E1E1E\\n#C46A6A', JSON.stringify(outEl.textContent));
-    ok('copy is now available', !copyEl.disabled, '');
-    ok('the hint counts the selection', /2 of 3 selected/.test(document.getElementById('inspHint').textContent),
+    ok('tapping another copies that one instead of adding to it',
+       written.length === 2 && written[1].content === '#1E1E1E', JSON.stringify(written));
+
+    ok('the hint keeps counting the palette, not a selection',
+       /3 colours found/.test(document.getElementById('inspHint').textContent),
        document.getElementById('inspHint').textContent);
-
-    swatches[2].click();
-    await tick(10);
-    ok('tapping again unpicks', outEl.textContent === '#1E1E1E', JSON.stringify(outEl.textContent));
-
-    copyEl.click();
-    await tick(10);
-    ok('copying writes the hex to the clipboard',
-       written.length === 1 && written[0].content === '#1E1E1E', JSON.stringify(written));
-
-    document.getElementById('inspPrompt').click();
-    await tick(10);
-    ok('a palette can be kept as a prompt',
-       promptsCreated.length === 1 && promptsCreated[0] === '#1E1E1E', JSON.stringify(promptsCreated));
 
     // and the panel has to go back to being the text one afterwards
     document.getElementById('inspClose').click();
@@ -397,9 +387,6 @@ app.whenReady().then(async () => {
     ok('and draws regions, not swatches',
        document.querySelectorAll('.region').length === 1 && document.querySelectorAll('.swatch').length === 0,
        document.querySelectorAll('.region').length + ' regions');
-    ok('the copy button goes back to text',
-       document.getElementById('inspCopy').title === 'copy the selected text',
-       document.getElementById('inspCopy').title);
 
     return out;
   })()`;
