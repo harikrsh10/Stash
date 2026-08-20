@@ -337,7 +337,7 @@ app.whenReady().then(async () => {
        document.getElementById('stackTray').classList.contains('show') ? '' : 'hidden — selectedClips found nothing');
     ok('the deck holds the session clip', document.querySelectorAll('.stack-card').length === 1,
        document.querySelectorAll('.stack-card').length + '');
-    ok('the count reads 1', document.getElementById('stackCount').textContent === '1',
+    ok('the count reads 1', document.getElementById('stackCount').textContent === '01',
        document.getElementById('stackCount').textContent);
 
     // and dragging it out carries the session's own copy

@@ -1708,6 +1708,32 @@
       .railwrap .rail-item.prompts svg { stroke: var(--prompt); fill: var(--prompt); }
       .railwrap .rail-item.pinned svg { stroke: var(--pinned); fill: var(--pinned); }
 
+      /* the multi-select tray was a tinted bar wedged above the footer; it is
+         a card like everything else now */
+      .stack-tray {
+        border-top: 0;
+        background: var(--card);
+        border-radius: 12px;
+        box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
+        padding: 14px 16px;
+        gap: 14px;
+      }
+      .stack-title { font-size: 13px; color: var(--text); }
+      .stack-hint { font-size: 11px; }
+      .stack-count {
+        min-width: 20px;
+        height: 20px;
+        border-radius: 10px;
+        font-size: 11px;
+        right: -7px;
+        top: -8px;
+      }
+      .stack-close {
+        font-size: 17px;
+        line-height: 1;
+        padding: 2px 4px;
+      }
+
       /* selected place: a blue tint, not the tan that means "pinned" */
       .rail-item.on {
         background: var(--select-wash-2);
@@ -1838,7 +1864,7 @@
         <span class="stack-title" id="stackTitle">0 stacked</span>
         <span class="stack-hint">drag it anywhere</span>
       </span>
-      <button class="clear-btn" id="selClearBtn">deselect</button>
+      <button class="clear-btn stack-close" id="selClearBtn" title="deselect">×</button>
     </div>
 
     <div class="card card-foot">
@@ -2966,9 +2992,10 @@
         return;
       }
 
-      stackTitleEl.textContent = n === 1 ? '1 clip stacked' : `${n} clips stacked`;
-      if (stackCountEl.textContent !== String(n)) {
-        stackCountEl.textContent = String(n);
+      const padded = n < 10 ? '0' + n : String(n);
+      stackTitleEl.textContent = padded + (n === 1 ? ' clip stacked' : ' clips stacked');
+      if (stackCountEl.textContent !== padded) {
+        stackCountEl.textContent = padded;
         if (!reduceMotion && wasShown) {
           stackCountEl.classList.remove('bump');
           void stackCountEl.offsetWidth; // reflow, so the animation restarts

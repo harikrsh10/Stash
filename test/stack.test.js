@@ -47,16 +47,16 @@ app.whenReady().then(async () => {
     ok('ctrl+click selects one', selected.size === 1 && selected.has('h1'), [...selected].join(','));
     ok('tray appears on first pick', tray.classList.contains('show'), '');
     ok('one card in the deck', cards().length === 1, cards().length + '');
-    ok('badge reads 1', badge.textContent === '1', badge.textContent);
-    ok('title reads singular', document.getElementById('stackTitle').textContent === '1 clip stacked',
+    ok('badge reads 1', badge.textContent === '01', badge.textContent);
+    ok('title reads singular', document.getElementById('stackTitle').textContent === '01 clip stacked',
        document.getElementById('stackTitle').textContent);
 
     click(rows()[3], { shiftKey: true });
     ok('shift+click makes a range of 3', selected.size === 3 && ['h1','h2','h3'].every(i => selected.has(i)),
        [...selected].join(','));
     ok('deck grew to 3 cards', cards().length === 3, cards().length + '');
-    ok('badge reads 3', badge.textContent === '3', badge.textContent);
-    ok('title reads plural', document.getElementById('stackTitle').textContent === '3 clips stacked',
+    ok('badge reads 3', badge.textContent === '03', badge.textContent);
+    ok('title reads plural', document.getElementById('stackTitle').textContent === '03 clips stacked',
        document.getElementById('stackTitle').textContent);
 
     // cards are offset and tilted, back-to-front
@@ -69,7 +69,7 @@ app.whenReady().then(async () => {
     // --- the deck caps its cards but the badge tells the truth ---
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }));
     ok('ctrl+a selects all 8', selected.size === 8, selected.size + '');
-    ok('badge shows the true count', badge.textContent === '8', badge.textContent);
+    ok('badge shows the true count', badge.textContent === '08', badge.textContent);
     await tick(260); // cards that dropped out of the visible five fade first
     ok('deck caps at 5 cards', cards().length === 5, cards().length + '');
 
