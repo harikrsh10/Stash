@@ -190,9 +190,12 @@ app.whenReady().then(async () => {
        rows().map(r => r.dataset.id).join(','));
 
     const inSes = rows()[0];
+    // The button is an icon now, so the distinction lives in the tooltip —
+    // inside a session it takes the clip out of that session rather than
+    // deleting it outright.
     ok('inside a session, delete becomes remove',
-       inSes.querySelector('[data-act=\\"del\\"]').textContent === 'remove',
-       inSes.querySelector('[data-act=\\"del\\"]').textContent);
+       inSes.querySelector('[data-act=\\"del\\"]').title.includes('remove from this session'),
+       inSes.querySelector('[data-act=\\"del\\"]').title);
     inSes.querySelector('[data-act=\\"del\\"]').click();
     await tick();
     ok('removing calls removeFromSession, not delete',
