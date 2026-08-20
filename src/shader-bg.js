@@ -23,7 +23,7 @@
   // stay the brightest thing on the screen.
   const PALETTES = {
     light: { colorBack: '#81ADEC', colors: ['#BDD6F6'] },
-    dark:  { colorBack: '#0A0A0A', colors: ['#212B40'] },
+    dark:  { colorBack: '#202022', colors: ['#353536'] },
   };
 
   const CONFIG = {

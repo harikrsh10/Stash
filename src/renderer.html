@@ -87,13 +87,18 @@
       --shadow: rgba(0, 0, 0, 0.55);
       /* the light shell floats cards over a shader; dark keeps one flat
          surface, so these only ever get read under prefers-color-scheme: light */
+      /* Paper puts the dark ground at #202022, lighter than the near-black the
+         drawer is built on, so the cards read as dark wells in a lit fog
+         rather than as lit cards on a dark one. Lifting the card above the
+         ground to mirror light costs too much: every muted tone here is tuned
+         against this value, and --muted falls to 2.49 against the WCAG floor
+         of 3 for secondary text. The hairline does the separating instead. */
       --card: #141519;
       --card-shadow: rgba(0, 0, 0, 0.55);
       --card-shadow-near: rgba(0, 0, 0, 0.4);
-      /* on a dark backdrop a shadow reads as nothing; the lift comes from a
-         hairline instead. In light the cards already separate by shadow, so
-         this is barely there. */
-      --card-line: rgba(255, 255, 255, 0.07);
+      /* the smoke passes lighter than the card in places, so the edge has to
+         carry the separation where the fill cannot */
+      --card-line: rgba(255, 255, 255, 0.10);
       --font-sans: 'IBM Plex Sans', -apple-system, sans-serif;
       --font-mono: 'IBM Plex Mono', monospace;
     }
