@@ -16,11 +16,17 @@
 
   // Smoke Ring, with the values off the shader node in the Paper file. Paper
   // shows these as percentages of the raw value, so 153% is 1.53 and 500% is 5.
+  // The ring keeps its shape across both themes; only what it is made of
+  // changes. Light is the pair off the Paper node: the layer fill behind the
+  // ring, then the ring itself. Dark is the same relationship against the
+  // near-black the drawer has always used, kept low in chroma so the cards
+  // stay the brightest thing on the screen.
+  const PALETTES = {
+    light: { colorBack: '#81ADEC', colors: ['#BDD6F6'] },
+    dark:  { colorBack: '#0A0A0A', colors: ['#212B40'] },
+  };
+
   const CONFIG = {
-    // "Fill" on the layer, behind the ring
-    colorBack: '#81ADEC',
-    // "Foreground", the ring itself
-    colors: ['#BDD6F6'],
 
     thickness: 0.65,
     radius: 0.5,
@@ -50,6 +56,11 @@
 
   let mount = null;
   let building = null;
+  let isLight = true;
+
+  function palette() {
+    return PALETTES[isLight ? 'light' : 'dark'];
+  }
   const stats = { mountMs: 0, firstPaintMs: 0, pauses: 0, resumes: 0 };
 
   // ShaderMount throws unless the noise texture is fully decoded, so the mount
@@ -69,10 +80,10 @@
 
     const t0 = performance.now();
     const noise = await noiseReady(P);
-    const colors = CONFIG.colors.map(P.getShaderColorFromString);
+    const colors = palette().colors.map(P.getShaderColorFromString);
 
     const uniforms = {
-      u_colorBack: P.getShaderColorFromString(CONFIG.colorBack),
+      u_colorBack: P.getShaderColorFromString(palette().colorBack),
       u_colors: colors,
       u_colorsCount: colors.length,
       u_thickness: CONFIG.thickness,
@@ -134,6 +145,22 @@
       stats.resumes++;
       mount.setSpeed(CONFIG.speed);
     },
+    // Swapping colours beats tearing the context down and building another:
+    // the shape, the noise texture and the compiled program all stay put, so
+    // a theme change costs one uniform upload.
+    setTheme(light) {
+      isLight = !!light;
+      if (!mount) return;
+      const P = window.PaperShaders;
+      const next = palette();
+      const colors = next.colors.map(P.getShaderColorFromString);
+      mount.setUniforms({
+        u_colorBack: P.getShaderColorFromString(next.colorBack),
+        u_colors: colors,
+        u_colorsCount: colors.length,
+      });
+    },
+    palettes: PALETTES,
     config: CONFIG,
     stats,
   };
