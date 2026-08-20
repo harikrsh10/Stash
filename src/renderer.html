@@ -1984,6 +1984,7 @@
         <button class="pill" data-type="code">code</button>
         <button class="pill" data-type="url">url</button>
         <button class="pill" data-type="img">image</button>
+        <button class="pill" data-type="color">color</button>
       </div>
     </div>
 
@@ -2147,11 +2148,29 @@
       return Math.floor(h / 24) + 'd ago';
     }
 
+    // A colour is not a kind of clip the way a url or an image is -- it is a
+    // text clip whose content happens to be nothing but colour values. Deriving
+    // it from content rather than stamping a type at capture means the filter
+    // works on everything already in the history, not only on what arrives
+    // after this ships. Several values still count, so a palette copied out of
+    // the colour panel is one colour clip rather than none.
+    const COLOUR_VALUE = /#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})\b|(?:rgb|hsl)a?\([^)]*\)/gi;
+    function looksLikeColour(text) {
+      const t = String(text || '').trim();
+      if (!t || t.length > 400) return false;
+      COLOUR_VALUE.lastIndex = 0;
+      if (!COLOUR_VALUE.test(t)) return false;
+      COLOUR_VALUE.lastIndex = 0;
+      const leftover = t.replace(COLOUR_VALUE, '').replace(/[\s,;|]/g, '');
+      return leftover.length === 0;
+    }
+
     function itemMatchesFilter(c, isPinned) {
       // The rail decides which place you're in; these only narrow by type.
       // prompt and pinned used to live here as pseudo-types, which is why the
       // row wrapped onto two lines.
       if (searchQuery && !c.content.toLowerCase().includes(searchQuery)) return false;
+      if (activeFilter === 'color') return looksLikeColour(c.content);
       if (activeFilter !== 'all' && c.type !== activeFilter) return false;
       return true;
     }
