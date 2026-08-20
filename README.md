@@ -67,9 +67,10 @@ A plain click still just copies, so nothing changes if you never use the modifie
 
 ## Naming what you keep
 
-Hover a clip, press **view**. The panel opens beside the drawer with the whole
-thing — a picture at full size, or a long clip in full rather than the two
-lines a row can show — and a name field above it.
+Hover a clip, press the **tag** button. The panel opens beside the drawer with
+the whole thing — a picture at full size, or a long clip in full rather than the
+two lines a row can show — and the name field already focused, ready to type
+into. Enter saves it.
 
 A headline Stash works out for itself is fine while you still remember copying
 the thing. It stops being fine for exactly what's worth keeping — a pinned
@@ -223,7 +224,7 @@ npm run dev
 npm test
 ```
 
-508 assertions, about a minute. They drive the real renderer in a hidden window
+510 assertions, about a minute. They drive the real renderer in a hidden window
 rather than a copy of it — see [test/README.md](test/README.md).
 
 ### Package for distribution

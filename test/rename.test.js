@@ -133,7 +133,7 @@ app.whenReady().then(async () => {
     // pull out of a picture. As icons in a full-width strip they cost a little
     // width rather than crowding a floating cluster, which is what the old
     // labelled overlay could not afford.
-    const core = ['view', 'prompt', 'copy', 'del'];
+    const core = ['name', 'prompt', 'copy', 'del'];
     ok('every row carries the same core actions',
        core.every(a => imgActs.includes(a) && txtActs.includes(a)),
        imgActs.join(',') + ' vs ' + txtActs.join(','));
@@ -145,10 +145,10 @@ app.whenReady().then(async () => {
        !imgActs.includes('rename') && !txtActs.includes('rename'), imgActs.join(','));
 
     // ---- opening an image ----
-    imgRow().querySelector('[data-act=\"view\"]').click();
+    imgRow().querySelector('[data-act=\"name\"]').click();
     await tick(60);
-    ok('view opens the panel', insp.classList.contains('show'), '');
-    ok('in preview mode', insp.dataset.mode === 'detail', insp.dataset.mode);
+    ok('the name button opens the panel', insp.classList.contains('show'), '');
+    ok('in naming mode', insp.dataset.mode === 'detail', insp.dataset.mode);
     ok('the picture is shown', !!document.querySelector('.insp-stage img'), '');
     ok('the name field is focused, ready to type into',
        document.activeElement === nameInput, String(document.activeElement && document.activeElement.id));
@@ -188,7 +188,7 @@ app.whenReady().then(async () => {
     renamed = [];
     history[0].name = 'Onboarding flow';
     render();
-    imgRow().querySelector('[data-act=\"view\"]').click();
+    imgRow().querySelector('[data-act=\"name\"]').click();
     await tick(60);
     nameInput.value = 'discard me';
     nameInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -198,7 +198,7 @@ app.whenReady().then(async () => {
        JSON.stringify(renamed) + ' / ' + nameInput.value);
 
     // entering a mode gives exactly one footer, and says which mode you are in
-    imgRow().querySelector('[data-act=\"view\"]').click();
+    imgRow().querySelector('[data-act=\"name\"]').click();
     await tick(60);
     document.getElementById('detailColor').click();
     await tick(140);
@@ -226,10 +226,33 @@ app.whenReady().then(async () => {
     document.getElementById('inspClose').click();
     await tick(20);
 
+    // A clip whose picture has been cleaned up opened a blank panel saying
+    // nothing, which reads as the button having failed rather than as the file
+    // being gone. It falls back to the thumbnail the row already holds.
+    document.getElementById('inspClose').click();
+    await tick(20);
+    history.push({ id: 'gone1', type: 'img', content: 'x', meta: '10×10',
+                   ts: Date.now(), filepath: 'C:/nowhere/missing.png', dataUrl: PNG });
+    render();
+    document.querySelector('.item[data-id=\"gone1\"] [data-act=\"name\"]').click();
+    await tick(120);
+    const stageImg = document.querySelector('.insp-stage img');
+    if (stageImg) stageImg.dispatchEvent(new Event('error'));
+    await tick(40);
+    const recovered = document.querySelector('.insp-stage img');
+    ok('a missing picture falls back to the thumbnail rather than a blank panel',
+       (recovered && recovered.src === PNG)
+       || document.getElementById('inspDetailText').textContent.includes('no longer on disk'),
+       recovered ? recovered.src.slice(0, 30) : document.getElementById('inspDetailText').textContent);
+    ok('and the clip can still be named',
+       getComputedStyle(nameInput).display !== 'none', '');
+    document.getElementById('inspClose').click();
+    await tick(20);
+
     // ---- reading a long clip in full ----
     document.getElementById('inspClose').click();
     await tick(20);
-    txtRow().querySelector('[data-act=\"view\"]').click();
+    txtRow().querySelector('[data-act=\"name\"]').click();
     await tick(60);
     const full = document.getElementById('inspDetailText');
     ok('a text clip shows all of itself, not two clamped lines',

@@ -319,13 +319,13 @@ app.whenReady().then(async () => {
 
     const imgRow = document.querySelector('.item[data-id=\\"img1\\"]');
     const txtRow = document.querySelector('.item[data-id=\\"t1\\"]');
-    ok('every row can be opened', !!imgRow.querySelector('[data-act=\\"view\\"]'), '');
+    ok('every row can be opened', !!imgRow.querySelector('[data-act=\\"name\\"]'), '');
     ok('a text row too, since it has a preview worth reading',
-       !!txtRow.querySelector('[data-act=\\"view\\"]'), '');
+       !!txtRow.querySelector('[data-act=\\"name\\"]'), '');
     // Extraction moved into the preview panel — you press it beside the image
     // rather than on a row where you cannot see what you are extracting from.
     const extract = async (what) => {
-      imgRow.querySelector('[data-act=\\"view\\"]').click();
+      imgRow.querySelector('[data-act=\\"name\\"]').click();
       await tick(60);
       document.getElementById(what).click();
       await tick(10);
