@@ -103,7 +103,11 @@ app.whenReady().then(async () => {
       pin: async () => {}, unpin: async () => {}, markPrompt: async () => {}, unmarkPrompt: async () => {},
       updatePrompt: async () => true,
       renameClip: async (id, name) => { renamed.push([id, name]); return true; },
-      ocr: async () => ({ ok: false }), palette: async () => ({ ok: false }),
+      ocr: async () => ({ ok: false }),
+      palette: async () => ({ ok: true, imageUrl: PNG, width: 4, height: 4, colors: [
+        { hex: '#1E1E1E', rgb: [30, 30, 30], share: 0.7, light: false },
+        { hex: '#F8F4EC', rgb: [248, 244, 236], share: 0.3, light: true },
+      ] }),
       expandWindow: async () => {}, createPrompt: async () => true, onOcrProgress: () => {},
       startDrag: () => {}, startDragMulti: () => {}, drawerDragStart: () => {}, drawerDragEnd: () => {},
     };
@@ -140,9 +144,22 @@ app.whenReady().then(async () => {
     ok('the picture is shown', !!document.querySelector('.insp-stage img'), '');
     ok('the name field is focused, ready to type into',
        document.activeElement === nameInput, String(document.activeElement && document.activeElement.id));
-    ok('an image offers the extractors here instead',
-       document.getElementById('detailText').style.display !== 'none'
-       && document.getElementById('detailColor').style.display !== 'none', '');
+    ok('an image offers text and colour as a switch under the name',
+       document.getElementById('inspModes').classList.contains('show'), '');
+    ok('with neither one active until you pick',
+       !document.getElementById('detailText').classList.contains('is-on')
+       && !document.getElementById('detailColor').classList.contains('is-on'), '');
+
+    // Two stacked rows of buttons was the complaint: the panel opened with
+    // copy/text/colour along the bottom, and pressing one grew a second row
+    // above it. There is one footer now, and it only appears once there is
+    // something picked out to act on.
+    const footers = () => [...document.querySelectorAll('.insp-actions')]
+      .filter(n => getComputedStyle(n).display !== 'none');
+    ok('a freshly opened clip shows no footer buttons at all',
+       footers().length === 0, String(footers().length));
+    ok('and copy is not duplicated into the panel',
+       !document.getElementById('detailCopy'), '');
 
     // The bug that started this: the input rendered underneath the hover
     // actions, which float over exactly that corner of the row.
@@ -172,6 +189,20 @@ app.whenReady().then(async () => {
        renamed.length === 0 && nameInput.value === 'Onboarding flow',
        JSON.stringify(renamed) + ' / ' + nameInput.value);
 
+    // entering a mode gives exactly one footer, and says which mode you are in
+    imgRow().querySelector('[data-act=\"view\"]').click();
+    await tick(60);
+    document.getElementById('detailColor').click();
+    await tick(140);
+    ok('picking colour shows one footer, not two', footers().length === 1, String(footers().length));
+    ok('and the switch says which one you are in',
+       document.getElementById('detailColor').classList.contains('is-on')
+       && !document.getElementById('detailText').classList.contains('is-on'), '');
+    ok('the name stays with you into that mode',
+       getComputedStyle(document.getElementById('inspName')).display !== 'none', '');
+    document.getElementById('inspClose').click();
+    await tick(20);
+
     // ---- reading a long clip in full ----
     document.getElementById('inspClose').click();
     await tick(20);
@@ -181,8 +212,8 @@ app.whenReady().then(async () => {
     ok('a text clip shows all of itself, not two clamped lines',
        full.classList.contains('show') && full.textContent.includes('a good deal more text'),
        full.textContent.slice(0, 40));
-    ok('text has no extractors to offer',
-       document.getElementById('detailText').style.display === 'none', '');
+    ok('a text clip has nothing to extract, so the switch is absent',
+       !document.getElementById('inspModes').classList.contains('show'), '');
 
     // ---- closing ----
     renamed = [];

@@ -82,9 +82,12 @@ beside the preview because seeing the thing is what lets you name it.
 - A clip can sit in history, in pinned, and in several sessions at once —
   renaming it renames every copy, so it isn't called two things in one drawer
 - Names show in the dock too
-- **text** and **color** live in this panel now rather than on the row, so you
-  press them while looking at what you're extracting from. Every row carries
-  the same five actions whatever it holds, instead of growing per type
+- **text** and **colour** sit under the name as a switch, not as actions — you
+  press them while looking at what you're extracting from, and the switch stays
+  put while you move between the two. Every row carries the same five actions
+  whatever it holds, instead of growing per type
+- The panel opens with nothing to press. Buttons appear once you've picked
+  something out: **copy text** in one mode, **copy hex** in the other
 - Names last as long as the clip does: forever for pinned clips, prompts and
   session clips; until you quit for ordinary history, same as the clip itself
 
@@ -220,7 +223,7 @@ npm run dev
 npm test
 ```
 
-495 assertions, about a minute. They drive the real renderer in a hidden window
+501 assertions, about a minute. They drive the real renderer in a hidden window
 rather than a copy of it — see [test/README.md](test/README.md).
 
 ### Package for distribution
