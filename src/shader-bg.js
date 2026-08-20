@@ -17,13 +17,17 @@
   // Smoke Ring, with the values off the shader node in the Paper file. Paper
   // shows these as percentages of the raw value, so 153% is 1.53 and 500% is 5.
   // The ring keeps its shape across both themes; only what it is made of
-  // changes. Light is the pair off the Paper node: the layer fill behind the
-  // ring, then the ring itself. Dark is the same relationship against the
-  // near-black the drawer has always used, kept low in chroma so the cards
-  // stay the brightest thing on the screen.
+  // changes. Light is the pair straight off the Paper node.
+  //
+  // Dark is tuned against the cards rather than taken from Paper directly.
+  // Its 202022 ground and 353536 ring both sat above the #141519 card -- the
+  // ring by 1.49 -- so the cards read as holes punched in a grey fog instead
+  // of as objects on a black field. These sit the ground on the drawer's own black
+  // (1.01 against it) and bring the ring down to 1.09 above the card: enough
+  // to see the smoke move, never enough to out-weigh what is on top of it.
   const PALETTES = {
     light: { colorBack: '#81ADEC', colors: ['#BDD6F6'] },
-    dark:  { colorBack: '#202022', colors: ['#353536'] },
+    dark:  { colorBack: '#0A0B0D', colors: ['#1B1E26'] },
   };
 
   const CONFIG = {
