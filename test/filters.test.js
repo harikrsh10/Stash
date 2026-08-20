@@ -119,6 +119,47 @@ app.whenReady().then(async () => {
     ok('and injects no attribute anywhere',
        ![...document.querySelectorAll('*')].some(e => e.hasAttribute('onerror')), '');
 
+
+    // ---------- reading a colour in other spaces ----------
+    // sRGB red is L*53.24 C*104.55 h40.0 in CIE LCh(ab); if the matrices or
+    // the gamma decode were wrong these would drift immediately.
+    const spaces = (v) => Object.fromEntries(colourSpaceRows(v));
+    ok('red converts to the reference LCh',
+       spaces('#FF0000').LCH === 'lch(53.2% 104.6 40)', spaces('#FF0000').LCH);
+    ok('white is fully light with no chroma',
+       spaces('#FFFFFF').LCH === 'lch(100% 0 0)', spaces('#FFFFFF').LCH);
+    ok('black is fully dark', spaces('#000000').LCH === 'lch(0% 0 0)', spaces('#000000').LCH);
+    ok('hex round-trips', spaces('#E2E6EA').Hex === '#E2E6EA', spaces('#E2E6EA').Hex);
+    ok('rgb is spelled out', spaces('#E2E6EA').RGB === 'rgb(226, 230, 234)', spaces('#E2E6EA').RGB);
+    ok('hsl is spelled out', spaces('#E2E6EA').HSL === 'hsl(210, 16%, 90%)', spaces('#E2E6EA').HSL);
+    // a value that is not hex has to reach the same place
+    ok('an rgb() value converts the same as its hex',
+       spaces('rgb(226, 230, 234)').Hex === '#E2E6EA', spaces('rgb(226, 230, 234)').Hex);
+    ok('an hsl() value converts too', spaces('hsl(210, 90%, 60%)').Hex === '#3D99F5',
+       spaces('hsl(210, 90%, 60%)').Hex);
+
+    // ---------- what the panel says about a colour ----------
+    history = [{ id: 'hx', type: 'text', content: '#E2E6EA', ts: Date.now() },
+               { id: 'pal', type: 'text', content: '#3B82F6' + NL + '#EF4444', ts: Date.now() - 1 }];
+    render();
+    await tick(10);
+
+    document.querySelector('.item[data-id="hx"] [data-act="name"]').click();
+    await tick(60);
+    const metaOf = () => [...document.querySelectorAll('#inspMeta .meta-row')]
+      .map(r => r.querySelector('.meta-key').textContent);
+    ok('the panel badges a colour as a colour, not as text',
+       document.querySelector('#inspMeta .type-badge').textContent === 'color',
+       document.querySelector('#inspMeta .type-badge').textContent);
+    ok('and lists the spaces it can be read in',
+       metaOf().join(',').indexOf('Hex,RGB,HSL,LCH') !== -1, metaOf().join(','));
+
+    document.querySelector('.item[data-id="pal"] [data-act="name"]').click();
+    await tick(60);
+    ok('a palette counts its values rather than picking one to describe',
+       metaOf().indexOf('Colours') !== -1 && metaOf().indexOf('Hex') === -1,
+       metaOf().join(','));
+
     return out;
   })()`;
 
