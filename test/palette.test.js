@@ -358,7 +358,7 @@ app.whenReady().then(async () => {
     const outEl = document.getElementById('inspOut');
     const copyEl = document.getElementById('inspCopy');
     ok('nothing is picked to begin with', copyEl.disabled, '');
-    ok('the copy button says what it copies', copyEl.textContent === 'copy hex', copyEl.textContent);
+    ok('the copy button says what it copies', copyEl.title === 'copy the hex values', copyEl.title);
 
     // pick the third, then the first — the output should still read top-down
     swatches[2].click();
@@ -397,8 +397,9 @@ app.whenReady().then(async () => {
     ok('and draws regions, not swatches',
        document.querySelectorAll('.region').length === 1 && document.querySelectorAll('.swatch').length === 0,
        document.querySelectorAll('.region').length + ' regions');
-    ok('the copy button goes back to text', document.getElementById('inspCopy').textContent === 'copy text',
-       document.getElementById('inspCopy').textContent);
+    ok('the copy button goes back to text',
+       document.getElementById('inspCopy').title === 'copy the selected text',
+       document.getElementById('inspCopy').title);
 
     return out;
   })()`;

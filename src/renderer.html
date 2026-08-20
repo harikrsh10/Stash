@@ -520,7 +520,7 @@
     /* the facts only belong on the panel you opened to look at the clip */
     .insp-card { display: contents; }
     .detail-meta { display: none; }
-    .inspector[data-mode="detail"] .detail-meta { display: block; }
+    .inspector.show .detail-meta { display: block; }
     .meta-row { display: flex; align-items: center; gap: 12px; padding: 6px 0; }
     .meta-key {
       width: 108px;
@@ -538,6 +538,28 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .out-empty { text-align: center; padding: 18px 10px; }
+    .out-empty-mark {
+      width: 74px;
+      height: 74px;
+      margin: 0 auto 16px;
+      border-radius: 6px;
+      background: var(--surface3);
+    }
+    .out-empty-title {
+      font-family: var(--font-sans);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .out-empty-hint {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+
     .mode-key { font-weight: 600; color: var(--text-2); display: flex; align-items: center; }
     .mode-key svg {
       width: 15px;
@@ -1831,6 +1853,50 @@
         justify-content: center;
         gap: 9px;
       }
+      /* the chosen side reads like a chosen place on the rail */
+      .mode-btn.is-on {
+        background: var(--select-wash-2);
+        border-color: transparent;
+        color: var(--select);
+      }
+      .mode-btn.is-on .mode-key { color: var(--select); }
+
+      .insp-out {
+        flex: 1 1 auto;
+        min-height: 0;
+        max-height: none;
+        margin: 0;
+        padding: 16px;
+        border: 0;
+        border-radius: 12px;
+        background: var(--card);
+        box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
+        font-size: 13px;
+      }
+      .insp-out.empty { display: flex; align-items: center; justify-content: center; }
+
+      /* icons alone -- the tooltip carries the word */
+      .insp-actions { padding: 0; gap: 8px; flex: none; }
+      .insp-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px 10px;
+        border: 0;
+        border-radius: 12px;
+        background: var(--card);
+        box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
+      }
+      .insp-btn svg {
+        width: 17px;
+        height: 17px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.7;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        display: block;
+      }
 
       /* selected place: a blue tint, not the tan that means "pinned" */
       .rail-item.on {
@@ -1861,18 +1927,20 @@
     <!-- what the clip is, set out beneath the picture of it -->
     <div class="detail-meta" id="inspMeta"></div>
     <div class="insp-swatches" id="inspSwatches"></div>
-    <div class="insp-out empty" id="inspOut">selected text appears here</div>
-    <div class="insp-actions">
-      <button class="insp-btn" id="inspCopy" disabled>copy text</button>
-      <button class="insp-btn prompt" id="inspPrompt" disabled>add to prompts</button>
-    </div>
     </div><!-- /insp-card -->
 
     <!-- What you can pull out of this picture. A switch rather than an action,
          so it stays put when you move between the two. -->
     <div class="insp-modes" id="inspModes">
-      <button class="mode-btn" id="detailText"><span class="mode-key">T</span>Text</button>
+      <button class="mode-btn" id="detailText"><span class="mode-key" id="modeKeyText"></span>Text</button>
       <button class="mode-btn" id="detailColor"><span class="mode-key" id="modeKeyColor"></span>Color</button>
+    </div>
+
+    <!-- what you have picked out so far, and the two things worth doing with it -->
+    <div class="insp-out empty" id="inspOut"></div>
+    <div class="insp-actions">
+      <button class="insp-btn" id="inspCopy" title="copy what you picked" aria-label="copy" disabled></button>
+      <button class="insp-btn prompt" id="inspPrompt" title="add to prompts" aria-label="add to prompts" disabled></button>
     </div>
   </div>
 
@@ -2419,6 +2487,7 @@
       if (!c) return null;
       detailId = id;
       inspNameEl.value = c.name || '';
+      buildDetailMeta(c);
       return c;
     }
 
@@ -2431,7 +2500,6 @@
       inspectorEl.dataset.mode = 'detail';
       inspTitleEl.textContent = 'name this clip';
       inspHintEl.textContent = c.meta || typeLabel(c);
-      buildDetailMeta(c);
 
       inspDetailTextEl.classList.remove('show');
       inspStageEl.innerHTML = '';
@@ -2695,6 +2763,28 @@
     const inspectorEl = document.getElementById('inspector');
     const inspStageEl = document.getElementById('inspStage');
     const inspOutEl = document.getElementById('inspOut');
+
+    // Nothing picked yet: say where to pick it from and what happens next,
+    // rather than labelling the empty box.
+    function setInspOut(text, isColor) {
+      inspOutEl.classList.toggle('empty', !text);
+      if (text) { inspOutEl.textContent = text; return; }
+      const what = isColor ? "colours" : "text";
+      const wrap = document.createElement('div');
+      wrap.className = 'out-empty';
+      const mark = document.createElement('div');
+      mark.className = 'out-empty-mark';
+      const title = document.createElement('div');
+      title.className = 'out-empty-title';
+      title.textContent = 'Select ' + what + ' from above';
+      const hint = document.createElement('div');
+      hint.className = 'out-empty-hint';
+      hint.textContent = 'Selected ' + what + ' will be added here, which can then be copied';
+      wrap.appendChild(mark);
+      wrap.appendChild(title);
+      wrap.appendChild(hint);
+      inspOutEl.replaceChildren(wrap);
+    }
     const inspHintEl = document.getElementById('inspHint');
     const inspCopyEl = document.getElementById('inspCopy');
     const inspPromptEl = document.getElementById('inspPrompt');
@@ -2868,11 +2958,10 @@
     function syncInspOut() {
       const isColor = inspMode === 'color';
       const text = pickedText();
-      inspOutEl.textContent = text || (isColor ? 'tap the colours you want' : 'selected text appears here');
-      inspOutEl.classList.toggle('empty', !text);
+      setInspOut(text, isColor);
       inspCopyEl.disabled = !text;
       inspPromptEl.disabled = !text;
-      inspCopyEl.textContent = isColor ? 'copy hex' : 'copy text';
+      inspCopyEl.title = isColor ? 'copy the hex values' : 'copy the selected text';
 
       if (isColor) {
         if (!inspColors.length) return;
@@ -3468,7 +3557,10 @@
       del: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 7V5a1 1 0 011-1h2a1 1 0 011 1v2"/><path d="M6 7l1 13a1 1 0 001 1h8a1 1 0 001-1l1-13"/></svg>',
     };
 
+    document.getElementById('modeKeyText').innerHTML = ICON.text;
     document.getElementById('modeKeyColor').innerHTML = ICON.colour;
+    document.getElementById('inspCopy').innerHTML = ICON.copy;
+    document.getElementById('inspPrompt').innerHTML = ICON.prompt;
 
     function buildItemEl(c, isPinned, sessionId) {
       const el = document.createElement('div');
