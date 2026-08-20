@@ -17,6 +17,7 @@
     "build:shaders": "esbuild scripts/shader-entry.js --bundle --format=iife --global-name=PaperShaders --minify --target=chrome120 --outfile=src/vendor/paper-shaders.js"
   },
   "devDependencies": {
+    "@paper-design/shaders": "^0.0.80",
     "electron": "^31.0.0",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2"
@@ -79,6 +80,7 @@
     },
     "files": [
       "src/**/*",
+      "!src/_harness.html",
       "assets/**/*",
       "package.json"
     ],
@@ -92,7 +94,6 @@
     ]
   },
   "dependencies": {
-    "@paper-design/shaders": "^0.0.80",
     "electron-updater": "^6.8.9"
   }
 }

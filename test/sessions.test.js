@@ -363,6 +363,31 @@ app.whenReady().then(async () => {
     ok('select-all counts it once', selected.size === renderedOrder.length,
        selected.size + ' of ' + renderedOrder.length);
 
+
+    // ---------- a clip that lives only in a session ----------
+    // Collected clips age out of history. findClip only looked at pinned and
+    // history, so anything opened by id inside a session -- the preview panel,
+    // the prompt editor -- silently did nothing when you clicked it.
+    history = [];
+    pinned = [];
+    sessionClips = [
+      { id: 'only', sessionId: 'ses1', type: 'text', content: '#E2E6EA', ts: Date.now() },
+    ];
+    activeScope = 'ses1';
+    render();
+    await tick(10);
+
+    const onlyRow = document.querySelector('.item[data-id="only"]');
+    ok('a session-only clip still draws a row', !!onlyRow, '');
+    onlyRow.querySelector('[data-act="name"]').click();
+    await tick(60);
+    const inspEl = document.getElementById('inspector');
+    ok('and its preview panel opens', inspEl.classList.contains('show'), '');
+    ok('showing that clip, not another', document.getElementById('inspName').value === '', '');
+    ok('with the colour spelled out in the facts',
+       [...document.querySelectorAll('#inspMeta .meta-row')]
+         .some(r => r.querySelector('.meta-key').textContent === 'Hex'), '');
+
     return out;
   })()`;
 

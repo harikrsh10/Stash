@@ -537,7 +537,6 @@
     }
 
     /* nothing to act on until something has been picked out */
-    .inspector[data-mode="detail"] .insp-actions { display: none; }
     .inspector[data-mode="detail"] .insp-out { display: none; }
 
     /* the name belongs to the clip, not to one view of it */
@@ -564,27 +563,6 @@
     .insp-out::-webkit-scrollbar { width: 3px; }
     .insp-out::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 
-    .insp-actions {
-      display: flex;
-      gap: 8px;
-      padding: 10px 14px 14px;
-      flex-shrink: 0;
-    }
-    .insp-btn {
-      flex: 1;
-      padding: 8px 10px;
-      border-radius: 4px;
-      background: var(--surface2, var(--surface2));
-      border: 1px solid var(--border2);
-      color: var(--text-2, var(--text-2));
-      font-family: var(--font-mono);
-      font-size: 10.5px;
-      cursor: pointer;
-      transition: color 0.12s, border-color 0.12s, background 0.12s;
-    }
-    .insp-btn:hover:not(:disabled) { color: var(--ocr); border-color: var(--session-line-2); background: var(--session-tint-2); }
-    .insp-btn.prompt:hover:not(:disabled) { color: var(--prompt); border-color: var(--prompt-line-2); background: var(--prompt-tint-2); }
-    .insp-btn:disabled { opacity: 0.4; cursor: default; }
 
     /* drag region lets the user move the window by the title bar */
     .titlebar {
@@ -1966,27 +1944,6 @@
       .insp-out { overflow-y: auto; }
 
       /* icons alone -- the tooltip carries the word */
-      .insp-actions { padding: 0; gap: 8px; flex: none; }
-      .insp-btn {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 16px 10px;
-        border: 0;
-        border-radius: 12px;
-        background: var(--card);
-        box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
-      }
-      .insp-btn svg {
-        width: 17px;
-        height: 17px;
-        fill: none;
-        stroke: currentColor;
-        stroke-width: 1.7;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        display: block;
-      }
 
       /* selected place: a blue tint, not the tan that means "pinned" */
       .rail-item.on {
@@ -2574,8 +2531,15 @@
     }
 
     // ---------- prompt editor ----------
+    // Every store, not just the two the drawer usually shows. A clip collected
+    // into a session and since aged out of history lives only in sessionClips,
+    // and leaving it out here made every panel that opens by id -- naming, the
+    // editor -- do nothing at all when you clicked it inside a session.
     function findClip(id) {
-      return pinned.find(p => p.id === id) || history.find(h => h.id === id) || null;
+      return pinned.find(p => p.id === id)
+          || history.find(h => h.id === id)
+          || sessionClips.find(c => c.id === id)
+          || null;
     }
 
     function openEditor(id) {
@@ -2621,7 +2585,7 @@
       ocrSheetEl.classList.remove('show');
       inspMode = 'detail';
       inspectorEl.dataset.mode = 'detail';
-      inspTitleEl.textContent = 'name this clip';
+      inspTitleEl.textContent = 'preview';
       inspHintEl.textContent = c.meta || typeLabel(c);
 
       inspDetailTextEl.classList.remove('show');
@@ -3008,7 +2972,6 @@
     // Both are the same panel — one image, one set of things to pick from it.
     let inspMode = 'text';
     let inspColors = [];
-    const inspPickedColors = new Set();
     let inspBlocks = [];
     // pixel dimensions of the image OCR read — the space block boxes live in
     let inspSrcW = 0;
@@ -3028,7 +2991,6 @@
       inspBlocks = [];
       inspColors = [];
       inspPicked.clear();
-      inspPickedColors.clear();
       // a name typed but not yet committed is saved on the way out, rather
       // than silently dropped because the panel was closed instead of blurred
       if (detailId) commitDetailName();
@@ -3061,7 +3023,6 @@
       inspMode = 'color';
       inspectorEl.dataset.mode = 'color';
       inspColors = colors || [];
-      inspPickedColors.clear();
       inspTitleEl.textContent = 'colours in this image';
       setModes(true, 'color');
       await showInspectorImage(src, w, h);
@@ -3806,7 +3767,7 @@
     // Labels put the toolbar in competition with the clip for the same few
     // words of width. Icons don't, and every button keeps its title for hover.
     const ICON = {
-      name: '<svg viewBox="0 0 24 24"><path d="M20.6 13.4l-7.2 7.2a2 2 0 01-2.83 0l-7-7A2 2 0 013 12.2V5a2 2 0 012-2h7.17a2 2 0 011.42.59l7 7a2 2 0 01.01 2.81z"/><circle cx="7.6" cy="7.6" r="1.3"/></svg>',
+      name: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11.2v5"/><path d="M12 7.8v.4"/></svg>',
       edit: '<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>',
       prompt: '<svg viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>',
       pin: '<svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8L3.5 9.7l5.9-.9z"/></svg>',
@@ -3938,7 +3899,7 @@
           ${tagsHtml}
           ${extraHtml}
           <div class="actions">
-            <button class="act-btn" data-act="name" title="${c.name ? 'change this clip’s name' : 'give this clip a name'}">${ICON.name}</button>
+            <button class="act-btn" data-act="name" title="preview">${ICON.name}</button>
             ${c.isPrompt ? `<button class="act-btn" data-act="edit" title="edit text and tags">${ICON.edit}</button>` : ''}
             <button class="act-btn ${c.isPrompt ? 'on' : ''}" data-act="prompt" title="${c.isPrompt ? 'stop keeping this as a prompt' : 'save as a prompt — kept forever'}">${ICON.prompt}</button>
             ${c.isPrompt ? '' : `<button class="act-btn ${isPinned ? 'pinned' : ''}" data-act="pin" title="${isPinned ? 'unpin' : 'pin'}">${isPinned ? ICON.pinned : ICON.pin}</button>`}
