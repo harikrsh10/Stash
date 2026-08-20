@@ -54,6 +54,14 @@ for (const file of ['renderer.html', 'dock.html']) {
   const selfRef = [...dark, ...light].filter(([k, v]) => v === `var(${k})`).map(([k]) => k);
   ok(`${file}: no token defined as itself`, selfRef.length === 0, selfRef.join(' '));
 
+  // A panel you can only open is a trap. The light shell drops the header the
+  // dark one shows, and hiding it outright once left Esc as the only way out
+  // of the preview and the two extraction views.
+  const headAt = lightMedia.indexOf('.insp-head {');
+  const headBody = headAt === -1 ? '' : lightMedia.slice(headAt, lightMedia.indexOf('}', headAt));
+  ok(`${file}: the inspector keeps a visible way out in light mode`,
+     headBody.indexOf('display: none') === -1, headBody.split(String.fromCharCode(10)).join(' ').slice(0, 70));
+
   // component rules must not carry literals, or they cannot follow the theme
   const afterPalettes = css.slice(css.indexOf(lightMedia) + lightMedia.length);
   const literals = afterPalettes.match(/#[0-9a-fA-F]{3,8}\b|rgba?\([^)]+\)/g) || [];

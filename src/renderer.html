@@ -1868,7 +1868,29 @@
         gap: 8px;
         box-sizing: border-box;
       }
-      .insp-head { display: none; }
+      /* The design leads with the name and carries no header, so this was
+         hidden -- which left Esc as the only way out of a panel you opened by
+         clicking. The header comes back as a bare close, without the status
+         line it used to hold. */
+      .insp-head {
+        display: flex;
+        justify-content: flex-end;
+        padding: 10px 10px 0;
+      }
+      .insp-title,
+      .insp-hint { display: none; }
+      .insp-head .close-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border-radius: 8px;
+        font-size: 16px;
+      }
+      /* the name no longer needs to clear the top of the card on its own */
+      .insp-head + .detail-name { margin-top: 6px; }
       .insp-card {
         display: flex;
         flex-direction: column;
