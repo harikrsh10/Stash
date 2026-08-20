@@ -538,7 +538,17 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .mode-key { font-weight: 600; color: var(--text-2); }
+    .mode-key { font-weight: 600; color: var(--text-2); display: flex; align-items: center; }
+    .mode-key svg {
+      width: 15px;
+      height: 15px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      display: block;
+    }
 
     /* nothing to act on until something has been picked out */
     .inspector[data-mode="detail"] .insp-actions { display: none; }
@@ -1862,7 +1872,7 @@
          so it stays put when you move between the two. -->
     <div class="insp-modes" id="inspModes">
       <button class="mode-btn" id="detailText"><span class="mode-key">T</span>Text</button>
-      <button class="mode-btn" id="detailColor"><span class="mode-key">C</span>Color</button>
+      <button class="mode-btn" id="detailColor"><span class="mode-key" id="modeKeyColor"></span>Color</button>
     </div>
   </div>
 
@@ -3457,6 +3467,8 @@
       copy: '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>',
       del: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 7V5a1 1 0 011-1h2a1 1 0 011 1v2"/><path d="M6 7l1 13a1 1 0 001 1h8a1 1 0 001-1l1-13"/></svg>',
     };
+
+    document.getElementById('modeKeyColor').innerHTML = ICON.colour;
 
     function buildItemEl(c, isPinned, sessionId) {
       const el = document.createElement('div');
