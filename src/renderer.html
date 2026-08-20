@@ -944,20 +944,58 @@
     }
     .item:hover .item-image { max-height: 180px; }
 
+    /* The toolbar used to float over the row's top-right, which is where the
+       headline and the name field live — it covered the very thing you were
+       acting on. It sits under the content now.
+
+       Its space is reserved whether or not it is showing. Revealing it by
+       adding height would grow the row on hover and shove every row below it
+       down, moving the list out from under the cursor that opened it. */
     .actions {
-      position: absolute;
-      right: 12px;
-      top: 12px;
-      display: none;
-      gap: 4px;
+      display: flex;
       align-items: center;
-      background: var(--surface2);
+      gap: 2px;
+      margin-top: 8px;
       padding: 3px;
-      border-radius: 5px;
-      border: 1px solid var(--border2);
-      box-shadow: 0 4px 10px var(--shadow);
+      height: 30px;
+      border-radius: 7px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.12s;
     }
-    .item:hover .actions { display: flex; }
+    .item:hover .actions,
+    .actions:focus-within { opacity: 1; pointer-events: auto; }
+
+    .act-btn {
+      flex: 1;
+      height: 22px;
+      display: grid;
+      place-items: center;
+      background: none;
+      border: 0;
+      border-radius: 5px;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 0;
+      transition: color 0.12s, background 0.12s;
+    }
+    .act-btn svg {
+      width: 15px;
+      height: 15px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .act-btn svg.filled { fill: currentColor; }
+    .act-btn:hover { color: var(--text); background: var(--surface3); }
+    .act-btn.on { color: var(--prompt); }
+    .act-btn.pinned { color: var(--pinned); }
+    .act-btn.danger:hover { color: var(--danger); background: var(--danger-line); }
+    .act-btn:focus-visible { outline: 1px solid var(--select); outline-offset: -1px; }
     .act-btn {
       background: transparent;
       border: none;
@@ -1480,28 +1518,6 @@
       background: var(--prompt-tint);
       border: 1px solid var(--prompt-line);
     }
-    .prompt-btn.on { color: var(--prompt); }
-    .prompt-btn:hover { color: var(--prompt); }
-    /* pin button — little star/dot on each item */
-    .pin-btn {
-      background: var(--surface2);
-      border: 1px solid var(--border2);
-      border-radius: 3px;
-      color: var(--muted);
-      font-size: 11px;
-      font-family: var(--font-mono);
-      padding: 3px 7px;
-      cursor: pointer;
-      transition: color 0.12s, border-color 0.12s, background 0.12s;
-      line-height: 1;
-    }
-    .pin-btn:hover { color: var(--pinned); border-color: var(--pinned-line); }
-    .pin-btn.pinned {
-      color: var(--pinned);
-      border-color: var(--pinned-line);
-      background: var(--pinned-tint);
-    }
-    .pin-btn.pinned:hover { color: var(--pinned-dim); }
   </style>
 </head>
 <body>
@@ -2902,6 +2918,19 @@
       ids.filter(id => held.has(id)).forEach((id, k) => { list[slots[k]] = byId.get(id); });
     }
 
+    // Labels put the toolbar in competition with the clip for the same few
+    // words of width. Icons don't, and every button keeps its title for hover.
+    const ICON = {
+      view: '<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+      edit: '<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>',
+      prompt: '<svg viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>',
+      pin: '<svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8L3.5 9.7l5.9-.9z"/></svg>',
+      pinned: '<svg viewBox="0 0 24 24" class="filled"><path d="M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8L3.5 9.7l5.9-.9z"/></svg>',
+      session: '<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M12 11v5M9.5 13.5h5"/></svg>',
+      copy: '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>',
+      del: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 7V5a1 1 0 011-1h2a1 1 0 011 1v2"/><path d="M6 7l1 13a1 1 0 001 1h8a1 1 0 001-1l1-13"/></svg>',
+    };
+
     function buildItemEl(c, isPinned, sessionId) {
       const el = document.createElement('div');
       let cls = 'item';
@@ -3002,15 +3031,16 @@
           ${metaHtml}
           ${tagsHtml}
           ${extraHtml}
-        </div>
-        <div class="actions">
-          <button class="pin-btn prompt-btn ${c.isPrompt ? 'on' : ''}" data-act="prompt" title="${c.isPrompt ? 'stop keeping this as a prompt' : 'save as a prompt — kept forever'}">✦</button>
-          ${c.isPrompt ? `<button class="act-btn" data-act="edit" title="edit text and tags">edit</button>` : `<button class="pin-btn ${isPinned ? 'pinned' : ''}" data-act="pin" title="${isPinned ? 'unpin' : 'pin'}">${isPinned ? '★' : '☆'}</button>`}
-          <button class="act-btn" data-act="view" title="${c.type === 'img' ? 'see it full size, and name it' : 'read it in full, and name it'}">view</button>
-          ${(activeSessionId && !sessionId && !isInSession(c.id, activeSessionId))
-            ? `<button class="act-btn" data-act="ses" title="add to the session you're collecting into">+ses</button>` : ''}
-          <button class="act-btn" data-act="copy" title="copy">copy</button>
-          <button class="act-btn danger" data-act="del" title="${sessionId ? 'remove from this session' : 'delete'}">${sessionId ? 'remove' : 'del'}</button>
+          <div class="actions">
+            <button class="act-btn" data-act="view" title="${c.type === 'img' ? 'see it full size, and name it' : 'read it in full, and name it'}">${ICON.view}</button>
+            ${c.isPrompt ? `<button class="act-btn" data-act="edit" title="edit text and tags">${ICON.edit}</button>` : ''}
+            <button class="act-btn ${c.isPrompt ? 'on' : ''}" data-act="prompt" title="${c.isPrompt ? 'stop keeping this as a prompt' : 'save as a prompt — kept forever'}">${ICON.prompt}</button>
+            ${c.isPrompt ? '' : `<button class="act-btn ${isPinned ? 'pinned' : ''}" data-act="pin" title="${isPinned ? 'unpin' : 'pin'}">${isPinned ? ICON.pinned : ICON.pin}</button>`}
+            ${(activeSessionId && !sessionId && !isInSession(c.id, activeSessionId))
+              ? `<button class="act-btn" data-act="ses" title="add to the session you're collecting into">${ICON.session}</button>` : ''}
+            <button class="act-btn" data-act="copy" title="copy">${ICON.copy}</button>
+            <button class="act-btn danger" data-act="del" title="${sessionId ? 'remove from this session' : 'delete'}">${ICON.del}</button>
+          </div>
         </div>
       `;
 
