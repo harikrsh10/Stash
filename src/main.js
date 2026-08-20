@@ -1486,25 +1486,46 @@ ipcMain.handle('clip:write', (_e, entry, plain) => {
   return true;
 });
 
+// Delete means gone from Stash, not gone from the list you happen to be
+// looking at. A clip can sit in history, in pinned, and in any number of
+// sessions at once — removing one copy and unlinking the picture left the
+// others pointing at a file that no longer existed.
+//
+// Taking a clip out of a single session is a different act, and has its own
+// door: the session button on the row.
 ipcMain.handle('clip:delete', (_e, id) => {
-  // try pinned first
-  const pinnedIdx = pinned.findIndex(p => p.id === id);
-  if (pinnedIdx > -1) {
-    const [removed] = pinned.splice(pinnedIdx, 1);
-    if (removed.filepath && fs.existsSync(removed.filepath)) {
-      try { fs.unlinkSync(removed.filepath); } catch (_) {}
+  const paths = new Set();
+  let found = false;
+  const take = (arr) => {
+    for (let i = arr.length - 1; i >= 0; i--) {
+      if (arr[i].id !== id) continue;
+      if (arr[i].filepath) paths.add(arr[i].filepath);
+      arr.splice(i, 1);
+      found = true;
     }
-    savePinned();
-    refreshTrayMenu();
-    return true;
+  };
+
+  const hadPinned = pinned.some(p => p.id === id);
+  const hadSession = sessionClips.some(s => s.id === id);
+  take(history);
+  take(pinned);
+  take(sessionClips);
+  if (!found) return false;
+
+  // The same picture can back several clips, so a file only goes once nothing
+  // at all still points at it.
+  const remaining = [...history, ...pinned, ...sessionClips];
+  for (const fp of paths) {
+    if (remaining.some(c => c.filepath === fp)) continue;
+    try { if (fs.existsSync(fp)) fs.unlinkSync(fp); } catch (_) { /* a leftover beats a crash */ }
   }
-  const idx = history.findIndex(h => h.id === id);
-  if (idx === -1) return false;
-  const [removed] = history.splice(idx, 1);
-  if (removed.filepath && fs.existsSync(removed.filepath)) {
-    try { fs.unlinkSync(removed.filepath); } catch (_) {}
-  }
+
+  if (hadPinned) savePinned();
+  if (hadSession) saveSessions();
   refreshTrayMenu();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('state:updated', { history, pinned, ...sessionState() });
+  }
   return true;
 });
 
