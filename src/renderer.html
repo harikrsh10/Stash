@@ -517,6 +517,29 @@
       color: var(--text);
     }
 
+    /* the facts only belong on the panel you opened to look at the clip */
+    .insp-card { display: contents; }
+    .detail-meta { display: none; }
+    .inspector[data-mode="detail"] .detail-meta { display: block; }
+    .meta-row { display: flex; align-items: center; gap: 12px; padding: 6px 0; }
+    .meta-key {
+      width: 108px;
+      flex: none;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .meta-val {
+      min-width: 0;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .mode-key { font-weight: 600; color: var(--text-2); }
+
     /* nothing to act on until something has been picked out */
     .inspector[data-mode="detail"] .insp-actions { display: none; }
     .inspector[data-mode="detail"] .insp-out { display: none; }
@@ -1736,6 +1759,69 @@
         padding: 2px 4px;
       }
 
+      /* the inspector is two cards on the shader: the clip, then what can be
+         pulled out of it. The design leads with the name, so the title bar
+         that used to sit above it comes off -- Esc still closes the panel. */
+      .inspector {
+        background: transparent;
+        border-right: 0;
+        padding: 16px 0 16px 16px;
+        gap: 8px;
+        box-sizing: border-box;
+      }
+      .insp-head { display: none; }
+      .insp-card {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+        background: var(--card);
+        border-radius: 12px;
+        box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
+        overflow: hidden;
+        padding-bottom: 14px;
+      }
+      .detail-name {
+        margin: 14px 14px 12px;
+        padding: 12px 14px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .detail-meta { margin: 14px 14px 0; }
+      .meta-row { padding: 8px 0; }
+      .meta-key { width: 116px; font-size: 12px; }
+      .meta-val { font-size: 12px; }
+
+      /* Looking at a clip, the card ends where the facts end. Only the
+         extraction views need the picture to stretch and scroll. */
+      .inspector[data-mode="detail"] .insp-card { flex: 0 1 auto; }
+      .inspector[data-mode="detail"] .insp-canvas { flex: 0 1 auto; }
+
+      .insp-modes {
+        margin: 0;
+        flex: none;
+        padding: 10px;
+        gap: 10px;
+        border: 0;
+        border-radius: 12px;
+        background: var(--card);
+        box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
+      }
+      .mode-btn {
+        padding: 16px 10px;
+        border-radius: 10px;
+        font-size: 13px;
+        text-transform: none;
+        letter-spacing: 0.02em;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+      }
+
       /* selected place: a blue tint, not the tan that means "pinned" */
       .rail-item.on {
         background: var(--select-wash-2);
@@ -1750,6 +1836,7 @@
   <div class="shader-bg" id="shaderBg"></div>
   <div class="shell">
   <div class="inspector" id="inspector" data-mode="text">
+    <div class="insp-card">
     <div class="insp-head">
       <span class="insp-title" id="inspTitle">select text from image</span>
       <span class="insp-hint" id="inspHint">tap the highlighted areas</span>
@@ -1757,22 +1844,25 @@
     </div>
     <input class="detail-name" id="inspName" type="text" spellcheck="false"
            placeholder="name this clip" maxlength="120" />
-    <!-- What you can pull out of this picture. A switch rather than an action,
-         so it sits with the name instead of down in the footer, and stays put
-         when you move between the two. -->
-    <div class="insp-modes" id="inspModes">
-      <button class="mode-btn" id="detailText">text</button>
-      <button class="mode-btn" id="detailColor">colour</button>
-    </div>
     <div class="insp-canvas">
       <div class="insp-stage" id="inspStage"></div>
       <div class="detail-text" id="inspDetailText"></div>
     </div>
+    <!-- what the clip is, set out beneath the picture of it -->
+    <div class="detail-meta" id="inspMeta"></div>
     <div class="insp-swatches" id="inspSwatches"></div>
     <div class="insp-out empty" id="inspOut">selected text appears here</div>
     <div class="insp-actions">
       <button class="insp-btn" id="inspCopy" disabled>copy text</button>
       <button class="insp-btn prompt" id="inspPrompt" disabled>add to prompts</button>
+    </div>
+    </div><!-- /insp-card -->
+
+    <!-- What you can pull out of this picture. A switch rather than an action,
+         so it stays put when you move between the two. -->
+    <div class="insp-modes" id="inspModes">
+      <button class="mode-btn" id="detailText"><span class="mode-key">T</span>Text</button>
+      <button class="mode-btn" id="detailColor"><span class="mode-key">C</span>Color</button>
     </div>
   </div>
 
@@ -2331,6 +2421,7 @@
       inspectorEl.dataset.mode = 'detail';
       inspTitleEl.textContent = 'name this clip';
       inspHintEl.textContent = c.meta || typeLabel(c);
+      buildDetailMeta(c);
 
       inspDetailTextEl.classList.remove('show');
       inspStageEl.innerHTML = '';
@@ -2361,6 +2452,57 @@
       }
       inspNameEl.focus();
       inspNameEl.select();
+    }
+
+    const inspMetaEl = document.getElementById('inspMeta');
+
+    // "20 Aug 2025, 11:34 AM"
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    function formatAdded(ts) {
+      if (!ts) return '-';
+      const d = new Date(ts);
+      const ampm = d.getHours() >= 12 ? 'PM' : 'AM';
+      const h = d.getHours() % 12 || 12;
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      return d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear()
+           + ', ' + h + ':' + mm + ' ' + ampm;
+    }
+
+    function typeBadgeFor(c) {
+      const kind = c.type === 'img' ? 'img'
+                 : c.type === 'code' ? 'code'
+                 : c.type === 'url' ? 'url' : 'text';
+      const b = document.createElement('span');
+      b.className = 'type-badge ' + kind;
+      b.textContent = kind;
+      return b;
+    }
+
+    // The facts about a clip, beneath the picture of it: what it is, how big,
+    // when it arrived, and which sessions are holding on to it.
+    function buildDetailMeta(c) {
+      const rows = [['File Type', typeBadgeFor(c)]];
+      if (c.meta) rows.push(['Dimensions', c.meta]);
+      rows.push(['Added', formatAdded(c.ts)]);
+      const held = sessionsHolding(c.id).map(x => x.name);
+      rows.push(['Sessions', held.length ? held.join(', ') : '-']);
+
+      const frag = document.createDocumentFragment();
+      rows.forEach(([k, v]) => {
+        const row = document.createElement('div');
+        row.className = 'meta-row';
+        const key = document.createElement('span');
+        key.className = 'meta-key';
+        key.textContent = k;
+        const val = document.createElement('span');
+        val.className = 'meta-val';
+        if (v instanceof Node) val.appendChild(v); else val.textContent = v;
+        row.appendChild(key);
+        row.appendChild(val);
+        frag.appendChild(row);
+      });
+      inspMetaEl.replaceChildren(frag);
     }
 
     function typeLabel(c) {
