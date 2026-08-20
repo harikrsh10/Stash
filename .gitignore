@@ -49,3 +49,4 @@ build/
 *.certSigningRequest
 stash-signing.key
 p12-base64.txt
+_harness.html

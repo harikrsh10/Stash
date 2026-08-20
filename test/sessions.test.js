@@ -175,8 +175,29 @@ app.whenReady().then(async () => {
 
     // every session is a place on the rail
     const railLabels = [...document.querySelectorAll('.rail-item .lbl')].map(n => n.textContent);
-    ok('the rail lists the fixed places, the sessions and new',
-       railLabels.join(',') === 'all,prompts,pinned,Redesign,Research,new', railLabels.join(','));
+    ok('the rail lists the fixed places, then new and the sessions',
+       railLabels.join(',') === 'all,prompts,pinned,new,Redesign,Research', railLabels.join(','));
+
+    // the rail is two cards: the fixed places, then new with the sessions
+    // stacked under it
+    const labelsIn = (sel) => [...document.querySelectorAll(sel + ' .rail-item .lbl')]
+      .map(n => n.textContent).join(',');
+    ok('the places card holds only the three fixed places',
+       labelsIn('#rail') === 'all,prompts,pinned', labelsIn('#rail'));
+    ok('new holds the top of the sessions card',
+       labelsIn('#railSessions') === 'new,Redesign,Research', labelsIn('#railSessions'));
+    ok('a divider sits between new and the sessions',
+       document.querySelectorAll('#railSessions .rail-sep').length === 1,
+       document.querySelectorAll('#railSessions .rail-sep').length + '');
+
+    // Rebuilding must be idempotent. buildRail used to clear and then append
+    // across many statements, so a render re-entered partway through left every
+    // place on the rail twice.
+    render();
+    render();
+    const afterRepeat = [...document.querySelectorAll('.rail-item .lbl')].map(n => n.textContent);
+    ok('rendering again does not duplicate the rail',
+       afterRepeat.join(',') === 'all,prompts,pinned,new,Redesign,Research', afterRepeat.join(','));
     ok('no section headers survive', document.querySelectorAll('.section-label').length === 0,
        document.querySelectorAll('.section-label').length + '');
     ok('the session being collected into is marked on the rail',
@@ -316,7 +337,7 @@ app.whenReady().then(async () => {
        document.getElementById('stackTray').classList.contains('show') ? '' : 'hidden — selectedClips found nothing');
     ok('the deck holds the session clip', document.querySelectorAll('.stack-card').length === 1,
        document.querySelectorAll('.stack-card').length + '');
-    ok('the count reads 1', document.getElementById('stackCount').textContent === '1',
+    ok('the count reads 1', document.getElementById('stackCount').textContent === '01',
        document.getElementById('stackCount').textContent);
 
     // and dragging it out carries the session's own copy
@@ -341,6 +362,31 @@ app.whenReady().then(async () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }));
     ok('select-all counts it once', selected.size === renderedOrder.length,
        selected.size + ' of ' + renderedOrder.length);
+
+
+    // ---------- a clip that lives only in a session ----------
+    // Collected clips age out of history. findClip only looked at pinned and
+    // history, so anything opened by id inside a session -- the preview panel,
+    // the prompt editor -- silently did nothing when you clicked it.
+    history = [];
+    pinned = [];
+    sessionClips = [
+      { id: 'only', sessionId: 'ses1', type: 'text', content: '#E2E6EA', ts: Date.now() },
+    ];
+    activeScope = 'ses1';
+    render();
+    await tick(10);
+
+    const onlyRow = document.querySelector('.item[data-id="only"]');
+    ok('a session-only clip still draws a row', !!onlyRow, '');
+    onlyRow.querySelector('[data-act="name"]').click();
+    await tick(60);
+    const inspEl = document.getElementById('inspector');
+    ok('and its preview panel opens', inspEl.classList.contains('show'), '');
+    ok('showing that clip, not another', document.getElementById('inspName').value === '', '');
+    ok('with the colour spelled out in the facts',
+       [...document.querySelectorAll('#inspMeta .meta-row')]
+         .some(r => r.querySelector('.meta-key').textContent === 'Hex'), '');
 
     return out;
   })()`;

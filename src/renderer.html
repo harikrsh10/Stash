@@ -85,6 +85,11 @@
       --live-dim: #5a8a5a;
 
       --shadow: rgba(0, 0, 0, 0.55);
+      /* the light shell floats cards over a shader; dark keeps one flat
+         surface, so these only ever get read under prefers-color-scheme: light */
+      --card: #111111;
+      --card-shadow: rgba(0, 0, 0, 0.55);
+      --card-shadow-near: rgba(0, 0, 0, 0.4);
       --font-sans: 'IBM Plex Sans', -apple-system, sans-serif;
       --font-mono: 'IBM Plex Mono', monospace;
     }
@@ -164,6 +169,9 @@
         --live-dim: #62a184;
 
         --shadow: rgba(20, 24, 32, 0.14);
+        --card: #ffffff;
+        --card-shadow: rgba(18, 34, 62, 0.07);
+        --card-shadow-near: rgba(18, 34, 62, 0.05);
       }
     }
 
@@ -188,7 +196,7 @@
       display: flex;
       flex-direction: row;
       height: 100vh;
-      width: 418px;
+      width: 466px;
       flex-shrink: 0;
       order: 2;
     }
@@ -256,6 +264,7 @@
     }
     @keyframes recPulse { 50% { opacity: 0.3; } }
     .rail-sep { height: 1px; background: var(--border); margin: 7px 16px; flex: none; }
+    .rail-sep:last-child { display: none; }
     .rail-name {
       width: 60px;
       margin: 4px 9px;
@@ -384,56 +393,20 @@
       max-height: 232px;
       overflow-y: auto;
     }
-    .inspector[data-mode="color"] .insp-swatches { display: grid; }
+    .inspector[data-mode="color"] .insp-swatches {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 0;
+      max-height: none;
+      margin: 0;
+    }
+    /* the grid is the content in colour mode -- nothing to prompt for */
+    .inspector[data-mode="color"] .out-slot { display: none; }
     .inspector[data-mode="color"] .insp-canvas { flex: 0 1 auto; max-height: 34vh; }
     .insp-swatches::-webkit-scrollbar { width: 3px; }
     .insp-swatches::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 
-    .swatch {
-      display: flex;
-      align-items: stretch;
-      gap: 0;
-      border: 1px solid var(--border2);
-      border-radius: 5px;
-      overflow: hidden;
-      cursor: pointer;
-      background: var(--surface2);
-      transition: border-color 0.12s, box-shadow 0.12s, transform 0.12s;
-    }
-    .swatch:hover { border-color: var(--muted); transform: translateY(-1px); }
-    .swatch.picked {
-      border-color: var(--select-dim);
-      box-shadow: 0 0 0 1px var(--select-wash-3);
-    }
-    /* the colour itself, printed with its own hex over it — reading the value
-       against the colour is the check a person actually makes */
-    .swatch-chip {
-      flex: 1;
-      min-width: 0;
-      padding: 10px 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: var(--font-mono);
-      font-size: 10.5px;
-      letter-spacing: 0.04em;
-    }
-    .swatch-meta {
-      flex-shrink: 0;
-      width: 46px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 1px;
-      background: var(--surface2);
-      border-left: 1px solid var(--border2);
-      font-family: var(--font-mono);
-      font-size: 9px;
-      color: var(--muted);
-    }
-    .swatch.picked .swatch-meta { color: var(--text-2); }
-    .swatch-share { font-size: 10px; color: var(--text-2); }
+
 
     /* ---------- preview & naming ----------
        Naming used to happen inside the row, underneath the hover actions that
@@ -508,8 +481,62 @@
       color: var(--text);
     }
 
+    /* the facts only belong on the panel you opened to look at the clip */
+    .insp-card { display: contents; }
+    .detail-meta { display: none; }
+    .inspector.show .detail-meta { display: block; }
+    .meta-row { display: flex; align-items: center; gap: 12px; padding: 6px 0; }
+    .meta-key {
+      width: 108px;
+      flex: none;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .meta-val {
+      min-width: 0;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .out-empty { text-align: center; padding: 18px 10px; }
+    .out-empty-mark {
+      width: 74px;
+      height: 74px;
+      margin: 0 auto 16px;
+      border-radius: 6px;
+      background: var(--surface3);
+    }
+    .out-empty-title {
+      font-family: var(--font-sans);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .out-empty-hint {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+
+    .mode-key { font-weight: 600; color: var(--text-2); display: flex; align-items: center; }
+    .mode-key svg {
+      width: 15px;
+      height: 15px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      display: block;
+    }
+
     /* nothing to act on until something has been picked out */
-    .inspector[data-mode="detail"] .insp-actions { display: none; }
     .inspector[data-mode="detail"] .insp-out { display: none; }
 
     /* the name belongs to the clip, not to one view of it */
@@ -536,27 +563,6 @@
     .insp-out::-webkit-scrollbar { width: 3px; }
     .insp-out::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 
-    .insp-actions {
-      display: flex;
-      gap: 8px;
-      padding: 10px 14px 14px;
-      flex-shrink: 0;
-    }
-    .insp-btn {
-      flex: 1;
-      padding: 8px 10px;
-      border-radius: 4px;
-      background: var(--surface2, var(--surface2));
-      border: 1px solid var(--border2);
-      color: var(--text-2, var(--text-2));
-      font-family: var(--font-mono);
-      font-size: 10.5px;
-      cursor: pointer;
-      transition: color 0.12s, border-color 0.12s, background 0.12s;
-    }
-    .insp-btn:hover:not(:disabled) { color: var(--ocr); border-color: var(--session-line-2); background: var(--session-tint-2); }
-    .insp-btn.prompt:hover:not(:disabled) { color: var(--prompt); border-color: var(--prompt-line-2); background: var(--prompt-tint-2); }
-    .insp-btn:disabled { opacity: 0.4; cursor: default; }
 
     /* drag region lets the user move the window by the title bar */
     .titlebar {
@@ -827,6 +833,131 @@
     .type-badge.code { color: var(--code); background: var(--code-tint); border: 1px solid var(--code-line); }
     .type-badge.url  { color: var(--url); background: var(--session-tint); border: 1px solid var(--url-line); }
     .type-badge.img  { color: var(--pinned); background: var(--pinned-tint); border: 1px solid var(--pinned-line); }
+    .type-badge.color { color: var(--pinned); background: var(--pinned-tint); border: 1px solid var(--pinned-line); }
+
+    /* every picked block is a row of its own, with its own two actions */
+    .out-blocks { display: none; flex-direction: column; gap: 10px; }
+    .inspector[data-mode="text"] .out-blocks:not(:empty) { display: flex; }
+    .out-block { display: flex; align-items: flex-start; gap: 12px; }
+    .out-block-text {
+      flex: 1;
+      min-width: 0;
+      padding: 14px;
+      border-radius: 8px;
+      background: var(--surface2);
+      font-size: 13px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .out-block-acts { display: flex; gap: 4px; flex: none; padding-top: 8px; }
+    .out-act {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border: 0;
+      border-radius: 7px;
+      background: none;
+      color: var(--muted);
+      cursor: pointer;
+      transition: color 0.12s, background 0.12s;
+    }
+    .out-act:hover { color: var(--text); background: var(--surface3); }
+    .out-act svg {
+      width: 15px;
+      height: 15px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    /* the prompt for what to do only stands while nothing is picked */
+    .inspector[data-mode="text"] .out-blocks:not(:empty) ~ .out-slot { display: none; }
+
+    /* the palette reads as a strip: the colour, its name, its value */
+    .swatch {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+      padding: 0 0 10px;
+      border: 0;
+      background: none;
+      cursor: pointer;
+      text-align: left;
+      min-width: 0;
+    }
+    .swatch-chip {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 46px;
+      border-radius: 0;
+    }
+    .swatch-cue {
+      opacity: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 5px;
+      background: var(--sheet-bg);
+      color: var(--text);
+      transition: opacity 0.12s;
+    }
+    .swatch-cue svg {
+      width: 13px;
+      height: 13px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .swatch:hover .swatch-cue, .swatch:focus-visible .swatch-cue { opacity: 1; }
+    .swatch-name {
+      margin-top: 7px;
+      padding: 0 4px;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.08em;
+      color: var(--text-2);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .swatch-hex {
+      padding: 2px 4px 0;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* a colour clip leads with the colour itself, then its value */
+    .colour-line { display: flex; align-items: center; gap: 10px; }
+    .colour-chip {
+      width: 26px;
+      height: 26px;
+      flex: none;
+      border-radius: 6px;
+      border: 1px solid var(--hairline);
+    }
+    .colour-value {
+      font-family: var(--font-mono);
+      letter-spacing: 0.02em;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
     /* main content column */
     .item-content {
@@ -1571,11 +1702,264 @@
       background: var(--prompt-tint);
       border: 1px solid var(--prompt-line);
     }
+
+    /* ---------------------------------------------------------------------
+       The card shell.
+
+       Dark mode is untouched: every .card wrapper is display:contents, so its
+       children stay direct flex children of .panel exactly as before and not a
+       single dark-mode rule below fires.
+
+       Light mode is the Paper design -- a shader background container with the
+       panel broken into cards floating on top.
+       --------------------------------------------------------------------- */
+    .shader-bg { display: none; }
+    .card { display: contents; }
+    .railwrap {
+      display: flex;
+      flex-direction: column;
+      width: 78px;
+      flex: none;
+      border-left: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .railwrap .rail {
+      border-left: 0;
+      background: none;
+      width: 100%;
+    }
+    /* the three fixed places never scroll; the sessions card is what grows */
+    .railwrap #rail { flex: none; }
+    .railwrap #railSessions { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding-top: 0; }
+
+    @media (prefers-color-scheme: light) {
+      .shader-bg {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        /* the flat fill shows through if WebGL is unavailable */
+        background: var(--bg);
+      }
+      .shader-bg canvas { display: block; width: 100%; height: 100%; }
+
+      body { background: transparent; }
+      .shell { position: relative; z-index: 1; background: transparent; }
+      .app { background: transparent; }
+
+      .panel {
+        background: transparent;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 16px 0 16px 16px;
+        height: 100vh;
+        box-sizing: border-box;
+      }
+
+      .card {
+        display: block;
+        background: var(--card);
+        border-radius: 12px;
+        box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
+        flex: none;
+        overflow: hidden;
+      }
+      /* only the list may grow, and it must be allowed to shrink or the
+         cards below it get pushed off the bottom of the drawer */
+      .card-list {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .card-list .list { flex: 1 1 auto; min-height: 0; overflow-x: hidden; }
+
+      /* the cards do the separating now, so the internal rules come off */
+      .titlebar,
+      .controls { border-bottom: 0; }
+      /* the card edge already gives the search field room to breathe */
+      .controls { padding-top: 8px; }
+      .footer { border-top: 0; }
+
+      .card-filters .filters { margin-top: 0; padding: 12px 14px; }
+      .search-input { border-radius: 9px; padding: 9px 12px; }
+      .pill { background: var(--card); }
+      .pill.active {
+        background: var(--text);
+        border-color: var(--text);
+        color: var(--on-accent);
+      }
+
+      .railwrap {
+        border-left: 0;
+        background: transparent;
+        width: auto;
+        gap: 12px;
+        padding: 16px;
+        box-sizing: border-box;
+      }
+      /* .card sets display:block, which would kill the rail's flex column and
+         leave the buttons at their intrinsic widths -- form controls do not
+         stretch to fill the way a div does, so each item would size to its own
+         label. Restate the column here so every item is the same width. */
+      .railwrap .rail {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        /* .card cannot reach these: the base .railwrap .rail rule that strips
+           the dark-mode background outranks it, so the fill is restated here
+           or the rail cards read as translucent against the shader */
+        background: var(--card);
+        width: 78px;
+        padding: 8px 0;
+        gap: 6px;
+        overflow: visible;
+      }
+      .railwrap #rail { flex: none; }
+      .railwrap #railSessions { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding-top: 8px; }
+
+      .railwrap .rail-item {
+        margin: 0 8px;
+        padding: 11px 4px;
+        gap: 7px;
+        border-radius: 10px;
+      }
+      .railwrap .rail-item svg { width: 16px; height: 16px; }
+      .railwrap .rail-item .lbl { font-size: 10px; }
+
+      /* the accent belongs to the place, not to whether it is selected */
+      .railwrap .rail-item.prompts svg { stroke: var(--prompt); fill: var(--prompt); }
+      .railwrap .rail-item.pinned svg { stroke: var(--pinned); fill: var(--pinned); }
+
+      /* the multi-select tray was a tinted bar wedged above the footer; it is
+         a card like everything else now */
+      .stack-tray {
+        border-top: 0;
+        background: var(--card);
+        border-radius: 12px;
+        box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
+        padding: 14px 16px;
+        gap: 14px;
+      }
+      .stack-title { font-size: 13px; color: var(--text); }
+      .stack-hint { font-size: 11px; }
+      .stack-count {
+        min-width: 20px;
+        height: 20px;
+        border-radius: 10px;
+        font-size: 11px;
+        right: -7px;
+        top: -8px;
+      }
+      .stack-close {
+        font-size: 17px;
+        line-height: 1;
+        padding: 2px 4px;
+      }
+
+      /* the inspector is two cards on the shader: the clip, then what can be
+         pulled out of it. The design leads with the name, so the title bar
+         that used to sit above it comes off -- Esc still closes the panel. */
+      .inspector {
+        background: transparent;
+        border-right: 0;
+        padding: 16px 0 16px 16px;
+        gap: 8px;
+        box-sizing: border-box;
+      }
+      .insp-head { display: none; }
+      .insp-card {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+        background: var(--card);
+        border-radius: 12px;
+        box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
+        overflow: hidden;
+        padding-bottom: 14px;
+      }
+      .detail-name {
+        margin: 14px 14px 12px;
+        padding: 12px 14px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .detail-meta { margin: 14px 14px 0; }
+      .meta-row { padding: 8px 0; }
+      .meta-key { width: 116px; font-size: 12px; }
+      .meta-val { font-size: 12px; }
+
+      /* Looking at a clip, the card ends where the facts end. Only the
+         extraction views need the picture to stretch and scroll. */
+      .inspector[data-mode="detail"] .insp-card { flex: 0 1 auto; }
+      .inspector[data-mode="detail"] .insp-canvas { flex: 0 1 auto; }
+
+      .insp-modes {
+        margin: 0;
+        flex: none;
+        padding: 10px;
+        gap: 10px;
+        border: 0;
+        border-radius: 12px;
+        background: var(--card);
+        box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
+      }
+      .mode-btn {
+        padding: 16px 10px;
+        border-radius: 10px;
+        font-size: 13px;
+        text-transform: none;
+        letter-spacing: 0.02em;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+      }
+      /* the chosen side reads like a chosen place on the rail */
+      .mode-btn.is-on {
+        background: var(--select-wash-2);
+        border-color: transparent;
+        color: var(--select);
+      }
+      .mode-btn.is-on .mode-key { color: var(--select); }
+
+      .insp-out {
+        flex: 1 1 auto;
+        min-height: 0;
+        max-height: none;
+        margin: 0;
+        padding: 16px;
+        border: 0;
+        border-radius: 12px;
+        background: var(--card);
+        box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
+        font-size: 13px;
+      }
+      .insp-out.empty { display: flex; align-items: center; justify-content: center; }
+      .insp-out { overflow-y: auto; }
+
+      /* icons alone -- the tooltip carries the word */
+
+      /* selected place: a blue tint, not the tan that means "pinned" */
+      .rail-item.on {
+        background: var(--select-wash-2);
+        box-shadow: none;
+        color: var(--select);
+      }
+    }
   </style>
 </head>
 <body>
+  <!-- background container: the Paper shader. Everything else stacks above. -->
+  <div class="shader-bg" id="shaderBg"></div>
   <div class="shell">
   <div class="inspector" id="inspector" data-mode="text">
+    <div class="insp-card">
     <div class="insp-head">
       <span class="insp-title" id="inspTitle">select text from image</span>
       <span class="insp-hint" id="inspHint">tap the highlighted areas</span>
@@ -1583,27 +1967,33 @@
     </div>
     <input class="detail-name" id="inspName" type="text" spellcheck="false"
            placeholder="name this clip" maxlength="120" />
-    <!-- What you can pull out of this picture. A switch rather than an action,
-         so it sits with the name instead of down in the footer, and stays put
-         when you move between the two. -->
-    <div class="insp-modes" id="inspModes">
-      <button class="mode-btn" id="detailText">text</button>
-      <button class="mode-btn" id="detailColor">colour</button>
-    </div>
     <div class="insp-canvas">
       <div class="insp-stage" id="inspStage"></div>
       <div class="detail-text" id="inspDetailText"></div>
     </div>
-    <div class="insp-swatches" id="inspSwatches"></div>
-    <div class="insp-out empty" id="inspOut">selected text appears here</div>
-    <div class="insp-actions">
-      <button class="insp-btn" id="inspCopy" disabled>copy text</button>
-      <button class="insp-btn prompt" id="inspPrompt" disabled>add to prompts</button>
+    <!-- what the clip is, set out beneath the picture of it -->
+    <div class="detail-meta" id="inspMeta"></div>
+    </div><!-- /insp-card -->
+
+    <!-- What you can pull out of this picture. A switch rather than an action,
+         so it stays put when you move between the two. -->
+    <div class="insp-modes" id="inspModes">
+      <button class="mode-btn" id="detailText"><span class="mode-key" id="modeKeyText"></span>Text</button>
+      <button class="mode-btn" id="detailColor"><span class="mode-key" id="modeKeyColor"></span>Color</button>
     </div>
+
+    <!-- what you have picked out so far, and the two things worth doing with it -->
+    <div class="insp-out empty" id="inspOut">
+      <div class="insp-swatches" id="inspSwatches"></div>
+      <div class="out-blocks" id="inspBlocks"></div>
+      <div class="out-slot" id="inspEmpty"></div>
+    </div>
+
   </div>
 
   <div class="app">
   <div class="panel">
+    <div class="card card-head">
     <div class="titlebar">
       <span class="title">stash</span>
       <div class="titlebar-right">
@@ -1624,14 +2014,6 @@
 
     <div class="controls">
       <input class="search-input" id="search" placeholder="search clipboard..." />
-      <!-- only types live here now; prompts and pinned are places on the rail -->
-      <div class="filters">
-        <button class="pill active" data-type="all">all</button>
-        <button class="pill" data-type="text">text</button>
-        <button class="pill" data-type="code">code</button>
-        <button class="pill" data-type="url">url</button>
-        <button class="pill" data-type="img">image</button>
-      </div>
     </div>
 
     <div class="scopehead">
@@ -1639,13 +2021,28 @@
       <span class="scope-count" id="scopeCount"></span>
       <span class="scope-actions" id="scopeActions"></span>
     </div>
+    </div><!-- /card-head -->
 
+    <!-- only types live here now; prompts and pinned are places on the rail -->
+    <div class="card card-filters">
+      <div class="filters">
+        <button class="pill active" data-type="all">all</button>
+        <button class="pill" data-type="text">text</button>
+        <button class="pill" data-type="code">code</button>
+        <button class="pill" data-type="url">url</button>
+        <button class="pill" data-type="img">image</button>
+        <button class="pill" data-type="color">color</button>
+      </div>
+    </div>
+
+    <div class="card card-list">
     <div class="list" id="list">
       <div class="empty">
         Stash quietly remembers while you work.
         <span class="empty-sub">copy anything to begin · <span class="hotkey">⌘</span><span class="hotkey">⇧</span><span class="hotkey">V</span> to toggle</span>
       </div>
     </div>
+    </div><!-- /card-list -->
 
     <div class="editor" id="editor">
       <div class="editor-head">
@@ -1685,21 +2082,50 @@
         <span class="stack-title" id="stackTitle">0 stacked</span>
         <span class="stack-hint">drag it anywhere</span>
       </span>
-      <button class="clear-btn" id="selClearBtn">deselect</button>
+      <button class="clear-btn stack-close" id="selClearBtn" title="deselect">×</button>
     </div>
 
+    <div class="card card-foot">
     <div class="footer">
       <span class="footer-info"><span class="skip-pulse" id="skipPulse" title="a secret-looking item was skipped"></span><span id="footerInfo">0 items</span></span>
       <button class="clear-btn" id="clearBtn">clear all</button>
     </div>
+    </div><!-- /card-foot -->
   </div>
 
   <!-- every top-level place: everything, prompts, pinned, each session, and new -->
-  <nav class="rail" id="rail" aria-label="places"></nav>
+  <div class="railwrap">
+    <nav class="rail card card-rail" id="rail" aria-label="places"></nav>
+    <nav class="rail card card-sessions" id="railSessions" aria-label="sessions"></nav>
+  </div>
   </div>
   </div>
 
   <div class="toast" id="toast"></div>
+
+  <script src="vendor/paper-shaders.js"></script>
+  <script src="shader-bg.js"></script>
+  <script>
+    // The shader is the light shell's background container. Dark mode keeps the
+    // flat surface it has always had, so there is no reason to hold a WebGL
+    // context -- let alone draw -- while the drawer is dark.
+    (function () {
+      const host = document.getElementById('shaderBg');
+      const light = window.matchMedia('(prefers-color-scheme: light)');
+      function sync() {
+        if (!window.StashShader) return;
+        if (light.matches) {
+          // mounting waits on the shader's noise texture, so this is async now
+          Promise.resolve(window.StashShader.init(host))
+            .then(() => window.StashShader.resume());
+        } else {
+          window.StashShader.pause();
+        }
+      }
+      light.addEventListener('change', sync);
+      sync();
+    })();
+  </script>
 
   <script>
     let history = [];
@@ -1769,11 +2195,43 @@
       return Math.floor(h / 24) + 'd ago';
     }
 
+    // A colour is not a kind of clip the way a url or an image is -- it is a
+    // text clip whose content happens to be nothing but colour values. Deriving
+    // it from content rather than stamping a type at capture means the filter
+    // works on everything already in the history, not only on what arrives
+    // after this ships. Several values still count, so a palette copied out of
+    // the colour panel is one colour clip rather than none.
+    const COLOUR_VALUE = /#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})\b|(?:rgb|hsl)a?\([^)]*\)/gi;
+    function looksLikeColour(text) {
+      const t = String(text || '').trim();
+      if (!t || t.length > 400) return false;
+      COLOUR_VALUE.lastIndex = 0;
+      if (!COLOUR_VALUE.test(t)) return false;
+      COLOUR_VALUE.lastIndex = 0;
+      const leftover = t.replace(COLOUR_VALUE, '').replace(/[\s,;|]/g, '');
+      return leftover.length === 0;
+    }
+
+    // Whether a clip reads as a colour at all. The row badge and the detail
+    // panel both ask this, so they cannot disagree about what they are showing.
+    function clipColours(c) {
+      if (!c || c.type !== 'text' || c.isPrompt) return [];
+      return colourValues(c.content);
+    }
+
+    // the individual values, for a row that wants to show a chip per colour
+    function colourValues(text) {
+      if (!looksLikeColour(text)) return [];
+      COLOUR_VALUE.lastIndex = 0;
+      return String(text).trim().match(COLOUR_VALUE) || [];
+    }
+
     function itemMatchesFilter(c, isPinned) {
       // The rail decides which place you're in; these only narrow by type.
       // prompt and pinned used to live here as pseudo-types, which is why the
       // row wrapped onto two lines.
       if (searchQuery && !c.content.toLowerCase().includes(searchQuery)) return false;
+      if (activeFilter === 'color') return looksLikeColour(c.content);
       if (activeFilter !== 'all' && c.type !== activeFilter) return false;
       return true;
     }
@@ -1849,6 +2307,7 @@
     // per session, and new. Choosing one swaps what the list shows, which is
     // why there are no section headers any more.
     const railEl = document.getElementById('rail');
+    const railSessionsEl = document.getElementById('railSessions');
     const scopeNameEl = document.getElementById('scopeName');
     const scopeCountEl = document.getElementById('scopeCount');
     const scopeActionsEl = document.getElementById('scopeActions');
@@ -1921,25 +2380,17 @@
     }
 
     function buildRail() {
-      railEl.innerHTML = '';
-      railEl.appendChild(railItem('all', 'all', RAIL_ICONS.all, ''));
-      railEl.appendChild(railItem('prompts', 'prompts', RAIL_ICONS.prompts, 'prompts'));
-      railEl.appendChild(railItem('pinned', 'pinned', RAIL_ICONS.pinned, 'pinned'));
+      // Build into fragments and swap each card in one shot. Clearing and then
+      // appending across a dozen statements leaves a window where a render
+      // re-entered from a state update interleaves its own appends with ours,
+      // and every place ends up in the rail twice.
+      const places = document.createDocumentFragment();
+      places.appendChild(railItem('all', 'all', RAIL_ICONS.all, ''));
+      places.appendChild(railItem('prompts', 'prompts', RAIL_ICONS.prompts, 'prompts'));
+      places.appendChild(railItem('pinned', 'pinned', RAIL_ICONS.pinned, 'pinned'));
 
-      const sep = document.createElement('div');
-      sep.className = 'rail-sep';
-      railEl.appendChild(sep);
-
-      sessions.forEach(s => {
-        const el = railItem(s.id, s.name, RAIL_ICONS.folder, 'session');
-        if (s.id === activeSessionId) {
-          const dot = document.createElement('span');
-          dot.className = 'rec';
-          dot.title = 'collecting into this session';
-          el.appendChild(dot);
-        }
-        railEl.appendChild(el);
-      });
+      // The sessions card: "new" holds the top, whatever exists stacks under it.
+      const sess = document.createDocumentFragment();
 
       const add = document.createElement('button');
       add.className = 'rail-item';
@@ -1970,7 +2421,28 @@
         add.replaceWith(input);
         input.focus();
       });
-      railEl.appendChild(add);
+      sess.appendChild(add);
+
+      // nothing to divide "new" from until a session exists
+      if (sessions.length) {
+        const sep = document.createElement('div');
+        sep.className = 'rail-sep';
+        sess.appendChild(sep);
+      }
+
+      sessions.forEach(s => {
+        const el = railItem(s.id, s.name, RAIL_ICONS.folder, 'session');
+        if (s.id === activeSessionId) {
+          const dot = document.createElement('span');
+          dot.className = 'rec';
+          dot.title = 'collecting into this session';
+          el.appendChild(dot);
+        }
+        sess.appendChild(el);
+      });
+
+      railEl.replaceChildren(places);
+      railSessionsEl.replaceChildren(sess);
     }
 
     // The scope header carries whatever the place itself needs: collecting and
@@ -2059,8 +2531,15 @@
     }
 
     // ---------- prompt editor ----------
+    // Every store, not just the two the drawer usually shows. A clip collected
+    // into a session and since aged out of history lives only in sessionClips,
+    // and leaving it out here made every panel that opens by id -- naming, the
+    // editor -- do nothing at all when you clicked it inside a session.
     function findClip(id) {
-      return pinned.find(p => p.id === id) || history.find(h => h.id === id) || null;
+      return pinned.find(p => p.id === id)
+          || history.find(h => h.id === id)
+          || sessionClips.find(c => c.id === id)
+          || null;
     }
 
     function openEditor(id) {
@@ -2095,6 +2574,7 @@
       if (!c) return null;
       detailId = id;
       inspNameEl.value = c.name || '';
+      buildDetailMeta(c);
       return c;
     }
 
@@ -2105,7 +2585,7 @@
       ocrSheetEl.classList.remove('show');
       inspMode = 'detail';
       inspectorEl.dataset.mode = 'detail';
-      inspTitleEl.textContent = 'name this clip';
+      inspTitleEl.textContent = 'preview';
       inspHintEl.textContent = c.meta || typeLabel(c);
 
       inspDetailTextEl.classList.remove('show');
@@ -2137,6 +2617,141 @@
       }
       inspNameEl.focus();
       inspNameEl.select();
+    }
+
+    const inspMetaEl = document.getElementById('inspMeta');
+
+    // "20 Aug 2025, 11:34 AM"
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    function formatAdded(ts) {
+      if (!ts) return '-';
+      const d = new Date(ts);
+      const ampm = d.getHours() >= 12 ? 'PM' : 'AM';
+      const h = d.getHours() % 12 || 12;
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      return d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear()
+           + ', ' + h + ':' + mm + ' ' + ampm;
+    }
+
+    // The browser is the one parser guaranteed to agree with what it renders,
+    // so any CSS colour -- hex, rgb(), hsl() -- goes through canvas to come
+    // back normalised. A detached context is enough; no layout is involved.
+    const COLOUR_PARSER = document.createElement('canvas').getContext('2d');
+    function toRgb(value) {
+      COLOUR_PARSER.fillStyle = '#000000';
+      COLOUR_PARSER.fillStyle = value;
+      const out = COLOUR_PARSER.fillStyle;
+      if (out[0] === '#') {
+        return [parseInt(out.slice(1, 3), 16),
+                parseInt(out.slice(3, 5), 16),
+                parseInt(out.slice(5, 7), 16)];
+      }
+      const n = out.match(/[0-9.]+/g) || [];
+      return [Number(n[0]) || 0, Number(n[1]) || 0, Number(n[2]) || 0];
+    }
+
+    function rgbToHsl(r, g, b) {
+      r /= 255; g /= 255; b /= 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      const l = (max + min) / 2;
+      const d = max - min;
+      let h = 0, sat = 0;
+      if (d) {
+        sat = d / (1 - Math.abs(2 * l - 1));
+        if (max === r) h = ((g - b) / d) % 6;
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        h = (h * 60 + 360) % 360;
+      }
+      return [h, sat * 100, l * 100];
+    }
+
+    // sRGB -> linear -> XYZ (D65) -> CIELAB -> LCh. Worth the arithmetic:
+    // LCh is the space where "same lightness, different hue" actually holds,
+    // which is the one a person building a palette cares about.
+    function rgbToLch(r, g, b) {
+      const lin = (v) => {
+        v /= 255;
+        return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+      };
+      const R = lin(r), G = lin(g), B = lin(b);
+      const X = R * 0.4124564 + G * 0.3575761 + B * 0.1804375;
+      const Y = R * 0.2126729 + G * 0.7151522 + B * 0.0721750;
+      const Z = R * 0.0193339 + G * 0.1191920 + B * 0.9503041;
+      const f = (t) => t > 216 / 24389 ? Math.cbrt(t) : (24389 / 27 * t + 16) / 116;
+      const fx = f(X / 0.95047), fy = f(Y), fz = f(Z / 1.08883);
+      const L = 116 * fy - 16;
+      const a = 500 * (fx - fy);
+      const bb = 200 * (fy - fz);
+      const C = Math.sqrt(a * a + bb * bb);
+      // A grey has no hue. Reporting whatever atan2 makes of the rounding
+      // noise would have white claiming a hue of 158 degrees.
+      if (C < 0.05) return [L, C, 0];
+      let H = Math.atan2(bb, a) * 180 / Math.PI;
+      if (H < 0) H += 360;
+      return [L, C, H];
+    }
+
+    const r1 = (n) => Math.round(n * 10) / 10;
+    function colourSpaceRows(value) {
+      const [r, g, b] = toRgb(value);
+      const [h, sPct, lPct] = rgbToHsl(r, g, b);
+      const [L, C, H] = rgbToLch(r, g, b);
+      const hex = (n) => n.toString(16).padStart(2, "0");
+      return [
+        ['Hex', ('#' + hex(r) + hex(g) + hex(b)).toUpperCase()],
+        ['RGB', 'rgb(' + r + ', ' + g + ', ' + b + ')'],
+        ['HSL', 'hsl(' + Math.round(h) + ', ' + Math.round(sPct) + '%, ' + Math.round(lPct) + '%)'],
+        ['LCH', 'lch(' + r1(L) + '% ' + r1(C) + ' ' + r1(H) + ')'],
+      ];
+    }
+
+    function typeBadgeFor(c) {
+      const kind = clipColours(c).length ? "color"
+                 : c.type === 'img' ? 'img'
+                 : c.type === 'code' ? 'code'
+                 : c.type === 'url' ? 'url' : 'text';
+      const b = document.createElement('span');
+      b.className = 'type-badge ' + kind;
+      b.textContent = kind;
+      return b;
+    }
+
+    // The facts about a clip, beneath the picture of it: what it is, how big,
+    // when it arrived, and which sessions are holding on to it.
+    function buildDetailMeta(c) {
+      const rows = [['File Type', typeBadgeFor(c)]];
+
+      // A colour is worth reading in more than one space: hex to paste, RGB
+      // to reason about, HSL to nudge, LCH to compare against its neighbours.
+      const colours = clipColours(c);
+      if (colours.length === 1) {
+        colourSpaceRows(colours[0]).forEach(row => rows.push(row));
+      } else if (colours.length > 1) {
+        rows.push(['Colours', colours.length + ' values']);
+      }
+
+      if (c.meta) rows.push(['Dimensions', c.meta]);
+      rows.push(['Added', formatAdded(c.ts)]);
+      const held = sessionsHolding(c.id).map(x => x.name);
+      rows.push(['Sessions', held.length ? held.join(', ') : '-']);
+
+      const frag = document.createDocumentFragment();
+      rows.forEach(([k, v]) => {
+        const row = document.createElement('div');
+        row.className = 'meta-row';
+        const key = document.createElement('span');
+        key.className = 'meta-key';
+        key.textContent = k;
+        const val = document.createElement('span');
+        val.className = 'meta-val';
+        if (v instanceof Node) val.appendChild(v); else val.textContent = v;
+        row.appendChild(key);
+        row.appendChild(val);
+        frag.appendChild(row);
+      });
+      inspMetaEl.replaceChildren(frag);
     }
 
     function typeLabel(c) {
@@ -2319,16 +2934,44 @@
     const inspectorEl = document.getElementById('inspector');
     const inspStageEl = document.getElementById('inspStage');
     const inspOutEl = document.getElementById('inspOut');
+    const inspEmptyEl = document.getElementById('inspEmpty');
+
+    // Nothing picked yet: say where to pick it from and what happens next,
+    // rather than labelling the empty box.
+    function setInspOut(text, isColor) {
+      // In colour mode the palette grid is the content, so the card is never
+      // empty -- leaving the class on would centre and shrink-wrap the grid.
+      if (isColor) {
+        inspOutEl.classList.remove('empty');
+        inspEmptyEl.replaceChildren();
+        return;
+      }
+      inspOutEl.classList.toggle('empty', !text);
+      if (text) { inspEmptyEl.textContent = text; return; }
+      const what = isColor ? "colours" : "text";
+      const wrap = document.createElement('div');
+      wrap.className = 'out-empty';
+      const mark = document.createElement('div');
+      mark.className = 'out-empty-mark';
+      const title = document.createElement('div');
+      title.className = 'out-empty-title';
+      title.textContent = 'Select ' + what + ' from above';
+      const hint = document.createElement('div');
+      hint.className = 'out-empty-hint';
+      hint.textContent = 'Selected ' + what + ' will be added here, which can then be copied';
+      wrap.appendChild(mark);
+      wrap.appendChild(title);
+      wrap.appendChild(hint);
+      inspEmptyEl.replaceChildren(wrap);
+    }
     const inspHintEl = document.getElementById('inspHint');
-    const inspCopyEl = document.getElementById('inspCopy');
-    const inspPromptEl = document.getElementById('inspPrompt');
+    const inspBlocksEl = document.getElementById('inspBlocks');
     const inspTitleEl = document.getElementById('inspTitle');
     const inspSwatchesEl = document.getElementById('inspSwatches');
     // 'text' draws boxes over the picture; 'color' lists what it's made of.
     // Both are the same panel — one image, one set of things to pick from it.
     let inspMode = 'text';
     let inspColors = [];
-    const inspPickedColors = new Set();
     let inspBlocks = [];
     // pixel dimensions of the image OCR read — the space block boxes live in
     let inspSrcW = 0;
@@ -2348,7 +2991,6 @@
       inspBlocks = [];
       inspColors = [];
       inspPicked.clear();
-      inspPickedColors.clear();
       // a name typed but not yet committed is saved on the way out, rather
       // than silently dropped because the panel was closed instead of blurred
       if (detailId) commitDetailName();
@@ -2381,7 +3023,6 @@
       inspMode = 'color';
       inspectorEl.dataset.mode = 'color';
       inspColors = colors || [];
-      inspPickedColors.clear();
       inspTitleEl.textContent = 'colours in this image';
       setModes(true, 'color');
       await showInspectorImage(src, w, h);
@@ -2389,41 +3030,67 @@
       syncInspOut();
     }
 
+    // Open-Color style: a hue family and a step from 0 (lightest) to 9.
+    // Two extracted colours can land on the same name; that is honest -- they
+    // really are the same family and weight -- and the hex below settles it.
+    const HUES = [[15, 'RED'], [45, 'ORANGE'], [70, 'YELLOW'], [160, 'GREEN'],
+                  [195, 'TEAL'], [240, 'BLUE'], [270, 'INDIGO'], [310, 'VIOLET'],
+                  [345, 'PINK'], [360, 'RED']];
+    function colourName(c) {
+      const rgb = c.rgb || [0, 0, 0];
+      const r = rgb[0] / 255, g = rgb[1] / 255, b = rgb[2] / 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      const l = (max + min) / 2;
+      const d = max - min;
+      const step = Math.min(9, Math.max(0, Math.round((1 - l) * 9)));
+      const sat = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+      if (sat < 0.12) return 'GRAY ' + step;
+      let h;
+      if (max === r) h = ((g - b) / d) % 6;
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h = (h * 60 + 360) % 360;
+      const fam = (HUES.find(([edge]) => h < edge) || HUES[0])[1];
+      return fam + ' ' + step;
+    }
+
     function drawSwatches() {
-      inspSwatchesEl.innerHTML = '';
-      inspColors.forEach((c, i) => {
+      const frag = document.createDocumentFragment();
+      inspColors.forEach((c) => {
         const el = document.createElement('button');
         el.type = 'button';
-        el.className = 'swatch' + (inspPickedColors.has(i) ? ' picked' : '');
-        el.title = `${c.hex} · rgb(${c.rgb.join(', ')})`;
+        el.className = 'swatch';
+        el.title = 'copy ' + c.hex;
 
         const chip = document.createElement('span');
         chip.className = 'swatch-chip';
-        // The one place a literal colour belongs: it *is* the extracted value.
-        chip.style.background = c.hex;
-        chip.style.color = c.light ? 'var(--bg)' : 'var(--text)';
-        chip.textContent = c.hex;
+        // the one literal colour that belongs here: it is the extracted value
+        chip.style.backgroundColor = c.hex;
+        const cue = document.createElement('span');
+        cue.className = 'swatch-cue';
+        cue.innerHTML = ICON.copy;
+        chip.appendChild(cue);
 
-        const meta = document.createElement('span');
-        meta.className = 'swatch-meta';
-        const share = document.createElement('span');
-        share.className = 'swatch-share';
-        // An accent colour is genuinely a fraction of a percent of the picture.
-        // Rounding it to "0%" reads as a bug rather than as a small share.
-        const pct = c.share * 100;
-        share.textContent = pct < 1 ? '<1%' : Math.round(pct) + '%';
-        meta.appendChild(share);
+        const name = document.createElement('span');
+        name.className = 'swatch-name';
+        name.textContent = colourName(c);
+        const hex = document.createElement('span');
+        hex.className = 'swatch-hex';
+        hex.textContent = c.hex;
 
         el.appendChild(chip);
-        el.appendChild(meta);
-        el.addEventListener('click', () => {
-          if (inspPickedColors.has(i)) inspPickedColors.delete(i);
-          else inspPickedColors.add(i);
-          el.classList.toggle('picked', inspPickedColors.has(i));
-          syncInspOut();
+        el.appendChild(name);
+        el.appendChild(hex);
+
+        // One colour, one copy. Colours never accumulate a selection the way
+        // text blocks do -- tapping one puts exactly it on the clipboard.
+        el.addEventListener('click', async () => {
+          await window.api.write({ type: 'text', content: c.hex });
+          toast('copied ' + c.hex);
         });
-        inspSwatchesEl.appendChild(el);
+        frag.appendChild(el);
       });
+      inspSwatchesEl.replaceChildren(frag);
     }
 
     // `src` is the full-size image OCR actually read, and w/h are the pixel
@@ -2480,29 +3147,21 @@
     }
 
     function pickedText() {
-      if (inspMode === 'color') {
-        // in the order they sit in the palette, so a copied set keeps the
-        // dominant colour first rather than the order they were tapped
-        return [...inspPickedColors].sort((a, b) => a - b)
-          .map(i => inspColors[i].hex).join('\n');
-      }
+      // Colours do not accumulate: a swatch copies itself on the spot, so
+      // there is never a colour selection to read back.
+      if (inspMode === 'color') return '';
       return [...inspPicked].sort((a, b) => a - b).map(i => inspBlocks[i].text).join('\n\n');
     }
 
     function syncInspOut() {
       const isColor = inspMode === 'color';
       const text = pickedText();
-      inspOutEl.textContent = text || (isColor ? 'tap the colours you want' : 'selected text appears here');
-      inspOutEl.classList.toggle('empty', !text);
-      inspCopyEl.disabled = !text;
-      inspPromptEl.disabled = !text;
-      inspCopyEl.textContent = isColor ? 'copy hex' : 'copy text';
+      setInspOut(text, isColor);
+      if (!isColor) drawPickedBlocks();
 
       if (isColor) {
         if (!inspColors.length) return;
-        inspHintEl.textContent = inspPickedColors.size
-          ? `${inspPickedColors.size} of ${inspColors.length} selected`
-          : `${inspColors.length} colour${inspColors.length === 1 ? '' : 's'} found`;
+        inspHintEl.textContent = `${inspColors.length} colour${inspColors.length === 1 ? '' : 's'} found`;
         return;
       }
       if (inspBlocks.length) {
@@ -2512,19 +3171,47 @@
       }
     }
 
-    inspCopyEl.addEventListener('click', async () => {
-      const text = pickedText();
-      if (!text) return;
-      await window.api.write({ type: 'text', content: text });
-      toast('copied — paste with ⌘V');
-    });
+    // Every block you pick becomes a row of its own, with its own copy and
+    // prompt. There is no combined selection to act on any more: you asked for
+    // this one line, so you get this one line.
+    function outAction(icon, title, run) {
+      const b = document.createElement('button');
+      b.className = 'out-act';
+      b.title = title;
+      b.innerHTML = icon;
+      b.addEventListener('click', run);
+      return b;
+    }
 
-    inspPromptEl.addEventListener('click', async () => {
-      const text = pickedText();
-      if (!text) return;
-      const ok = await window.api.createPrompt(text);
-      toast(ok ? 'saved as a prompt — kept forever' : 'could not save that');
-    });
+    function drawPickedBlocks() {
+      const frag = document.createDocumentFragment();
+      [...inspPicked].sort((a, b) => a - b).forEach(i => {
+        const block = inspBlocks[i];
+        if (!block) return;
+        const row = document.createElement('div');
+        row.className = 'out-block';
+
+        const body = document.createElement('div');
+        body.className = 'out-block-text';
+        body.textContent = block.text;
+
+        const acts = document.createElement('div');
+        acts.className = 'out-block-acts';
+        acts.appendChild(outAction(ICON.copy, 'copy this text', async () => {
+          await window.api.write({ type: 'text', content: block.text });
+          toast('copied — paste with ⌘V');
+        }));
+        acts.appendChild(outAction(ICON.prompt, 'add to prompts', async () => {
+          const ok = await window.api.createPrompt(block.text);
+          toast(ok ? 'saved as a prompt — kept forever' : 'could not save that');
+        }));
+
+        row.appendChild(body);
+        row.appendChild(acts);
+        frag.appendChild(row);
+      });
+      inspBlocksEl.replaceChildren(frag);
+    }
 
     document.getElementById('inspClose').addEventListener('click', closeInspector);
     // hiding the drawer must also shrink the window back, or it reopens wide
@@ -2771,9 +3458,10 @@
         return;
       }
 
-      stackTitleEl.textContent = n === 1 ? '1 clip stacked' : `${n} clips stacked`;
-      if (stackCountEl.textContent !== String(n)) {
-        stackCountEl.textContent = String(n);
+      const padded = n < 10 ? '0' + n : String(n);
+      stackTitleEl.textContent = padded + (n === 1 ? ' clip stacked' : ' clips stacked');
+      if (stackCountEl.textContent !== padded) {
+        stackCountEl.textContent = padded;
         if (!reduceMotion && wasShown) {
           stackCountEl.classList.remove('bump');
           void stackCountEl.offsetWidth; // reflow, so the animation restarts
@@ -3079,7 +3767,7 @@
     // Labels put the toolbar in competition with the clip for the same few
     // words of width. Icons don't, and every button keeps its title for hover.
     const ICON = {
-      name: '<svg viewBox="0 0 24 24"><path d="M20.6 13.4l-7.2 7.2a2 2 0 01-2.83 0l-7-7A2 2 0 013 12.2V5a2 2 0 012-2h7.17a2 2 0 011.42.59l7 7a2 2 0 01.01 2.81z"/><circle cx="7.6" cy="7.6" r="1.3"/></svg>',
+      name: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11.2v5"/><path d="M12 7.8v.4"/></svg>',
       edit: '<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>',
       prompt: '<svg viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>',
       pin: '<svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8L3.5 9.7l5.9-.9z"/></svg>',
@@ -3090,6 +3778,10 @@
       copy: '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>',
       del: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 7V5a1 1 0 011-1h2a1 1 0 011 1v2"/><path d="M6 7l1 13a1 1 0 001 1h8a1 1 0 001-1l1-13"/></svg>',
     };
+
+    document.getElementById('modeKeyText').innerHTML = ICON.text;
+    document.getElementById('modeKeyColor').innerHTML = ICON.colour;
+
 
     function buildItemEl(c, isPinned, sessionId) {
       const el = document.createElement('div');
@@ -3118,6 +3810,11 @@
       let extraHtml = '';
       let metaParts = [];
 
+      // A clip whose content is nothing but colour values shows as a colour,
+      // though it is still a text clip underneath. A prompt stays a prompt.
+      const colours = (c.type === 'text' && !c.isPrompt) ? colourValues(c.content) : [];
+      const isColour = colours.length > 0;
+
       if (c.type === 'url') {
         const dom = domainOf(c.content);
         headlineHtml = `<div class="item-headline">${esc(urlHeadline(c.content))}</div>`;
@@ -3138,6 +3835,15 @@
         metaParts.push(`<span class="time">${stamp}</span>`);
         if (c.dataUrl) {
           extraHtml = `<img class="item-image" src="${c.dataUrl}" alt=""/>`;
+        }
+      } else if (isColour) {
+        // The colour itself is never written into the markup -- see below.
+        const chips = colours.slice(0, 4)
+          .map((_, i) => `<span class="colour-chip" data-swatch="${i}"></span>`).join('');
+        headlineHtml = `<div class="item-headline colour-line">${chips}<span class="colour-value">${esc(colours.join("  "))}</span></div>`;
+        metaParts.push(`<span class="time">${stamp}</span>`);
+        if (colours.length > 4) {
+          metaParts.push(`<span class="dot">·</span><span>+${colours.length - 4} more</span>`);
         }
       } else {
         // text — first line big, fade if there's more
@@ -3171,6 +3877,7 @@
       if (styled) {
         metaParts.push(`<span class="dot">·</span><span class="styled-mark" title="keeps its formatting — hold ⌥ to copy as plain text">styled</span>`);
       }
+      const badgeKind = c.isPrompt ? 'prompt' : (isColour ? 'color' : c.type);
       const metaHtml = `<div class="item-meta">${metaParts.join('')}</div>`;
       // tags ride under the meta line so the library can be skimmed
       const tagsHtml = (c.tags && c.tags.length)
@@ -3184,7 +3891,7 @@
           <div class="dot-row"><span></span><span></span></div>
         </div>
         <div class="item-icon-col">
-          <span class="type-badge ${c.isPrompt ? 'prompt' : c.type}">${c.isPrompt ? 'prompt' : c.type}</span>
+          <span class="type-badge ${badgeKind}">${badgeKind}</span>
         </div>
         <div class="item-content">
           ${headlineHtml}
@@ -3192,7 +3899,7 @@
           ${tagsHtml}
           ${extraHtml}
           <div class="actions">
-            <button class="act-btn" data-act="name" title="${c.name ? 'change this clip’s name' : 'give this clip a name'}">${ICON.name}</button>
+            <button class="act-btn" data-act="name" title="preview">${ICON.name}</button>
             ${c.isPrompt ? `<button class="act-btn" data-act="edit" title="edit text and tags">${ICON.edit}</button>` : ''}
             <button class="act-btn ${c.isPrompt ? 'on' : ''}" data-act="prompt" title="${c.isPrompt ? 'stop keeping this as a prompt' : 'save as a prompt — kept forever'}">${ICON.prompt}</button>
             ${c.isPrompt ? '' : `<button class="act-btn ${isPinned ? 'pinned' : ''}" data-act="pin" title="${isPinned ? 'unpin' : 'pin'}">${isPinned ? ICON.pinned : ICON.pin}</button>`}
@@ -3205,6 +3912,16 @@
           </div>
         </div>
       `;
+
+      // The colour never goes through markup. esc() does not escape quotes, so a
+      // clipboard string such as rgb(" onerror=...) would break straight out of a
+      // style attribute. Assigning through CSSOM cannot escape, and the browser
+      // simply drops anything it does not recognise as a colour.
+      if (isColour) {
+        el.querySelectorAll('.colour-chip').forEach(chip => {
+          chip.style.backgroundColor = colours[Number(chip.dataset.swatch)] || '';
+        });
+      }
 
       // Hold anywhere on the row to reorder it; move straight away and it is a
       // drag-out instead. The grip skips the wait for anyone who reaches for it.

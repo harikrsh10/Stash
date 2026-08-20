@@ -160,8 +160,8 @@ app.whenReady().then(async () => {
 
     // Two stacked rows of buttons was the complaint: the panel opened with
     // copy/text/colour along the bottom, and pressing one grew a second row
-    // above it. There is one footer now, and it only appears once there is
-    // something picked out to act on.
+    // above it. There is no shared footer at all now: a picked text block
+    // carries its own copy and prompt, and a colour copies itself on the tap.
     const footers = () => [...document.querySelectorAll('.insp-actions')]
       .filter(n => getComputedStyle(n).display !== 'none');
     ok('a freshly opened clip shows no footer buttons at all',
@@ -202,7 +202,7 @@ app.whenReady().then(async () => {
     await tick(60);
     document.getElementById('detailColor').click();
     await tick(140);
-    ok('picking colour shows one footer, not two', footers().length === 1, String(footers().length));
+    ok('picking colour still grows no shared footer', footers().length === 0, String(footers().length));
     ok('and the switch says which one you are in',
        document.getElementById('detailColor').classList.contains('is-on')
        && !document.getElementById('detailText').classList.contains('is-on'), '');

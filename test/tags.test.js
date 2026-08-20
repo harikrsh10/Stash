@@ -111,7 +111,7 @@ app.whenReady().then(async () => {
     ok('no tag pills in the main filter row', document.querySelectorAll('.filters .tag-pill').length === 0,
        document.querySelectorAll('.filters .tag-pill').length + '');
     ok('the filter row is types only', [...document.querySelectorAll('.filters .pill')].map(p => p.textContent).join(',')
-       === 'all,text,code,url,image',
+       === 'all,text,code,url,image,color',
        [...document.querySelectorAll('.filters .pill')].map(p => p.textContent).join(','));
 
     // the tag dropdown belongs to the prompts place, and only appears there

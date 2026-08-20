@@ -183,37 +183,40 @@ app.whenReady().then(async () => {
        regions()[1].style.left === '50%' && regions()[1].style.top === '50%',
        regions()[1].style.left + ', ' + regions()[1].style.top);
     ok('region carries its text as a tooltip', regions()[0].title === 'Total Sales\\n48210', regions()[0].title);
+    const blocks = () => [...document.querySelectorAll('.out-block')];
+    const blockText = () => blocks().map(b => b.querySelector('.out-block-text').textContent);
     ok('output starts empty', document.getElementById('inspOut').classList.contains('empty'), '');
-    ok('actions start disabled',
-       document.getElementById('inspCopy').disabled && document.getElementById('inspPrompt').disabled, '');
+    ok('with nothing to act on', blocks().length === 0, String(blocks().length));
 
-    // selecting regions builds the output
+    // Each region you pick becomes a row of its own carrying its own actions,
+    // rather than being folded into one blob with a shared pair of buttons.
     regions()[1].click();
     ok('clicking a region marks it', regions()[1].classList.contains('picked'), '');
-    ok('selected text appears', document.getElementById('inspOut').textContent === 'New Users\\n1394',
-       JSON.stringify(document.getElementById('inspOut').textContent));
-    ok('actions become available', !document.getElementById('inspCopy').disabled, '');
+    ok('the picked text becomes a block',
+       blockText().join('|') === 'New Users\\n1394', JSON.stringify(blockText()));
+    ok('the block carries its own two actions',
+       blocks()[0].querySelectorAll('.out-act').length === 2,
+       String(blocks()[0].querySelectorAll('.out-act').length));
 
     regions()[0].click();
     ok('a second selection is added in visual order',
-       document.getElementById('inspOut').textContent === 'Total Sales\\n48210\\n\\nNew Users\\n1394',
-       JSON.stringify(document.getElementById('inspOut').textContent));
+       blockText().join('|') === 'Total Sales\\n48210|New Users\\n1394',
+       JSON.stringify(blockText()));
     ok('hint reflects the count', document.getElementById('inspHint').textContent === '2 of 2 selected',
        document.getElementById('inspHint').textContent);
 
     regions()[0].click();
     ok('clicking again deselects', !regions()[0].classList.contains('picked')
-       && document.getElementById('inspOut').textContent === 'New Users\\n1394',
-       JSON.stringify(document.getElementById('inspOut').textContent));
+       && blockText().join('|') === 'New Users\\n1394', JSON.stringify(blockText()));
 
-    // the two actions
-    document.getElementById('inspCopy').click();
+    // the two actions, now belonging to the block rather than the panel
+    blocks()[0].querySelectorAll('.out-act')[0].click();
     await tick(10);
-    ok('copy writes only the selection',
+    ok('copy writes only that block',
        written.length === 1 && written[0].content === 'New Users\\n1394', JSON.stringify(written));
-    document.getElementById('inspPrompt').click();
+    blocks()[0].querySelectorAll('.out-act')[1].click();
     await tick(10);
-    ok('add to prompts sends the selection',
+    ok('add to prompts sends that block',
        promptsCreated.length === 1 && promptsCreated[0] === 'New Users\\n1394', JSON.stringify(promptsCreated));
 
     // escape closes the inspector and shrinks the window back

@@ -143,7 +143,7 @@ app.whenReady().then(async () => {
 
     // the filter pills now deal only in types
     ok('pills are types only',
-       [...document.querySelectorAll('.filters .pill')].map(p => p.textContent).join(',') === 'all,text,code,url,image',
+       [...document.querySelectorAll('.filters .pill')].map(p => p.textContent).join(',') === 'all,text,code,url,image,color',
        [...document.querySelectorAll('.filters .pill')].map(p => p.textContent).join(','));
 
     // search narrows within the place you are in
