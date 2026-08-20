@@ -5,32 +5,36 @@
  * file://). The shell stacks on top of it: background container -> panel cards.
  *
  * Performance note, because this is the whole reason the layer is isolated:
- * ShaderMount stops its rAF entirely when speed is 0, so a static gradient
- * costs one draw and then nothing at all. It also self-pauses on
- * document.hidden and when the canvas leaves the viewport. We add an explicit
- * pause on window hide anyway -- the drawer hides on blur rather than closing,
- * so it can sit invisible for hours and we do not want to trust an implicit.
+ * ShaderMount stops its rAF entirely when speed is 0, so a still gradient
+ * costs one draw and then nothing. Above 0 it draws every frame for as long as
+ * the drawer exists -- and the drawer hides on blur rather than closing, so it
+ * can sit invisible for hours. The library pauses itself on document.hidden;
+ * we pause on window blur as well rather than trust that alone.
  */
 (function () {
   'use strict';
 
-  // Mirrors the shader layer on the Paper artboard. Every value here is meant
-  // to be swapped wholesale once the exact numbers come out of Paper's
-  // inspector -- nothing downstream reads these except the mount call.
+  // Smoke Ring, with the values off the shader node in the Paper file. Paper
+  // shows these as percentages of the raw value, so 153% is 1.53 and 500% is 5.
   const CONFIG = {
-    colors: ['#eef4fd', '#cfe0f6', '#a6c8ee', '#7fabe2', '#ffffff'],
-    distortion: 0.8,
-    swirl: 0.1,
-    grainMixer: 0,
-    grainOverlay: 0,
+    // "Fill" on the layer, behind the ring
+    colorBack: '#81ADEC',
+    // "Foreground", the ring itself
+    colors: ['#BDD6F6'],
 
-    // 0 keeps the gradient still. Anything above 0 turns on a permanent rAF.
-    speed: 0,
-    // Which still of the animation to freeze on, in milliseconds.
-    frame: 14000,
+    thickness: 0.65,
+    radius: 0.5,
+    innerShape: 0.78,
+    noiseScale: 5,
+    noiseIterations: 5,
+
+    // 1 matches the design. Drop to 0 to freeze it and stop the render loop
+    // outright -- see the note above.
+    speed: 1,
+    frame: 0,
 
     fit: 'cover',
-    scale: 1,
+    scale: 1.53,
     rotation: 0,
     offsetX: 0,
     offsetY: 0,
@@ -39,28 +43,44 @@
     worldWidth: 0,
     worldHeight: 0,
 
-    // The drawer is ~420px wide. Rendering it at 2x device pixels is wasted
-    // fill rate on a soft gradient with no hard edges to alias.
+    // The drawer is ~466px wide. Rendering it at 2x device pixels is wasted
+    // fill rate on soft noise with no hard edges to alias.
     minPixelRatio: 1,
   };
 
   let mount = null;
+  let building = null;
   const stats = { mountMs: 0, firstPaintMs: 0, pauses: 0, resumes: 0 };
 
-  function build(host) {
+  // ShaderMount throws unless the noise texture is fully decoded, so the mount
+  // has to wait on it.
+  function noiseReady(P) {
+    const img = P.getShaderNoiseTexture();
+    if (!img || img.complete) return Promise.resolve(img);
+    return new Promise((resolve) => {
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(undefined);
+    });
+  }
+
+  async function build(host) {
     const P = window.PaperShaders;
     if (!P || !host) return null;
 
     const t0 = performance.now();
+    const noise = await noiseReady(P);
     const colors = CONFIG.colors.map(P.getShaderColorFromString);
 
     const uniforms = {
+      u_colorBack: P.getShaderColorFromString(CONFIG.colorBack),
       u_colors: colors,
       u_colorsCount: colors.length,
-      u_distortion: CONFIG.distortion,
-      u_swirl: CONFIG.swirl,
-      u_grainMixer: CONFIG.grainMixer,
-      u_grainOverlay: CONFIG.grainOverlay,
+      u_thickness: CONFIG.thickness,
+      u_radius: CONFIG.radius,
+      u_innerShape: CONFIG.innerShape,
+      u_noiseScale: CONFIG.noiseScale,
+      u_noiseIterations: CONFIG.noiseIterations,
+      u_noiseTexture: noise,
 
       u_fit: P.ShaderFitOptions[CONFIG.fit],
       u_scale: CONFIG.scale,
@@ -76,7 +96,7 @@
     try {
       mount = new P.ShaderMount(
         host,
-        P.meshGradientFragmentShader,
+        P.smokeRingFragmentShader,
         uniforms,
         undefined,
         CONFIG.speed,
@@ -98,13 +118,12 @@
     return mount;
   }
 
-  window.StashShader = {
+  const api = {
     init(host) {
-      if (mount) return mount;
-      return build(host);
+      if (mount) return Promise.resolve(mount);
+      if (!building) building = build(host);
+      return building;
     },
-    // Called when the drawer hides. With speed 0 this is already a no-op, but
-    // it is the switch that matters the moment anyone sets speed above 0.
     pause() {
       if (!mount) return;
       stats.pauses++;
@@ -118,4 +137,11 @@
     config: CONFIG,
     stats,
   };
+
+  // The drawer hides on blur. Nobody is looking at the gradient then, and a
+  // frozen one during a drag is imperceptible, so this is free to be blunt.
+  window.addEventListener('blur', () => api.pause());
+  window.addEventListener('focus', () => api.resume());
+
+  window.StashShader = api;
 })();

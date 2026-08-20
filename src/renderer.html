@@ -1897,8 +1897,9 @@
       function sync() {
         if (!window.StashShader) return;
         if (light.matches) {
-          window.StashShader.init(host);
-          window.StashShader.resume();
+          // mounting waits on the shader's noise texture, so this is async now
+          Promise.resolve(window.StashShader.init(host))
+            .then(() => window.StashShader.resume());
         } else {
           window.StashShader.pause();
         }
