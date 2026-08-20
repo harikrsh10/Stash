@@ -473,11 +473,48 @@
     }
     .inspector[data-mode="detail"] .detail-text.show { display: block; }
 
-    /* one action row per mode */
-    .detail-actions { display: none; }
-    .inspector[data-mode="detail"] .detail-actions { display: flex; }
-    .inspector[data-mode="detail"] .insp-actions:not(.detail-actions) { display: none; }
+    /* text / colour — a switch, not an action. It sits under the name and stays
+       there while you move between them, so the footer is free to belong to
+       whichever one you are in. */
+    .insp-modes {
+      display: none;
+      flex-shrink: 0;
+      gap: 4px;
+      margin: 0 14px 10px;
+      padding: 3px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+    .insp-modes.show { display: flex; }
+    .mode-btn {
+      flex: 1;
+      padding: 6px 10px;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      background: none;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: color 0.12s, background 0.12s, border-color 0.12s;
+    }
+    .mode-btn:hover { color: var(--text-2); }
+    .mode-btn.is-on {
+      background: var(--surface3);
+      border-color: var(--border2);
+      color: var(--text);
+    }
+
+    /* nothing to act on until something has been picked out */
+    .inspector[data-mode="detail"] .insp-actions { display: none; }
     .inspector[data-mode="detail"] .insp-out { display: none; }
+
+    /* the name belongs to the clip, not to one view of it */
+    .inspector[data-mode="text"] .detail-name,
+    .inspector[data-mode="color"] .detail-name { display: block; }
 
     .insp-out {
       flex-shrink: 0;
@@ -1477,6 +1514,13 @@
     </div>
     <input class="detail-name" id="inspName" type="text" spellcheck="false"
            placeholder="name this clip" maxlength="120" />
+    <!-- What you can pull out of this picture. A switch rather than an action,
+         so it sits with the name instead of down in the footer, and stays put
+         when you move between the two. -->
+    <div class="insp-modes" id="inspModes">
+      <button class="mode-btn" id="detailText">text</button>
+      <button class="mode-btn" id="detailColor">colour</button>
+    </div>
     <div class="insp-canvas">
       <div class="insp-stage" id="inspStage"></div>
       <div class="detail-text" id="inspDetailText"></div>
@@ -1486,11 +1530,6 @@
     <div class="insp-actions">
       <button class="insp-btn" id="inspCopy" disabled>copy text</button>
       <button class="insp-btn prompt" id="inspPrompt" disabled>add to prompts</button>
-    </div>
-    <div class="insp-actions detail-actions">
-      <button class="insp-btn" id="detailCopy">copy</button>
-      <button class="insp-btn" id="detailText">text</button>
-      <button class="insp-btn" id="detailColor">color</button>
     </div>
   </div>
 
@@ -1987,10 +2026,9 @@
       inspDetailTextEl.classList.remove('show');
       inspStageEl.innerHTML = '';
 
-      // Only images get the extractors; there is nothing to read out of text
-      // that you cannot already see.
-      document.getElementById('detailText').style.display = c.type === 'img' ? '' : 'none';
-      document.getElementById('detailColor').style.display = c.type === 'img' ? '' : 'none';
+      // Only images have anything to pull out; there is nothing to read out of
+      // text that you cannot already see in front of you.
+      setModes(c.type === 'img', null);
 
       if (c.type === 'img') {
         // the full picture, not the 240px row thumbnail
@@ -2034,12 +2072,14 @@
     });
     inspNameEl.addEventListener('blur', () => commitDetailName());
 
-    document.getElementById('detailCopy').addEventListener('click', async () => {
-      const c = detailId ? findClip(detailId) : null;
-      if (!c) return;
-      await window.api.write(c);
-      toast('copied — paste with ⌘V');
-    });
+    // Which of the two you are in, and whether either is on offer at all.
+    // Called on open and again whenever a mode finishes loading.
+    function setModes(available, active) {
+      document.getElementById('inspModes').classList.toggle('show', !!available);
+      document.getElementById('detailText').classList.toggle('is-on', active === 'text');
+      document.getElementById('detailColor').classList.toggle('is-on', active === 'color');
+    }
+
     document.getElementById('detailText').addEventListener('click', () => {
       if (detailId) runOcr(detailId);
     });
@@ -2141,6 +2181,7 @@
       // than silently dropped because the panel was closed instead of blurred
       if (detailId) commitDetailName();
       detailId = null;
+      setModes(false, null);
       inspDetailTextEl.classList.remove('show');
       inspMode = 'text';
       inspectorEl.dataset.mode = 'text';
@@ -2170,6 +2211,7 @@
       inspColors = colors || [];
       inspPickedColors.clear();
       inspTitleEl.textContent = 'colours in this image';
+      setModes(true, 'color');
       await showInspectorImage(src, w, h);
       drawSwatches();
       syncInspOut();
@@ -2220,6 +2262,8 @@
       inspBlocks = blocks;
       inspPicked.clear();
       inspTitleEl.textContent = 'select text from image';
+      // the switch stays put between the two, showing where you are
+      setModes(true, 'text');
       // widen the OS window first so the picture is measured at its real size
       await showInspectorImage(src, w, h, drawRegions);
 

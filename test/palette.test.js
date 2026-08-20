@@ -265,7 +265,7 @@ ok('preload exposes palette', /palette:\s*\(id\)\s*=>\s*ipcRenderer\.invoke\('pa
 ok('colour is offered from the preview panel', /id="detailColor"/.test(renderer), '');
 ok('the button is wired', /detailColor[\s\S]{0,160}runPalette/.test(renderer), '');
 ok('colour is only offered for images',
-   /detailColor'\)\.style\.display = c\.type === 'img'/.test(renderer), '');
+   /setModes\(c\.type === 'img'/.test(renderer), '');
 ok('the inspector has a colour mode', /data-mode="color"/.test(renderer), '');
 ok('swatches render into their own list', /inspSwatches/.test(renderer), '');
 ok('picking colours feeds the same output panel',
