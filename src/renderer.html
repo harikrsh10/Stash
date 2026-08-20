@@ -87,9 +87,13 @@
       --shadow: rgba(0, 0, 0, 0.55);
       /* the light shell floats cards over a shader; dark keeps one flat
          surface, so these only ever get read under prefers-color-scheme: light */
-      --card: #111111;
+      --card: #141519;
       --card-shadow: rgba(0, 0, 0, 0.55);
       --card-shadow-near: rgba(0, 0, 0, 0.4);
+      /* on a dark backdrop a shadow reads as nothing; the lift comes from a
+         hairline instead. In light the cards already separate by shadow, so
+         this is barely there. */
+      --card-line: rgba(255, 255, 255, 0.07);
       --font-sans: 'IBM Plex Sans', -apple-system, sans-serif;
       --font-mono: 'IBM Plex Mono', monospace;
     }
@@ -172,6 +176,7 @@
         --card: #ffffff;
         --card-shadow: rgba(18, 34, 62, 0.07);
         --card-shadow-near: rgba(18, 34, 62, 0.05);
+        --card-line: rgba(18, 34, 62, 0.05);
       }
     }
 
@@ -325,8 +330,6 @@
       min-width: 0;
       flex-direction: column;
       height: 100vh;
-      background: var(--sheet-bg);
-      border-right: 1px solid var(--border);
     }
     .inspector.show { display: flex; }
 
@@ -482,7 +485,6 @@
     }
 
     /* the facts only belong on the panel you opened to look at the clip */
-    .insp-card { display: contents; }
     .detail-meta { display: none; }
     .inspector.show .detail-meta { display: block; }
     .meta-row { display: flex; align-items: center; gap: 12px; padding: 6px 0; }
@@ -1706,274 +1708,266 @@
     /* ---------------------------------------------------------------------
        The card shell.
 
-       Dark mode is untouched: every .card wrapper is display:contents, so its
-       children stay direct flex children of .panel exactly as before and not a
-       single dark-mode rule below fires.
+       One structure for both themes: a shader background container with the
+       panel broken into cards floating on it. Only the palette differs, and
+       it differs through tokens, so nothing here is written twice.
 
-       Light mode is the Paper design -- a shader background container with the
-       panel broken into cards floating on top.
+       This used to live inside a light-only media query, with .card set to
+       display:contents everywhere else so dark kept a single flat surface.
        --------------------------------------------------------------------- */
-    .shader-bg { display: none; }
-    .card { display: contents; }
-    .railwrap {
+    .shader-bg {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      /* the flat fill shows through if WebGL is unavailable */
+      background: var(--bg);
+    }
+    .shader-bg canvas { display: block; width: 100%; height: 100%; }
+
+    body { background: transparent; }
+    .shell { position: relative; z-index: 1; background: transparent; }
+    .app { background: transparent; }
+
+    .panel {
+      background: transparent;
       display: flex;
       flex-direction: column;
-      width: 78px;
+      gap: 8px;
+      padding: 16px 0 16px 16px;
+      height: 100vh;
+      box-sizing: border-box;
+    }
+
+    .card {
+      display: block;
+      background: var(--card);
+      border: 1px solid var(--card-line);
+      border-radius: 12px;
+      box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
       flex: none;
-      border-left: 1px solid var(--border);
-      background: var(--surface);
+      overflow: hidden;
+      box-sizing: border-box;
     }
-    .railwrap .rail {
+    /* only the list may grow, and it must be allowed to shrink or the
+       cards below it get pushed off the bottom of the drawer */
+    .card-list {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .card-list .list { flex: 1 1 auto; min-height: 0; overflow-x: hidden; }
+
+    /* the cards do the separating now, so the internal rules come off */
+    .titlebar,
+    .controls { border-bottom: 0; }
+    /* the card edge already gives the search field room to breathe */
+    .controls { padding-top: 8px; }
+    .footer { border-top: 0; }
+
+    .card-filters .filters { margin-top: 0; padding: 12px 14px; }
+    /* Six pills across 340 leaves no slack: the hairline on the card took two
+       pixels and "color" fell to a second row. A pixel off each pill buys
+       twelve back and keeps the row aligned with the other cards. */
+    .card-filters .pill { padding: 4px 9px; }
+    .search-input { border-radius: 9px; padding: 9px 12px; }
+    .pill { background: var(--card); }
+    .pill.active {
+      background: var(--text);
+      border-color: var(--text);
+      color: var(--on-accent);
+    }
+
+    .railwrap {
       border-left: 0;
-      background: none;
-      width: 100%;
+      background: transparent;
+      width: auto;
+      gap: 12px;
+      padding: 16px;
+      box-sizing: border-box;
     }
-    /* the three fixed places never scroll; the sessions card is what grows */
+    /* .card sets display:block, which would kill the rail's flex column and
+       leave the buttons at their intrinsic widths -- form controls do not
+       stretch to fill the way a div does, so each item would size to its own
+       label. Restate the column here so every item is the same width. */
+    .railwrap .rail {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      /* .card cannot reach these: the base .railwrap .rail rule that strips
+         the dark-mode background outranks it, so the fill is restated here
+         or the rail cards read as translucent against the shader */
+      background: var(--card);
+      width: 78px;
+      padding: 8px 0;
+      gap: 6px;
+      overflow: visible;
+    }
     .railwrap #rail { flex: none; }
-    .railwrap #railSessions { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding-top: 0; }
+    .railwrap #railSessions { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding-top: 8px; }
 
-    @media (prefers-color-scheme: light) {
-      .shader-bg {
-        display: block;
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        /* the flat fill shows through if WebGL is unavailable */
-        background: var(--bg);
-      }
-      .shader-bg canvas { display: block; width: 100%; height: 100%; }
-
-      body { background: transparent; }
-      .shell { position: relative; z-index: 1; background: transparent; }
-      .app { background: transparent; }
-
-      .panel {
-        background: transparent;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        padding: 16px 0 16px 16px;
-        height: 100vh;
-        box-sizing: border-box;
-      }
-
-      .card {
-        display: block;
-        background: var(--card);
-        border-radius: 12px;
-        box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
-        flex: none;
-        overflow: hidden;
-      }
-      /* only the list may grow, and it must be allowed to shrink or the
-         cards below it get pushed off the bottom of the drawer */
-      .card-list {
-        flex: 1 1 auto;
-        min-height: 0;
-        display: flex;
-        flex-direction: column;
-      }
-      .card-list .list { flex: 1 1 auto; min-height: 0; overflow-x: hidden; }
-
-      /* the cards do the separating now, so the internal rules come off */
-      .titlebar,
-      .controls { border-bottom: 0; }
-      /* the card edge already gives the search field room to breathe */
-      .controls { padding-top: 8px; }
-      .footer { border-top: 0; }
-
-      .card-filters .filters { margin-top: 0; padding: 12px 14px; }
-      .search-input { border-radius: 9px; padding: 9px 12px; }
-      .pill { background: var(--card); }
-      .pill.active {
-        background: var(--text);
-        border-color: var(--text);
-        color: var(--on-accent);
-      }
-
-      .railwrap {
-        border-left: 0;
-        background: transparent;
-        width: auto;
-        gap: 12px;
-        padding: 16px;
-        box-sizing: border-box;
-      }
-      /* .card sets display:block, which would kill the rail's flex column and
-         leave the buttons at their intrinsic widths -- form controls do not
-         stretch to fill the way a div does, so each item would size to its own
-         label. Restate the column here so every item is the same width. */
-      .railwrap .rail {
-        display: flex;
-        flex-direction: column;
-        align-items: stretch;
-        /* .card cannot reach these: the base .railwrap .rail rule that strips
-           the dark-mode background outranks it, so the fill is restated here
-           or the rail cards read as translucent against the shader */
-        background: var(--card);
-        width: 78px;
-        padding: 8px 0;
-        gap: 6px;
-        overflow: visible;
-      }
-      .railwrap #rail { flex: none; }
-      .railwrap #railSessions { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding-top: 8px; }
-
-      .railwrap .rail-item {
-        margin: 0 8px;
-        padding: 11px 4px;
-        gap: 7px;
-        border-radius: 10px;
-      }
-      .railwrap .rail-item svg { width: 16px; height: 16px; }
-      .railwrap .rail-item .lbl { font-size: 10px; }
-
-      /* the accent belongs to the place, not to whether it is selected */
-      .railwrap .rail-item.prompts svg { stroke: var(--prompt); fill: var(--prompt); }
-      .railwrap .rail-item.pinned svg { stroke: var(--pinned); fill: var(--pinned); }
-
-      /* the multi-select tray was a tinted bar wedged above the footer; it is
-         a card like everything else now */
-      .stack-tray {
-        border-top: 0;
-        background: var(--card);
-        border-radius: 12px;
-        box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
-        padding: 14px 16px;
-        gap: 14px;
-      }
-      .stack-title { font-size: 13px; color: var(--text); }
-      .stack-hint { font-size: 11px; }
-      .stack-count {
-        min-width: 20px;
-        height: 20px;
-        border-radius: 10px;
-        font-size: 11px;
-        right: -7px;
-        top: -8px;
-      }
-      .stack-close {
-        font-size: 17px;
-        line-height: 1;
-        padding: 2px 4px;
-      }
-
-      /* the inspector is two cards on the shader: the clip, then what can be
-         pulled out of it. The design leads with the name, so the title bar
-         that used to sit above it comes off -- Esc still closes the panel. */
-      .inspector {
-        background: transparent;
-        border-right: 0;
-        padding: 16px 0 16px 16px;
-        gap: 8px;
-        box-sizing: border-box;
-      }
-      /* The design leads with the name and carries no header, so this was
-         hidden -- which left Esc as the only way out of a panel you opened by
-         clicking. The header comes back as a bare close, without the status
-         line it used to hold. */
-      .insp-head {
-        display: flex;
-        justify-content: flex-end;
-        padding: 10px 10px 0;
-      }
-      .insp-title,
-      .insp-hint { display: none; }
-      .insp-head .close-btn {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 28px;
-        height: 28px;
-        padding: 0;
-        border-radius: 8px;
-        font-size: 16px;
-      }
-      /* the name no longer needs to clear the top of the card on its own */
-      .insp-head + .detail-name { margin-top: 6px; }
-      .insp-card {
-        display: flex;
-        flex-direction: column;
-        flex: 1 1 auto;
-        min-height: 0;
-        background: var(--card);
-        border-radius: 12px;
-        box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
-        overflow: hidden;
-        padding-bottom: 14px;
-      }
-      .detail-name {
-        margin: 14px 14px 12px;
-        padding: 12px 14px;
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        font-size: 15px;
-        font-weight: 600;
-      }
-      .detail-meta { margin: 14px 14px 0; }
-      .meta-row { padding: 8px 0; }
-      .meta-key { width: 116px; font-size: 12px; }
-      .meta-val { font-size: 12px; }
-
-      /* Looking at a clip, the card ends where the facts end. Only the
-         extraction views need the picture to stretch and scroll. */
-      .inspector[data-mode="detail"] .insp-card { flex: 0 1 auto; }
-      .inspector[data-mode="detail"] .insp-canvas { flex: 0 1 auto; }
-
-      .insp-modes {
-        margin: 0;
-        flex: none;
-        padding: 10px;
-        gap: 10px;
-        border: 0;
-        border-radius: 12px;
-        background: var(--card);
-        box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
-      }
-      .mode-btn {
-        padding: 16px 10px;
-        border-radius: 10px;
-        font-size: 13px;
-        text-transform: none;
-        letter-spacing: 0.02em;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 9px;
-      }
-      /* the chosen side reads like a chosen place on the rail */
-      .mode-btn.is-on {
-        background: var(--select-wash-2);
-        border-color: transparent;
-        color: var(--select);
-      }
-      .mode-btn.is-on .mode-key { color: var(--select); }
-
-      .insp-out {
-        flex: 1 1 auto;
-        min-height: 0;
-        max-height: none;
-        margin: 0;
-        padding: 16px;
-        border: 0;
-        border-radius: 12px;
-        background: var(--card);
-        box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
-        font-size: 13px;
-      }
-      .insp-out.empty { display: flex; align-items: center; justify-content: center; }
-      .insp-out { overflow-y: auto; }
-
-      /* icons alone -- the tooltip carries the word */
-
-      /* selected place: a blue tint, not the tan that means "pinned" */
-      .rail-item.on {
-        background: var(--select-wash-2);
-        box-shadow: none;
-        color: var(--select);
-      }
+    .railwrap .rail-item {
+      margin: 0 8px;
+      padding: 11px 4px;
+      gap: 7px;
+      border-radius: 10px;
     }
+    .railwrap .rail-item svg { width: 16px; height: 16px; }
+    .railwrap .rail-item .lbl { font-size: 10px; }
+
+    /* the accent belongs to the place, not to whether it is selected */
+    .railwrap .rail-item.prompts svg { stroke: var(--prompt); fill: var(--prompt); }
+    .railwrap .rail-item.pinned svg { stroke: var(--pinned); fill: var(--pinned); }
+
+    /* the multi-select tray was a tinted bar wedged above the footer; it is
+       a card like everything else now */
+    .stack-tray {
+      border-top: 0;
+      background: var(--card);
+      border: 1px solid var(--card-line);
+      border-radius: 12px;
+      box-sizing: border-box;
+      box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
+      padding: 14px 16px;
+      gap: 14px;
+    }
+    .stack-title { font-size: 13px; color: var(--text); }
+    .stack-hint { font-size: 11px; }
+    .stack-count {
+      min-width: 20px;
+      height: 20px;
+      border-radius: 10px;
+      font-size: 11px;
+      right: -7px;
+      top: -8px;
+    }
+    .stack-close {
+      font-size: 17px;
+      line-height: 1;
+      padding: 2px 4px;
+    }
+
+    /* the inspector is two cards on the shader: the clip, then what can be
+       pulled out of it. The design leads with the name, so the title bar
+       that used to sit above it comes off -- Esc still closes the panel. */
+    .inspector {
+      background: transparent;
+      border-right: 0;
+      padding: 16px 0 16px 16px;
+      gap: 8px;
+      box-sizing: border-box;
+    }
+    /* The design leads with the name and carries no header, so this was
+       hidden -- which left Esc as the only way out of a panel you opened by
+       clicking. The header comes back as a bare close, without the status
+       line it used to hold. */
+    .insp-head {
+      display: flex;
+      justify-content: flex-end;
+      padding: 10px 10px 0;
+    }
+    .insp-title,
+    .insp-hint { display: none; }
+    .insp-head .close-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border-radius: 8px;
+      font-size: 16px;
+    }
+    /* the name no longer needs to clear the top of the card on its own */
+    .insp-head + .detail-name { margin-top: 6px; }
+    .insp-card {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 0;
+      background: var(--card);
+      border: 1px solid var(--card-line);
+      box-sizing: border-box;
+      border-radius: 12px;
+      box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
+      overflow: hidden;
+      padding-bottom: 14px;
+    }
+    .detail-name {
+      margin: 14px 14px 12px;
+      padding: 12px 14px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .detail-meta { margin: 14px 14px 0; }
+    .meta-row { padding: 8px 0; }
+    .meta-key { width: 116px; font-size: 12px; }
+    .meta-val { font-size: 12px; }
+
+    /* Looking at a clip, the card ends where the facts end. Only the
+       extraction views need the picture to stretch and scroll. */
+    .inspector[data-mode="detail"] .insp-card { flex: 0 1 auto; }
+    .inspector[data-mode="detail"] .insp-canvas { flex: 0 1 auto; }
+
+    .insp-modes {
+      margin: 0;
+      flex: none;
+      padding: 10px;
+      gap: 10px;
+      border: 1px solid var(--card-line);
+      box-sizing: border-box;
+      border-radius: 12px;
+      background: var(--card);
+      box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
+    }
+    .mode-btn {
+      padding: 16px 10px;
+      border-radius: 10px;
+      font-size: 13px;
+      text-transform: none;
+      letter-spacing: 0.02em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+    }
+    /* the chosen side reads like a chosen place on the rail */
+    .mode-btn.is-on {
+      background: var(--select-wash-2);
+      border-color: transparent;
+      color: var(--select);
+    }
+    .mode-btn.is-on .mode-key { color: var(--select); }
+
+    .insp-out {
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: none;
+      margin: 0;
+      padding: 16px;
+      border: 1px solid var(--card-line);
+      box-sizing: border-box;
+      border-radius: 12px;
+      background: var(--card);
+      box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
+      font-size: 13px;
+    }
+    .insp-out.empty { display: flex; align-items: center; justify-content: center; }
+    .insp-out { overflow-y: auto; }
+
+    /* icons alone -- the tooltip carries the word */
+
+    /* selected place: a blue tint, not the tan that means "pinned" */
+    .rail-item.on {
+      background: var(--select-wash-2);
+      box-shadow: none;
+      color: var(--select);
+    }
+    
   </style>
 </head>
 <body>
@@ -2128,21 +2122,20 @@
   <script src="vendor/paper-shaders.js"></script>
   <script src="shader-bg.js"></script>
   <script>
-    // The shader is the light shell's background container. Dark mode keeps the
-    // flat surface it has always had, so there is no reason to hold a WebGL
-    // context -- let alone draw -- while the drawer is dark.
+    // The shader is the shell's background container in both themes. Only
+    // its two colours change between them, so a theme switch costs a uniform
+    // upload rather than a fresh WebGL context.
     (function () {
       const host = document.getElementById('shaderBg');
       const light = window.matchMedia('(prefers-color-scheme: light)');
       function sync() {
         if (!window.StashShader) return;
-        if (light.matches) {
-          // mounting waits on the shader's noise texture, so this is async now
-          Promise.resolve(window.StashShader.init(host))
-            .then(() => window.StashShader.resume());
-        } else {
-          window.StashShader.pause();
-        }
+        window.StashShader.setTheme(light.matches);
+        // mounting waits on the shader's noise texture, so this is async
+        Promise.resolve(window.StashShader.init(host)).then(() => {
+          window.StashShader.setTheme(light.matches);
+          window.StashShader.resume();
+        });
       }
       light.addEventListener('change', sync);
       sync();
