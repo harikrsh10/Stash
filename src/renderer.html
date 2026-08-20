@@ -1785,10 +1785,19 @@
     }
 
     .railwrap {
+      /* The column has to be declared here. It used to come from a dark-only
+         rule that the shell replaced, and without it the two cards stacked as
+         blocks with the gap silently ignored -- they sat flush against each
+         other and read as one card with a line through it. */
+      display: flex;
+      flex-direction: column;
+      flex: none;
       border-left: 0;
       background: transparent;
       width: auto;
-      gap: 12px;
+      /* the places card and the sessions card are two separate things, and
+         read as such at 16 where 12 had them looking like one split in half */
+      gap: 16px;
       padding: 16px;
       box-sizing: border-box;
     }
