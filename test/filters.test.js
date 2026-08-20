@@ -83,6 +83,42 @@ app.whenReady().then(async () => {
     ok('the colour filter does not invent a type',
        history.every(c => c.type !== 'color'), '');
 
+
+    // ---------- how a colour clip reads ----------
+    history = [
+      { id: 'one', type: 'text', content: '#C03E2F', ts: Date.now() },
+      { id: 'pal', type: 'text', content: '#3B82F6' + NL + '#EF4444' + NL + '#10B981', ts: Date.now() - 1 },
+      // esc() does not escape quotes, so a colour written straight into a style
+      // attribute would let clipboard content break out of it
+      { id: 'evil', type: 'text', content: 'rgb(" onerror=alert(1) x)', ts: Date.now() - 2 },
+      { id: 'prose', type: 'text', content: 'just some words', ts: Date.now() - 3 },
+    ];
+    render();
+    await tick(20);
+
+    const row = (id) => document.querySelector('.item[data-id=\\"' + id + '\\"]');
+    const badgeOf = (id) => row(id).querySelector('.type-badge').textContent;
+    const chipsOf = (id) => [...row(id).querySelectorAll('.colour-chip')];
+
+    ok('a colour clip badges as colour, not text', badgeOf('one') === 'color', badgeOf('one'));
+    ok('and shows the colour itself', chipsOf('one').length === 1, String(chipsOf('one').length));
+    ok('painted with the value it holds',
+       chipsOf('one')[0].style.backgroundColor === 'rgb(192, 62, 47)',
+       chipsOf('one')[0].style.backgroundColor);
+    ok('the value is spelled out beside it',
+       row('one').querySelector('.colour-value').textContent === '#C03E2F',
+       row('one').querySelector('.colour-value').textContent);
+
+    ok('a palette gets one chip per colour', chipsOf('pal').length === 3, String(chipsOf('pal').length));
+
+    ok('prose is still text', badgeOf('prose') === 'text', badgeOf('prose'));
+
+    // the colour is assigned through CSSOM, so nothing can escape into markup
+    ok('a quote-bearing rgb string does not read as a colour',
+       badgeOf('evil') === 'text', badgeOf('evil'));
+    ok('and injects no attribute anywhere',
+       ![...document.querySelectorAll('*')].some(e => e.hasAttribute('onerror')), '');
+
     return out;
   })()`;
 

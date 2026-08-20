@@ -891,6 +891,26 @@
     .type-badge.code { color: var(--code); background: var(--code-tint); border: 1px solid var(--code-line); }
     .type-badge.url  { color: var(--url); background: var(--session-tint); border: 1px solid var(--url-line); }
     .type-badge.img  { color: var(--pinned); background: var(--pinned-tint); border: 1px solid var(--pinned-line); }
+    .type-badge.color { color: var(--pinned); background: var(--pinned-tint); border: 1px solid var(--pinned-line); }
+
+    /* a colour clip leads with the colour itself, then its value */
+    .colour-line { display: flex; align-items: center; gap: 10px; }
+    .colour-chip {
+      width: 26px;
+      height: 26px;
+      flex: none;
+      border-radius: 6px;
+      border: 1px solid var(--hairline);
+    }
+    .colour-value {
+      font-family: var(--font-mono);
+      font-size: 15px;
+      letter-spacing: 0.02em;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
     /* main content column */
     .item-content {
@@ -2163,6 +2183,13 @@
       COLOUR_VALUE.lastIndex = 0;
       const leftover = t.replace(COLOUR_VALUE, '').replace(/[\s,;|]/g, '');
       return leftover.length === 0;
+    }
+
+    // the individual values, for a row that wants to show a chip per colour
+    function colourValues(text) {
+      if (!looksLikeColour(text)) return [];
+      COLOUR_VALUE.lastIndex = 0;
+      return String(text).trim().match(COLOUR_VALUE) || [];
     }
 
     function itemMatchesFilter(c, isPinned) {
@@ -3608,6 +3635,11 @@
       let extraHtml = '';
       let metaParts = [];
 
+      // A clip whose content is nothing but colour values shows as a colour,
+      // though it is still a text clip underneath. A prompt stays a prompt.
+      const colours = (c.type === 'text' && !c.isPrompt) ? colourValues(c.content) : [];
+      const isColour = colours.length > 0;
+
       if (c.type === 'url') {
         const dom = domainOf(c.content);
         headlineHtml = `<div class="item-headline">${esc(urlHeadline(c.content))}</div>`;
@@ -3628,6 +3660,15 @@
         metaParts.push(`<span class="time">${stamp}</span>`);
         if (c.dataUrl) {
           extraHtml = `<img class="item-image" src="${c.dataUrl}" alt=""/>`;
+        }
+      } else if (isColour) {
+        // The colour itself is never written into the markup -- see below.
+        const chips = colours.slice(0, 4)
+          .map((_, i) => `<span class="colour-chip" data-swatch="${i}"></span>`).join('');
+        headlineHtml = `<div class="item-headline colour-line">${chips}<span class="colour-value">${esc(colours.join("  "))}</span></div>`;
+        metaParts.push(`<span class="time">${stamp}</span>`);
+        if (colours.length > 4) {
+          metaParts.push(`<span class="dot">·</span><span>+${colours.length - 4} more</span>`);
         }
       } else {
         // text — first line big, fade if there's more
@@ -3661,6 +3702,7 @@
       if (styled) {
         metaParts.push(`<span class="dot">·</span><span class="styled-mark" title="keeps its formatting — hold ⌥ to copy as plain text">styled</span>`);
       }
+      const badgeKind = c.isPrompt ? 'prompt' : (isColour ? 'color' : c.type);
       const metaHtml = `<div class="item-meta">${metaParts.join('')}</div>`;
       // tags ride under the meta line so the library can be skimmed
       const tagsHtml = (c.tags && c.tags.length)
@@ -3674,7 +3716,7 @@
           <div class="dot-row"><span></span><span></span></div>
         </div>
         <div class="item-icon-col">
-          <span class="type-badge ${c.isPrompt ? 'prompt' : c.type}">${c.isPrompt ? 'prompt' : c.type}</span>
+          <span class="type-badge ${badgeKind}">${badgeKind}</span>
         </div>
         <div class="item-content">
           ${headlineHtml}
@@ -3695,6 +3737,16 @@
           </div>
         </div>
       `;
+
+      // The colour never goes through markup. esc() does not escape quotes, so a
+      // clipboard string such as rgb(" onerror=...) would break straight out of a
+      // style attribute. Assigning through CSSOM cannot escape, and the browser
+      // simply drops anything it does not recognise as a colour.
+      if (isColour) {
+        el.querySelectorAll('.colour-chip').forEach(chip => {
+          chip.style.backgroundColor = colours[Number(chip.dataset.swatch)] || '';
+        });
+      }
 
       // Hold anywhere on the row to reorder it; move straight away and it is a
       // drag-out instead. The grip skips the wait for anyone who reaches for it.
