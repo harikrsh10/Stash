@@ -129,12 +129,20 @@ app.whenReady().then(async () => {
     // extractors sat where you could not see what you were extracting from.
     const imgActs = [...imgRow().querySelectorAll('[data-act]')].map(b => b.dataset.act);
     const txtActs = [...txtRow().querySelectorAll('[data-act]')].map(b => b.dataset.act);
-    ok('every row offers the same actions, whatever type it is',
-       JSON.stringify(imgActs) === JSON.stringify(txtActs), imgActs.join(',') + ' vs ' + txtActs.join(','));
-    ok('view is one of them', imgActs.includes('view'), imgActs.join(','));
-    ok('the per-type extractors have left the row',
-       !imgActs.includes('ocr') && !imgActs.includes('palette'), imgActs.join(','));
-    ok('and so has the old inline rename', !imgActs.includes('rename'), imgActs.join(','));
+    // Every row shares the same core, and an image adds the two things you can
+    // pull out of a picture. As icons in a full-width strip they cost a little
+    // width rather than crowding a floating cluster, which is what the old
+    // labelled overlay could not afford.
+    const core = ['view', 'prompt', 'copy', 'del'];
+    ok('every row carries the same core actions',
+       core.every(a => imgActs.includes(a) && txtActs.includes(a)),
+       imgActs.join(',') + ' vs ' + txtActs.join(','));
+    ok('an image also offers what can be pulled out of it',
+       imgActs.includes('ocr') && imgActs.includes('palette'), imgActs.join(','));
+    ok('text offers neither, having nothing to extract',
+       !txtActs.includes('ocr') && !txtActs.includes('palette'), txtActs.join(','));
+    ok('and the old inline rename is gone from both',
+       !imgActs.includes('rename') && !txtActs.includes('rename'), imgActs.join(','));
 
     // ---- opening an image ----
     imgRow().querySelector('[data-act=\"view\"]').click();
@@ -200,6 +208,21 @@ app.whenReady().then(async () => {
        && !document.getElementById('detailText').classList.contains('is-on'), '');
     ok('the name stays with you into that mode',
        getComputedStyle(document.getElementById('inspName')).display !== 'none', '');
+    document.getElementById('inspClose').click();
+    await tick(20);
+
+    // Reaching a mode straight from the row skips openDetail, so the name field
+    // and the switch have to be bound there too or the panel arrives empty.
+    document.getElementById('inspClose').click();
+    await tick(20);
+    history[0].name = 'Onboarding flow';
+    render();
+    imgRow().querySelector('[data-act=\"palette\"]').click();
+    await tick(140);
+    ok('going straight to colour from the row still names the right clip',
+       nameInput.value === 'Onboarding flow', nameInput.value);
+    ok('and the switch knows where it is',
+       document.getElementById('detailColor').classList.contains('is-on'), '');
     document.getElementById('inspClose').click();
     await tick(20);
 
