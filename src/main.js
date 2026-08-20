@@ -128,9 +128,17 @@ function drawerBounds(display, expanded) {
   };
 }
 
+// Asking whether the inspector is out, from the width alone.
+//
+// It cannot be an exact comparison against DRAWER_W: a display running at a
+// fractional scale hands back a window a pixel or two wider than the one that
+// was asked for -- 466 comes back as 468 -- so "wider than DRAWER_W" reported
+// expanded for a drawer that was not, and the next summon opened it at the
+// full width with nothing in the inspector half. Halfway between the two
+// widths is the only threshold rounding cannot reach.
 function isDrawerExpanded() {
   if (!mainWindow || mainWindow.isDestroyed()) return false;
-  return mainWindow.getBounds().width > DRAWER_W;
+  return mainWindow.getBounds().width > DRAWER_W + INSPECTOR_W / 2;
 }
 
 function setWindowExpanded(expanded) {
@@ -184,8 +192,10 @@ function toggleWindow() {
   if (mainWindow.isVisible()) {
     mainWindow.hide();
   } else {
-    // summon it to the screen the pointer is on, at that screen's height
-    mainWindow.setBounds(drawerBounds(drawerDisplay(true), isDrawerExpanded()));
+    // Summon it to the screen the pointer is on, at that screen's height, and
+    // always narrow: hiding closes the inspector, so coming back wide would
+    // only show empty space where it used to be.
+    mainWindow.setBounds(drawerBounds(drawerDisplay(true), false));
     mainWindow.show();
     mainWindow.focus();
   }
