@@ -1606,9 +1606,9 @@
       background: none;
       width: 100%;
     }
-    /* content height, so "new" sits directly under the sessions as it always has */
-    .railwrap #rail { flex: 0 1 auto; }
-    .railwrap #railNew { flex: none; padding-top: 0; overflow: visible; }
+    /* the three fixed places never scroll; the sessions card is what grows */
+    .railwrap #rail { flex: none; }
+    .railwrap #railSessions { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding-top: 0; }
 
     @media (prefers-color-scheme: light) {
       .shader-bg {
@@ -1692,8 +1692,8 @@
         gap: 6px;
         overflow: visible;
       }
-      .railwrap #rail { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
-      .railwrap #railNew { padding-top: 8px; }
+      .railwrap #rail { flex: none; }
+      .railwrap #railSessions { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding-top: 8px; }
 
       .railwrap .rail-item {
         margin: 0 8px;
@@ -1852,7 +1852,7 @@
   <!-- every top-level place: everything, prompts, pinned, each session, and new -->
   <div class="railwrap">
     <nav class="rail card card-rail" id="rail" aria-label="places"></nav>
-    <nav class="rail card card-new" id="railNew" aria-label="new session"></nav>
+    <nav class="rail card card-sessions" id="railSessions" aria-label="sessions"></nav>
   </div>
   </div>
   </div>
@@ -2030,7 +2030,7 @@
     // per session, and new. Choosing one swaps what the list shows, which is
     // why there are no section headers any more.
     const railEl = document.getElementById('rail');
-    const railNewEl = document.getElementById('railNew');
+    const railSessionsEl = document.getElementById('railSessions');
     const scopeNameEl = document.getElementById('scopeName');
     const scopeCountEl = document.getElementById('scopeCount');
     const scopeActionsEl = document.getElementById('scopeActions');
@@ -2103,26 +2103,17 @@
     }
 
     function buildRail() {
-      railEl.innerHTML = '';
-      railNewEl.innerHTML = '';
-      railEl.appendChild(railItem('all', 'all', RAIL_ICONS.all, ''));
-      railEl.appendChild(railItem('prompts', 'prompts', RAIL_ICONS.prompts, 'prompts'));
-      railEl.appendChild(railItem('pinned', 'pinned', RAIL_ICONS.pinned, 'pinned'));
+      // Build into fragments and swap each card in one shot. Clearing and then
+      // appending across a dozen statements leaves a window where a render
+      // re-entered from a state update interleaves its own appends with ours,
+      // and every place ends up in the rail twice.
+      const places = document.createDocumentFragment();
+      places.appendChild(railItem('all', 'all', RAIL_ICONS.all, ''));
+      places.appendChild(railItem('prompts', 'prompts', RAIL_ICONS.prompts, 'prompts'));
+      places.appendChild(railItem('pinned', 'pinned', RAIL_ICONS.pinned, 'pinned'));
 
-      const sep = document.createElement('div');
-      sep.className = 'rail-sep';
-      railEl.appendChild(sep);
-
-      sessions.forEach(s => {
-        const el = railItem(s.id, s.name, RAIL_ICONS.folder, 'session');
-        if (s.id === activeSessionId) {
-          const dot = document.createElement('span');
-          dot.className = 'rec';
-          dot.title = 'collecting into this session';
-          el.appendChild(dot);
-        }
-        railEl.appendChild(el);
-      });
+      // The sessions card: "new" holds the top, whatever exists stacks under it.
+      const sess = document.createDocumentFragment();
 
       const add = document.createElement('button');
       add.className = 'rail-item';
@@ -2153,7 +2144,28 @@
         add.replaceWith(input);
         input.focus();
       });
-      railNewEl.appendChild(add);
+      sess.appendChild(add);
+
+      // nothing to divide "new" from until a session exists
+      if (sessions.length) {
+        const sep = document.createElement('div');
+        sep.className = 'rail-sep';
+        sess.appendChild(sep);
+      }
+
+      sessions.forEach(s => {
+        const el = railItem(s.id, s.name, RAIL_ICONS.folder, 'session');
+        if (s.id === activeSessionId) {
+          const dot = document.createElement('span');
+          dot.className = 'rec';
+          dot.title = 'collecting into this session';
+          el.appendChild(dot);
+        }
+        sess.appendChild(el);
+      });
+
+      railEl.replaceChildren(places);
+      railSessionsEl.replaceChildren(sess);
     }
 
     // The scope header carries whatever the place itself needs: collecting and

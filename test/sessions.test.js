@@ -175,8 +175,29 @@ app.whenReady().then(async () => {
 
     // every session is a place on the rail
     const railLabels = [...document.querySelectorAll('.rail-item .lbl')].map(n => n.textContent);
-    ok('the rail lists the fixed places, the sessions and new',
-       railLabels.join(',') === 'all,prompts,pinned,Redesign,Research,new', railLabels.join(','));
+    ok('the rail lists the fixed places, then new and the sessions',
+       railLabels.join(',') === 'all,prompts,pinned,new,Redesign,Research', railLabels.join(','));
+
+    // the rail is two cards: the fixed places, then new with the sessions
+    // stacked under it
+    const labelsIn = (sel) => [...document.querySelectorAll(sel + ' .rail-item .lbl')]
+      .map(n => n.textContent).join(',');
+    ok('the places card holds only the three fixed places',
+       labelsIn('#rail') === 'all,prompts,pinned', labelsIn('#rail'));
+    ok('new holds the top of the sessions card',
+       labelsIn('#railSessions') === 'new,Redesign,Research', labelsIn('#railSessions'));
+    ok('a divider sits between new and the sessions',
+       document.querySelectorAll('#railSessions .rail-sep').length === 1,
+       document.querySelectorAll('#railSessions .rail-sep').length + '');
+
+    // Rebuilding must be idempotent. buildRail used to clear and then append
+    // across many statements, so a render re-entered partway through left every
+    // place on the rail twice.
+    render();
+    render();
+    const afterRepeat = [...document.querySelectorAll('.rail-item .lbl')].map(n => n.textContent);
+    ok('rendering again does not duplicate the rail',
+       afterRepeat.join(',') === 'all,prompts,pinned,new,Redesign,Research', afterRepeat.join(','));
     ok('no section headers survive', document.querySelectorAll('.section-label').length === 0,
        document.querySelectorAll('.section-label').length + '');
     ok('the session being collected into is marked on the rail',
