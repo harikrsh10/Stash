@@ -25,6 +25,7 @@ const SUITES = [
   { file: 'theme.test.js', runtime: 'node', what: 'the light and dark palettes staying in step' },
   { file: 'order.test.js', runtime: 'electron', what: 'dragging clips into the order you want' },
   { file: 'filters.test.js', runtime: 'electron', what: 'the type filters, colour included' },
+  { file: 'displays.test.js', runtime: 'node', what: 'which screen the drawer opens on' },
 ];
 
 const verbose = process.argv.includes('--verbose');

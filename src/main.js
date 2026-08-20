@@ -93,29 +93,60 @@ if (!gotLock) {
 const DRAWER_W = 466;
 const INSPECTOR_W = 520;
 
-function setWindowExpanded(expanded) {
-  if (!mainWindow || mainWindow.isDestroyed()) return false;
-  const { workArea } = screen.getPrimaryDisplay();
+// Which screen the drawer belongs on.
+//
+// While it is up, that is whichever screen it is already on: expanding for the
+// inspector must not teleport it back to the built-in display, which is what
+// made a drawer dragged onto a second monitor snap home the moment you opened
+// or closed a panel.
+//
+// When it is coming up fresh it is the screen the pointer is on, so the hotkey
+// summons it to wherever you are working. The dock window has always behaved
+// this way; the drawer was pinned to the primary display.
+function drawerDisplay(preferCursor) {
+  if (!preferCursor && mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+    const b = mainWindow.getBounds();
+    return screen.getDisplayNearestPoint({
+      x: Math.round(b.x + b.width / 2),
+      y: Math.round(b.y + b.height / 2),
+    });
+  }
+  return screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+}
+
+// Full height of whatever screen it lands on, welded to that screen edge, so
+// a tall monitor gets a tall drawer rather than a laptop-sized one.
+function drawerBounds(display, expanded) {
+  const { workArea } = display;
   const width = expanded ? DRAWER_W + INSPECTOR_W : DRAWER_W;
-  mainWindow.setBounds({
+  return {
     // grow to the left so the drawer stays welded to the screen edge
     x: workArea.x + workArea.width - width,
     y: workArea.y,
     width,
     height: workArea.height,
-  });
+  };
+}
+
+function isDrawerExpanded() {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  return mainWindow.getBounds().width > DRAWER_W;
+}
+
+function setWindowExpanded(expanded) {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  mainWindow.setBounds(drawerBounds(drawerDisplay(false), expanded));
   return true;
 }
 
 function createWindow() {
-  const { workArea } = screen.getPrimaryDisplay();
-  const drawerW = DRAWER_W;
+  const first = drawerBounds(drawerDisplay(true), false);
 
   mainWindow = new BrowserWindow({
-    width: drawerW,
-    height: workArea.height,
-    x: workArea.x + workArea.width - drawerW,
-    y: workArea.y,
+    width: first.width,
+    height: first.height,
+    x: first.x,
+    y: first.y,
     frame: false,
     transparent: false,
     resizable: false,
@@ -153,6 +184,8 @@ function toggleWindow() {
   if (mainWindow.isVisible()) {
     mainWindow.hide();
   } else {
+    // summon it to the screen the pointer is on, at that screen's height
+    mainWindow.setBounds(drawerBounds(drawerDisplay(true), isDrawerExpanded()));
     mainWindow.show();
     mainWindow.focus();
   }
@@ -2351,9 +2384,17 @@ app.whenReady().then(() => {
     console.log('[Stash] screen unlocked — re-registering shortcuts');
     registerShortcuts();
   });
-  screen.on('display-added', () => registerShortcuts());
-  screen.on('display-removed', () => registerShortcuts());
-  screen.on('display-metrics-changed', () => registerShortcuts());
+  // Unplugging the screen the drawer is welded to would otherwise leave it
+  // parked off the edge of everything. Re-seat it on whatever remains, and
+  // pick up a resolution change on the screen it is already on.
+  function reseatDrawer() {
+    registerShortcuts();
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.setBounds(drawerBounds(drawerDisplay(false), isDrawerExpanded()));
+  }
+  screen.on('display-added', reseatDrawer);
+  screen.on('display-removed', reseatDrawer);
+  screen.on('display-metrics-changed', reseatDrawer);
 
   // Periodic health check — cheap (just two boolean reads) and catches any
   // edge case the above handlers miss. Runs every 30 seconds.
