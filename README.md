@@ -43,6 +43,7 @@ See [all releases](https://github.com/harikrsh10/Stash/releases) for older versi
 - **Catches the screenshots you take** (macOS) — screenshots saved to disk turn up in Stash like anything you copy
 - **Pull colours out of an image** — hover a screenshot, press **color**, and get its palette as clickable swatches with hex values
 - **Auto-paste from dock** (optional, off by default) — when enabled, picking an item from the dock automatically pastes it into the focused app. Requires Accessibility permission on macOS
+- **Sessions from any row** — the session button lists every session, ticking the ones already holding that clip. Pick one to add it, pick a ticked one to take it out. Delete always means delete from Stash, wherever you're standing
 - Search, filter by type (including "pinned" and "prompt"), delete individual items or clear all
 - **Pause capture** — toggle the live/paused indicator in the titlebar (or from the tray menu) when you're copying sensitive stuff you don't want recorded. Anything copied while paused stays ignored after you resume.
 - **Re-copy promotion** — if you copy the same thing again, it flashes and bumps to the top instead of being dropped as a duplicate
@@ -222,7 +223,7 @@ npm run dev
 npm test
 ```
 
-503 assertions, about a minute. They drive the real renderer in a hidden window
+508 assertions, about a minute. They drive the real renderer in a hidden window
 rather than a copy of it — see [test/README.md](test/README.md).
 
 ### Package for distribution

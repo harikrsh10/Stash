@@ -190,30 +190,46 @@ app.whenReady().then(async () => {
        rows().map(r => r.dataset.id).join(','));
 
     const inSes = rows()[0];
-    // The button is an icon now, so the distinction lives in the tooltip —
-    // inside a session it takes the clip out of that session rather than
-    // deleting it outright.
-    ok('inside a session, delete becomes remove',
-       inSes.querySelector('[data-act=\\"del\\"]').title.includes('remove from this session'),
+    // Delete means delete, wherever you are standing. Taking a clip out of one
+    // session without destroying it is what the session button is for, so the
+    // two acts are no longer the same button wearing different labels.
+    ok('inside a session, delete still means delete',
+       inSes.querySelector('[data-act=\\"del\\"]').title.includes('delete from Stash'),
        inSes.querySelector('[data-act=\\"del\\"]').title);
-    inSes.querySelector('[data-act=\\"del\\"]').click();
+
+    // the session button is the membership editor, and shows this clip is held
+    const sesMenu = document.getElementById('sesMenu');
+    ok('a clip in a session says so on its session button',
+       inSes.querySelector('[data-act=\\"ses\\"]').classList.contains('in-session'), '');
+    inSes.querySelector('[data-act=\\"ses\\"]').click();
     await tick();
-    ok('removing calls removeFromSession, not delete',
+    ok('the session button opens a list', sesMenu.classList.contains('show'), '');
+    const held = sesMenu.querySelector('button[data-session=\\"ses1\\"]');
+    ok('with the session it is already in ticked', held && held.classList.contains('on'),
+       held ? held.className : 'missing');
+    held.click();
+    await tick();
+    ok('picking a ticked session takes the clip out of it',
        JSON.stringify(calls[calls.length - 1]) === '[\\"remove\\",\\"sc1\\",\\"ses1\\"]',
        JSON.stringify(calls[calls.length - 1]));
+    ok('and the list puts itself away', !sesMenu.classList.contains('show'), '');
 
-    // an ordinary clip can be added to whatever is being collected into
+    // an ordinary clip can be put into any session, not only the collected one
     goTo('all');
     const histRow = rows().find(r => r.dataset.id === 'h1');
-    ok('ordinary rows offer to join the session', !!histRow.querySelector('[data-act=\\"ses\\"]'), '');
+    ok('every row offers the session button', !!histRow.querySelector('[data-act=\\"ses\\"]'), '');
+    ok('one in no session is not marked',
+       !histRow.querySelector('[data-act=\\"ses\\"]').classList.contains('in-session'), '');
     histRow.querySelector('[data-act=\\"ses\\"]').click();
     await tick();
-    ok('joining calls addToSession',
+    const unheld = sesMenu.querySelector('button[data-session=\\"ses1\\"]');
+    ok('a session it is not in shows unticked', unheld && !unheld.classList.contains('on'), '');
+    unheld.click();
+    await tick();
+    ok('picking it adds the clip there',
        JSON.stringify(calls[calls.length - 1]) === '[\\"add\\",\\"h1\\",\\"ses1\\"]',
        JSON.stringify(calls[calls.length - 1]));
     goTo('ses1');
-    ok('a clip already in the session is not offered again',
-       !document.querySelector('.item [data-act=\\"ses\\"]'), '');
 
     // collect, rename and delete live on the scope header
     const actions = document.getElementById('scopeActions');
@@ -256,7 +272,8 @@ app.whenReady().then(async () => {
 
     // with nothing being collected into, rows stop offering to join
     activeSessionId = null; goTo('all');
-    ok('no session, no join buttons', !document.querySelector('[data-act=\\"ses\\"]'), '');
+    ok('the session button is there whether or not anything is collecting',
+       !!document.querySelector('[data-act=\\"ses\\"]'), '');
     ok('nothing is marked as collecting on the rail',
        !document.querySelector('.rail-item .rec'), '');
     ok('the sessions stay on the rail so they remain reachable',
@@ -330,7 +347,10 @@ app.whenReady().then(async () => {
 
   let rendered;
   try {
-    rendered = await win.webContents.executeJavaScript(probe, true);
+    // wrapped so a throw inside the probe comes back with its message instead
+    // of an opaque "script failed to execute"
+    rendered = await win.webContents.executeJavaScript(
+      '(async()=>{try{ return await ' + probe + ' }catch(e){ return [{name:"probe threw: "+e.message, pass:false, detail:String(e.stack||"").slice(0,300)}] }})()', true);
   } catch (err) {
     console.log('PROBE THREW: ' + err.message);
     app.exit(1);

@@ -1513,6 +1513,59 @@
     }
     .tag-suggestions button:hover, .tag-suggestions button.active { background: var(--prompt-tint-2); color: var(--prompt); }
     .tag-suggestions .none { padding: 5px 6px; font-family: var(--font-mono); font-size: 9px; color: var(--muted2); }
+    .ses-menu {
+      display: none;
+      position: fixed;
+      z-index: 60;
+      min-width: 168px;
+      max-width: 240px;
+      padding: 5px;
+      background: var(--menu-bg);
+      border: 1px solid var(--border2);
+      border-radius: 7px;
+      box-shadow: 0 10px 26px var(--shadow);
+    }
+    .ses-menu.show { display: block; }
+    .ses-menu-head {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 4px 7px 6px;
+    }
+    .ses-menu-list { max-height: 220px; overflow-y: auto; }
+    .ses-menu-list button {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: 0;
+      border-radius: 4px;
+      padding: 6px 7px;
+      font-size: 11.5px;
+      color: var(--text-2);
+      cursor: pointer;
+    }
+    .ses-menu-list button:hover { background: var(--session-tint-2); color: var(--text); }
+    .ses-menu-list button .tick {
+      width: 12px;
+      flex-shrink: 0;
+      color: var(--session);
+      font-size: 11px;
+      line-height: 1;
+    }
+    .ses-menu-list button.on { color: var(--session); }
+    .ses-menu-list .none {
+      padding: 6px 7px;
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      color: var(--muted2);
+    }
+    .act-btn.in-session { color: var(--session); }
+
     .type-badge.prompt {
       color: var(--prompt);
       background: var(--prompt-tint);
@@ -1608,7 +1661,14 @@
       </div>
     </div>
 
-    <div class="editor ocr-sheet" id="ocrSheet">
+    <!-- Which sessions hold this clip. Anchored to the button that opened it but
+       kept outside the row list, which is rebuilt from scratch on a timer. -->
+  <div class="ses-menu" id="sesMenu">
+    <div class="ses-menu-head" id="sesMenuHead">add to a session</div>
+    <div class="ses-menu-list" id="sesMenuList"></div>
+  </div>
+
+  <div class="editor ocr-sheet" id="ocrSheet">
       <div class="editor-head">
         <span class="editor-title">extracted text</span>
         <span class="editor-saved" id="ocrCount"></span>
@@ -2110,6 +2170,82 @@
     });
     document.getElementById('detailColor').addEventListener('click', () => {
       if (detailId) runPalette(detailId);
+    });
+
+    // Which sessions currently hold this clip.
+    function sessionsHolding(clipId) {
+      return sessions.filter(s => sessionClips.some(c => c.id === clipId && c.sessionId === s.id));
+    }
+
+    const sesMenuEl = document.getElementById('sesMenu');
+    const sesMenuListEl = document.getElementById('sesMenuList');
+    const sesMenuHeadEl = document.getElementById('sesMenuHead');
+    let sesMenuClipId = null;
+
+    function closeSessionMenu() {
+      sesMenuClipId = null;
+      sesMenuEl.classList.remove('show');
+    }
+
+    function openSessionMenu(clipId, anchorEl) {
+      // pressing the same button again puts it away
+      if (sesMenuClipId === clipId && sesMenuEl.classList.contains('show')) return closeSessionMenu();
+      sesMenuClipId = clipId;
+      renderSessionMenu();
+      sesMenuEl.classList.add('show');
+
+      // Anchored to the button, then nudged back inside the window: a row near
+      // the bottom would otherwise open a menu that runs off the screen.
+      const r = anchorEl.getBoundingClientRect();
+      const box = sesMenuEl.getBoundingClientRect();
+      const left = Math.min(r.left, window.innerWidth - box.width - 8);
+      const below = r.bottom + 6;
+      const top = below + box.height > window.innerHeight - 8 ? r.top - box.height - 6 : below;
+      sesMenuEl.style.left = Math.max(8, left) + 'px';
+      sesMenuEl.style.top = Math.max(8, top) + 'px';
+    }
+
+    function renderSessionMenu() {
+      const clipId = sesMenuClipId;
+      const holding = sessionsHolding(clipId).map(s => s.id);
+      sesMenuHeadEl.textContent = holding.length ? 'sessions holding this' : 'add to a session';
+      sesMenuListEl.innerHTML = '';
+
+      if (!sessions.length) {
+        const none = document.createElement('div');
+        none.className = 'none';
+        none.textContent = 'no sessions yet';
+        sesMenuListEl.appendChild(none);
+        return;
+      }
+
+      sessions.forEach(s => {
+        const inIt = holding.includes(s.id);
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = inIt ? 'on' : '';
+        b.dataset.session = s.id;
+        b.title = inIt ? 'take it out of this session' : 'add it to this session';
+        b.innerHTML = '<span class="tick">' + (inIt ? '✓' : '') + '</span><span>' + esc(s.name) + '</span>';
+        b.addEventListener('click', async (ev) => {
+          ev.stopPropagation();
+          if (inIt) {
+            await window.api.removeFromSession(clipId, s.id);
+            toast('removed from ' + s.name);
+          } else {
+            await window.api.addToSession(clipId, s.id);
+            toast('added to ' + s.name);
+          }
+          closeSessionMenu();
+        });
+        sesMenuListEl.appendChild(b);
+      });
+    }
+
+    document.addEventListener('mousedown', (e) => {
+      if (!sesMenuEl.classList.contains('show')) return;
+      if (sesMenuEl.contains(e.target)) return;
+      closeSessionMenu();
     });
 
     function markEditingRow() {
@@ -2938,7 +3074,7 @@
       pin: '<svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8L3.5 9.7l5.9-.9z"/></svg>',
       pinned: '<svg viewBox="0 0 24 24" class="filled"><path d="M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8L3.5 9.7l5.9-.9z"/></svg>',
       session: '<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M12 11v5M9.5 13.5h5"/></svg>',
-      text: '<svg viewBox="0 0 24 24"><path d="M4 6h16M4 11h11M4 16h14"/></svg>',
+      text: '<svg viewBox="0 0 24 24"><path d="M5 6h14M12 6.5V18"/></svg>',
       colour: '<svg viewBox="0 0 24 24"><path d="M12 3.2s6.2 6.6 6.2 10.2a6.2 6.2 0 11-12.4 0C5.8 9.8 12 3.2 12 3.2z"/></svg>',
       copy: '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>',
       del: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 7V5a1 1 0 011-1h2a1 1 0 011 1v2"/><path d="M6 7l1 13a1 1 0 001 1h8a1 1 0 001-1l1-13"/></svg>',
@@ -3051,10 +3187,10 @@
             ${c.isPrompt ? '' : `<button class="act-btn ${isPinned ? 'pinned' : ''}" data-act="pin" title="${isPinned ? 'unpin' : 'pin'}">${isPinned ? ICON.pinned : ICON.pin}</button>`}
             ${c.type === 'img' ? `<button class="act-btn" data-act="ocr" title="pull the text out of this image">${ICON.text}</button>` : ''}
             ${c.type === 'img' ? `<button class="act-btn" data-act="palette" title="pull the colours out of this image">${ICON.colour}</button>` : ''}
-            ${(activeSessionId && !sessionId && !isInSession(c.id, activeSessionId))
-              ? `<button class="act-btn" data-act="ses" title="add to the session you're collecting into">${ICON.session}</button>` : ''}
+            <button class="act-btn ${sessionsHolding(c.id).length ? 'in-session' : ''}" data-act="ses"
+              title="${sessionsHolding(c.id).length ? 'in ' + sessionsHolding(c.id).length + ' session' + (sessionsHolding(c.id).length === 1 ? '' : 's') + ' — click to change' : 'add to a session'}">${ICON.session}</button>
             <button class="act-btn" data-act="copy" title="copy">${ICON.copy}</button>
-            <button class="act-btn danger" data-act="del" title="${sessionId ? 'remove from this session' : 'delete'}">${ICON.del}</button>
+            <button class="act-btn danger" data-act="del" title="delete from Stash">${ICON.del}</button>
           </div>
         </div>
       `;
@@ -3107,22 +3243,19 @@
 
       el.querySelector('[data-act="del"]').addEventListener('click', async (e) => {
         e.stopPropagation();
-        // inside a session, this takes the clip out of the session rather than
-        // deleting it — the clip may be the only copy of something
-        if (sessionId) {
-          await window.api.removeFromSession(c.id, sessionId);
-          return;
-        }
+        // Delete is delete, in a session view as anywhere else. Taking a clip
+        // out of one session without destroying it is what the session button
+        // is for.
         await window.api.delete(c.id);
+        sessionClips = sessionClips.filter(s => s.id !== c.id);
         if (isPinned) pinned = pinned.filter(p => p.id !== c.id);
         else history = history.filter(h => h.id !== c.id);
         render();
       });
 
-      el.querySelector('[data-act="ses"]')?.addEventListener('click', async (e) => {
+      el.querySelector('[data-act="ses"]')?.addEventListener('click', (e) => {
         e.stopPropagation();
-        const ok = await window.api.addToSession(c.id, activeSessionId);
-        if (ok) toast('added to “' + (activeSession()?.name || 'session') + '”');
+        openSessionMenu(c.id, e.currentTarget);
       });
 
       // prompts have no pin button — marking as a prompt already keeps them
@@ -3348,6 +3481,7 @@
         // back out one layer at a time: menus, editor, selection, then the drawer
         const openMenu = document.querySelector('.tag-menu.show');
         if (openMenu) openMenu.classList.remove('show');
+        else if (sesMenuEl.classList.contains('show')) closeSessionMenu();
         else if (tagPickerEl.classList.contains('show')) closeTagPicker();
         else if (inspectorEl.classList.contains('show')) closeInspector();
         else if (ocrSheetEl.classList.contains('show')) closeOcr();
