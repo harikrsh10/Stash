@@ -93,6 +93,25 @@ ok('a narrow drawer reads as collapsed', isDrawerExpanded() === false, '');
 ctx.mainWindow.getBounds = () => drawerBounds(MONITOR, true);
 ok('a wide one reads as expanded', isDrawerExpanded() === true, '');
 
+// A display at a fractional scale hands back a window a pixel or two wider
+// than the one that was asked for. Comparing against DRAWER_W exactly made a
+// collapsed drawer report expanded, and the next summon opened it at the full
+// width with nothing in the inspector half.
+const rounded = (n) => {
+  const b = drawerBounds(MONITOR, false);
+  return { ...b, width: b.width + n };
+};
+[1, 2, 3, 8].forEach(n => {
+  ctx.mainWindow.getBounds = () => rounded(n);
+  ok('a drawer rounded up by ' + n + 'px still reads as collapsed',
+     isDrawerExpanded() === false, String(rounded(n).width));
+});
+
+// and the real thing is still unambiguous from the other side
+ctx.mainWindow.getBounds = () => ({ ...drawerBounds(MONITOR, true), width: 466 + 520 - 3 });
+ok('an expanded drawer rounded down still reads as expanded',
+   isDrawerExpanded() === true, '');
+
 let failed = 0;
 for (const r of results) {
   if (!r.pass) failed++;
