@@ -90,7 +90,7 @@ if (!gotLock) {
 // The drawer is a fixed-width strip on the right edge. Inspecting an image
 // widens the window leftwards so the picture has room, then puts it back.
 // 340 of panel plus the 78px rail, so the list keeps the width it always had
-const DRAWER_W = 418;
+const DRAWER_W = 466;
 const INSPECTOR_W = 520;
 
 function setWindowExpanded(expanded) {

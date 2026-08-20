@@ -85,6 +85,11 @@
       --live-dim: #5a8a5a;
 
       --shadow: rgba(0, 0, 0, 0.55);
+      /* the light shell floats cards over a shader; dark keeps one flat
+         surface, so these only ever get read under prefers-color-scheme: light */
+      --card: #111111;
+      --card-shadow: rgba(0, 0, 0, 0.55);
+      --card-shadow-near: rgba(0, 0, 0, 0.4);
       --font-sans: 'IBM Plex Sans', -apple-system, sans-serif;
       --font-mono: 'IBM Plex Mono', monospace;
     }
@@ -164,6 +169,9 @@
         --live-dim: #62a184;
 
         --shadow: rgba(20, 24, 32, 0.14);
+        --card: #ffffff;
+        --card-shadow: rgba(18, 34, 62, 0.07);
+        --card-shadow-near: rgba(18, 34, 62, 0.05);
       }
     }
 
@@ -188,7 +196,7 @@
       display: flex;
       flex-direction: row;
       height: 100vh;
-      width: 418px;
+      width: 466px;
       flex-shrink: 0;
       order: 2;
     }
@@ -1571,9 +1579,120 @@
       background: var(--prompt-tint);
       border: 1px solid var(--prompt-line);
     }
+
+    /* ---------------------------------------------------------------------
+       The card shell.
+
+       Dark mode is untouched: every .card wrapper is display:contents, so its
+       children stay direct flex children of .panel exactly as before and not a
+       single dark-mode rule below fires.
+
+       Light mode is the Paper design -- a shader background container with the
+       panel broken into cards floating on top.
+       --------------------------------------------------------------------- */
+    .shader-bg { display: none; }
+    .card { display: contents; }
+    .railwrap {
+      display: flex;
+      flex-direction: column;
+      width: 78px;
+      flex: none;
+      border-left: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .railwrap .rail {
+      border-left: 0;
+      background: none;
+      width: 100%;
+    }
+    /* content height, so "new" sits directly under the sessions as it always has */
+    .railwrap #rail { flex: 0 1 auto; }
+    .railwrap #railNew { flex: none; padding-top: 0; overflow: visible; }
+
+    @media (prefers-color-scheme: light) {
+      .shader-bg {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        /* the flat fill shows through if WebGL is unavailable */
+        background: var(--bg);
+      }
+      .shader-bg canvas { display: block; width: 100%; height: 100%; }
+
+      body { background: transparent; }
+      .shell { position: relative; z-index: 1; background: transparent; }
+      .app { background: transparent; }
+
+      .panel {
+        background: transparent;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 16px 0 16px 16px;
+        height: 100vh;
+        box-sizing: border-box;
+      }
+
+      .card {
+        display: block;
+        background: var(--card);
+        border-radius: 12px;
+        box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
+        flex: none;
+        overflow: hidden;
+      }
+      /* only the list may grow, and it must be allowed to shrink or the
+         cards below it get pushed off the bottom of the drawer */
+      .card-list {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .card-list .list { flex: 1 1 auto; min-height: 0; overflow-x: hidden; }
+
+      /* the cards do the separating now, so the internal rules come off */
+      .titlebar,
+      .controls { border-bottom: 0; }
+      .footer { border-top: 0; }
+
+      .card-filters .filters { margin-top: 0; padding: 12px 14px; }
+      .search-input { border-radius: 9px; padding: 9px 12px; }
+      .pill { background: var(--card); }
+      .pill.active {
+        background: var(--text);
+        border-color: var(--text);
+        color: var(--on-accent);
+      }
+
+      .railwrap {
+        border-left: 0;
+        background: transparent;
+        width: auto;
+        gap: 8px;
+        padding: 16px 16px 16px 16px;
+        box-sizing: border-box;
+      }
+      .railwrap .rail {
+        width: 78px;
+        padding: 8px 0 10px;
+        overflow: visible;
+      }
+      .railwrap #rail { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+
+      /* selected place: a blue tint, not the tan that means "pinned" */
+      .rail-item.on {
+        background: var(--select-wash-2);
+        box-shadow: none;
+        color: var(--select);
+      }
+    }
   </style>
 </head>
 <body>
+  <!-- background container: the Paper shader. Everything else stacks above. -->
+  <div class="shader-bg" id="shaderBg"></div>
   <div class="shell">
   <div class="inspector" id="inspector" data-mode="text">
     <div class="insp-head">
@@ -1604,6 +1723,7 @@
 
   <div class="app">
   <div class="panel">
+    <div class="card card-head">
     <div class="titlebar">
       <span class="title">stash</span>
       <div class="titlebar-right">
@@ -1624,7 +1744,17 @@
 
     <div class="controls">
       <input class="search-input" id="search" placeholder="search clipboard..." />
-      <!-- only types live here now; prompts and pinned are places on the rail -->
+    </div>
+
+    <div class="scopehead">
+      <span class="scope-name" id="scopeName">everything</span>
+      <span class="scope-count" id="scopeCount"></span>
+      <span class="scope-actions" id="scopeActions"></span>
+    </div>
+    </div><!-- /card-head -->
+
+    <!-- only types live here now; prompts and pinned are places on the rail -->
+    <div class="card card-filters">
       <div class="filters">
         <button class="pill active" data-type="all">all</button>
         <button class="pill" data-type="text">text</button>
@@ -1634,18 +1764,14 @@
       </div>
     </div>
 
-    <div class="scopehead">
-      <span class="scope-name" id="scopeName">everything</span>
-      <span class="scope-count" id="scopeCount"></span>
-      <span class="scope-actions" id="scopeActions"></span>
-    </div>
-
+    <div class="card card-list">
     <div class="list" id="list">
       <div class="empty">
         Stash quietly remembers while you work.
         <span class="empty-sub">copy anything to begin · <span class="hotkey">⌘</span><span class="hotkey">⇧</span><span class="hotkey">V</span> to toggle</span>
       </div>
     </div>
+    </div><!-- /card-list -->
 
     <div class="editor" id="editor">
       <div class="editor-head">
@@ -1688,18 +1814,46 @@
       <button class="clear-btn" id="selClearBtn">deselect</button>
     </div>
 
+    <div class="card card-foot">
     <div class="footer">
       <span class="footer-info"><span class="skip-pulse" id="skipPulse" title="a secret-looking item was skipped"></span><span id="footerInfo">0 items</span></span>
       <button class="clear-btn" id="clearBtn">clear all</button>
     </div>
+    </div><!-- /card-foot -->
   </div>
 
   <!-- every top-level place: everything, prompts, pinned, each session, and new -->
-  <nav class="rail" id="rail" aria-label="places"></nav>
+  <div class="railwrap">
+    <nav class="rail card card-rail" id="rail" aria-label="places"></nav>
+    <nav class="rail card card-new" id="railNew" aria-label="new session"></nav>
+  </div>
   </div>
   </div>
 
   <div class="toast" id="toast"></div>
+
+  <script src="vendor/paper-shaders.js"></script>
+  <script src="shader-bg.js"></script>
+  <script>
+    // The shader is the light shell's background container. Dark mode keeps the
+    // flat surface it has always had, so there is no reason to hold a WebGL
+    // context -- let alone draw -- while the drawer is dark.
+    (function () {
+      const host = document.getElementById('shaderBg');
+      const light = window.matchMedia('(prefers-color-scheme: light)');
+      function sync() {
+        if (!window.StashShader) return;
+        if (light.matches) {
+          window.StashShader.init(host);
+          window.StashShader.resume();
+        } else {
+          window.StashShader.pause();
+        }
+      }
+      light.addEventListener('change', sync);
+      sync();
+    })();
+  </script>
 
   <script>
     let history = [];
@@ -1849,6 +2003,7 @@
     // per session, and new. Choosing one swaps what the list shows, which is
     // why there are no section headers any more.
     const railEl = document.getElementById('rail');
+    const railNewEl = document.getElementById('railNew');
     const scopeNameEl = document.getElementById('scopeName');
     const scopeCountEl = document.getElementById('scopeCount');
     const scopeActionsEl = document.getElementById('scopeActions');
@@ -1922,6 +2077,7 @@
 
     function buildRail() {
       railEl.innerHTML = '';
+      railNewEl.innerHTML = '';
       railEl.appendChild(railItem('all', 'all', RAIL_ICONS.all, ''));
       railEl.appendChild(railItem('prompts', 'prompts', RAIL_ICONS.prompts, 'prompts'));
       railEl.appendChild(railItem('pinned', 'pinned', RAIL_ICONS.pinned, 'pinned'));
@@ -1970,7 +2126,7 @@
         add.replaceWith(input);
         input.focus();
       });
-      railEl.appendChild(add);
+      railNewEl.appendChild(add);
     }
 
     // The scope header carries whatever the place itself needs: collecting and
