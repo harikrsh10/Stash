@@ -43,7 +43,7 @@ See [all releases](https://github.com/harikrsh10/Stash/releases) for older versi
 - **Catches the screenshots you take** (macOS) — screenshots saved to disk turn up in Stash like anything you copy
 - **Pull colours out of an image** — hover a screenshot, press **color**, and get its palette as clickable swatches with hex values
 - **Auto-paste from dock** (optional, off by default) — when enabled, picking an item from the dock automatically pastes it into the focused app. Requires Accessibility permission on macOS
-- **Sessions from any row** — the session button lists every session, ticking the ones already holding that clip. Pick one to add it, pick a ticked one to take it out. Delete always means delete from Stash, wherever you're standing
+- **Collections from any row** — the collection button lists every collection, ticking the ones already holding that clip. Pick one to add it, pick a ticked one to take it out. Delete always means delete from Stash, wherever you're standing
 - Search, filter by type (including "pinned" and "prompt"), delete individual items or clear all
 - **Pause capture** — toggle the live/paused indicator in the titlebar (or from the tray menu) when you're copying sensitive stuff you don't want recorded. Anything copied while paused stays ignored after you resume.
 - **Re-copy promotion** — if you copy the same thing again, it flashes and bumps to the top instead of being dropped as a duplicate
@@ -81,7 +81,7 @@ beside the preview because seeing the thing is what lets you name it.
   dimensions move down to the meta line, and any other kind of clip keeps its
   preview underneath the name
 - Clearing the name puts the derived headline back
-- A clip can sit in history, in pinned, and in several sessions at once —
+- A clip can sit in history, in pinned, and in several collections at once —
   renaming it renames every copy, so it isn't called two things in one drawer
 - Names show in the dock too
 - **text** and **colour** are reachable two ways: from the hover strip on an
@@ -90,7 +90,7 @@ beside the preview because seeing the thing is what lets you name it.
 - The panel opens with nothing to press. Buttons appear once you've picked
   something out: **copy text** in one mode, **copy hex** in the other
 - Names last as long as the clip does: forever for pinned clips, prompts and
-  session clips; until you quit for ordinary history, same as the clip itself
+  collection clips; until you quit for ordinary history, same as the clip itself
 
 ---
 
@@ -306,7 +306,7 @@ Stash auto-detects and **silently skips** common secret patterns — it never ad
 
 When something is skipped, a small green dot pulses briefly next to the item count in the footer so you know the detection fired. The content is *not* stored anywhere.
 
-The detection is tuned to minimize false positives — a regular URL, piece of code, or sentence will never be blocked. But no heuristic is perfect: treat Stash as a helpful session tool, not a secure vault. Truly sensitive values should still go through a password manager.
+The detection is tuned to minimize false positives — a regular URL, piece of code, or sentence will never be blocked. But no heuristic is perfect: treat Stash as a helpful collection tool, not a secure vault. Truly sensitive values should still go through a password manager.
 
 Since regular history is memory-only, quitting Stash clears everything unpinned regardless.
 

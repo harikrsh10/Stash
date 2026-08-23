@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('api', {
   setActiveSession: (id) => ipcRenderer.invoke('sessions:setActive', id),
   addToSession: (clipId, sessionId) => ipcRenderer.invoke('session:add', clipId, sessionId),
   removeFromSession: (clipId, sessionId) => ipcRenderer.invoke('session:remove', clipId, sessionId),
+  getCollectionStats: () => ipcRenderer.invoke('collections:stats'),
 
   // manual order — `ids` is the new order of the rows the drawer was showing
   reorderPinned: (ids) => ipcRenderer.invoke('order:pinned', ids),

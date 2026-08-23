@@ -28,11 +28,20 @@ function freshContext() {
     fs, path, console,
     sessionStorePath, pinnedStorePath,
     sessions: [], sessionClips: [], pinned: [], history: [],
+    collectionStats: {
+      totalCaptures: 0,
+      activeCollectionCaptures: 0,
+      collectionsCreated: 0,
+      activeStops: 0,
+      activeChanges: 0,
+    },
+    activeCollectionRunCaptures: {},
     settings: { activeSessionId: null },
   };
   vm.createContext(ctx);
   vm.runInContext([
-    grab('loadSessions'), grab('saveSessions'), grab('sessionState'), grab('inSession'),
+    grab('loadSessions'), grab('saveSessions'), grab('collectionStatsSnapshot'),
+    grab('sessionState'), grab('inSession'),
     grab('addToSession'), grab('removeFromSession'), grab('dropSessionImage'),
     grab('makeImagePermanent'),
   ].join('\n') + `
@@ -165,6 +174,14 @@ app.whenReady().then(async () => {
       { id: 'sc2', sessionId: 'ses2', type: 'text', content: 'from the other session', ts: Date.now() },
     ];
     activeSessionId = 'ses1';
+    collectionStats = {
+      totalCaptures: 5,
+      activeCollectionCaptures: 3,
+      activeCaptureRate: 0.6,
+      activeCollectionRunCaptures: 1,
+      totalCollections: 2,
+      underfedCollections: 1,
+    };
     pinned = [];
     history = [{ id: 'h1', type: 'text', content: 'an ordinary clip', ts: Date.now() }];
     render();
@@ -202,6 +219,17 @@ app.whenReady().then(async () => {
        document.querySelectorAll('.section-label').length + '');
     ok('the session being collected into is marked on the rail',
        !!document.querySelector('.rail-item.session .rec'), '');
+    ok('the active collection banner is visible',
+       document.getElementById('collectionBanner').classList.contains('show'), '');
+    ok('the active collection banner names the collection',
+       document.getElementById('collectionBannerName').textContent === 'Redesign',
+       document.getElementById('collectionBannerName').textContent);
+    ok('the active collection banner shows collection size',
+       document.getElementById('collectionBannerCount').textContent === '2',
+       document.getElementById('collectionBannerCount').textContent);
+    ok('the footer exposes local collection stats',
+       document.getElementById('footerInfo').title.includes('3/5 clips'),
+       document.getElementById('footerInfo').title);
 
     goTo('ses1');
     ok('the header names the session', document.getElementById('scopeName').textContent === 'Redesign',
