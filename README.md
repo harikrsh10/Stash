@@ -224,7 +224,7 @@ npm run dev
 npm test
 ```
 
-510 assertions, about a minute. They drive the real renderer in a hidden window
+577 assertions, about a minute. They drive the real renderer in a hidden window
 rather than a copy of it — see [test/README.md](test/README.md).
 
 ### Package for distribution

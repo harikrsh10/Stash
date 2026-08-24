@@ -25,7 +25,6 @@ let isPaused = false;
 let pausedClipboardSigs = new Set();
 let pinnedStorePath = null; // set once app is ready (needs app.getPath)
 let settingsStorePath = null;
-let collectionStatsStorePath = null;
 
 // Drawer drag state — set by IPC from the renderer. Used by the blur handler
 // to suppress hide-on-blur while the OS is driving a drag operation.
@@ -78,14 +77,6 @@ function setAppearance(choice) {
 let sessions = [];      // [{ id, name, createdAt }]
 let sessionClips = [];  // entries carrying sessionId
 let sessionStorePath = null;
-let collectionStats = {
-  totalCaptures: 0,
-  activeCollectionCaptures: 0,
-  collectionsCreated: 0,
-  activeStops: 0,
-  activeChanges: 0,
-};
-let activeCollectionRunCaptures = {};
 
 // Single instance — second launch just toggles the existing window
 const gotLock = app.requestSingleInstanceLock();
@@ -281,7 +272,7 @@ function refreshTrayMenu() {
     // capturing into a session is easy to forget about, so say so where the
     // pause state is already shown
     ...(activeSession ? [{
-      label: `Collecting into collection "${activeSession.name}"`,
+      label: `Collecting into "${activeSession.name}"`,
       click: () => {
         setActiveSession(null);
       },
@@ -700,60 +691,7 @@ function saveSessions() {
 }
 
 function sessionState() {
-  return {
-    sessions,
-    sessionClips,
-    activeSessionId: settings.activeSessionId || null,
-    collectionStats: collectionStatsSnapshot(),
-  };
-}
-
-function loadCollectionStats() {
-  if (!collectionStatsStorePath) return;
-  try {
-    if (!fs.existsSync(collectionStatsStorePath)) return;
-    const data = JSON.parse(fs.readFileSync(collectionStatsStorePath, 'utf8'));
-    collectionStats = {
-      ...collectionStats,
-      ...Object.fromEntries(Object.entries(data || {})
-        .filter(([, v]) => Number.isFinite(v))),
-    };
-  } catch (err) {
-    console.error('[Stash] failed to load collection stats:', err);
-  }
-}
-
-function saveCollectionStats() {
-  if (!collectionStatsStorePath) return;
-  try {
-    fs.writeFileSync(collectionStatsStorePath, JSON.stringify(collectionStats, null, 2), 'utf8');
-  } catch (err) {
-    console.error('[Stash] failed to save collection stats:', err);
-  }
-}
-
-function collectionStatsSnapshot() {
-  const activeId = settings.activeSessionId || null;
-  const clipsPerSession = new Map();
-  sessionClips.forEach(c => clipsPerSession.set(c.sessionId, (clipsPerSession.get(c.sessionId) || 0) + 1));
-  const underfedCollections = sessions.filter(s => (clipsPerSession.get(s.id) || 0) < 3).length;
-  const total = collectionStats.totalCaptures || 0;
-  return {
-    ...collectionStats,
-    activeCaptureRate: total ? collectionStats.activeCollectionCaptures / total : 0,
-    activeCollectionRunCaptures: activeId ? (activeCollectionRunCaptures[activeId] || 0) : 0,
-    totalCollections: sessions.length,
-    underfedCollections,
-  };
-}
-
-function recordCaptureStats(collected) {
-  collectionStats.totalCaptures += 1;
-  if (collected && collected.sessionId) {
-    collectionStats.activeCollectionCaptures += 1;
-    activeCollectionRunCaptures[collected.sessionId] = (activeCollectionRunCaptures[collected.sessionId] || 0) + 1;
-  }
-  saveCollectionStats();
+  return { sessions, sessionClips, activeSessionId: settings.activeSessionId || null };
 }
 
 function inSession(clipId, sessionId) {
@@ -819,14 +757,8 @@ function saveSettings() {
 }
 
 function setActiveSession(id) {
-  const prev = settings.activeSessionId || null;
   const next = id && sessions.some(s => s.id === id) ? id : null;
   settings.activeSessionId = next;
-  if (prev !== next) {
-    if (next) collectionStats.activeChanges += 1;
-    else collectionStats.activeStops += 1;
-    saveCollectionStats();
-  }
   saveSettings();
   refreshTrayMenu();
   broadcastState();
@@ -1282,7 +1214,6 @@ function broadcastPromote(entry, collected) {
 
 function addEntry(entry) {
   const collected = collectIfActive(entry);
-  if (typeof recordCaptureStats === 'function') recordCaptureStats(collected);
 
   history = history.filter(h => h.id !== entry.id);
   history.unshift(entry);
@@ -1327,11 +1258,8 @@ ipcMain.handle('sessions:create', (_e, name) => {
   sessions.unshift(session);
   // creating one is how you start collecting into it
   settings.activeSessionId = session.id;
-  collectionStats.collectionsCreated += 1;
-  collectionStats.activeChanges += 1;
   saveSessions();
   saveSettings();
-  saveCollectionStats();
   refreshTrayMenu();
   broadcastState();
   return session.id;
@@ -1368,8 +1296,6 @@ ipcMain.handle('sessions:delete', (_e, id) => {
 ipcMain.handle('sessions:setActive', (_e, id) => {
   return setActiveSession(id);
 });
-
-ipcMain.handle('collections:stats', () => collectionStatsSnapshot());
 
 // add or remove a clip that already exists, from anywhere in the drawer
 ipcMain.handle('session:add', (_e, clipId, sessionId) => {
@@ -2411,11 +2337,9 @@ app.whenReady().then(() => {
   pinnedStorePath = path.join(app.getPath('userData'), 'pinned.json');
   settingsStorePath = path.join(app.getPath('userData'), 'settings.json');
   sessionStorePath = path.join(app.getPath('userData'), 'sessions.json');
-  collectionStatsStorePath = path.join(app.getPath('userData'), 'collection-stats.json');
   loadPinned();
   loadSettings();
   loadSessions();
-  loadCollectionStats();
   // a session deleted outside the app shouldn't leave capture pointing at it
   if (settings.activeSessionId && !sessions.some(s => s.id === settings.activeSessionId)) {
     settings.activeSessionId = null;
@@ -2438,7 +2362,6 @@ app.whenReady().then(() => {
   console.log('[Stash] pinned store:', pinnedStorePath);
   console.log('[Stash] session store:', sessionStorePath);
   console.log('[Stash] settings store:', settingsStorePath);
-  console.log('[Stash] collection stats store:', collectionStatsStorePath);
 
   registerShortcuts();
 

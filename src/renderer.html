@@ -2351,7 +2351,6 @@
     let sessions = [];
     let sessionClips = [];
     let activeSessionId = null;
-    let collectionStats = {};
     const collectionBannerEl = document.getElementById('collectionBanner');
     const collectionBannerNameEl = document.getElementById('collectionBannerName');
     const collectionBannerCountEl = document.getElementById('collectionBannerCount');
@@ -2544,15 +2543,6 @@
       collectionBannerCountEl.textContent = String(collectionCount);
       collectionBannerCountEl.title = `${collectionCount} ${suffix} in this collection`;
       collectionBannerEl.classList.add('show');
-    }
-
-    function collectionStatsTitle() {
-      const total = collectionStats.totalCaptures || 0;
-      const active = collectionStats.activeCollectionCaptures || 0;
-      const rate = total ? Math.round((collectionStats.activeCaptureRate || active / total) * 100) : 0;
-      return `Collection capture: ${active}/${total} clips (${rate}%). `
-        + `${collectionStats.totalCollections || 0} collections, `
-        + `${collectionStats.underfedCollections || 0} under 3 clips.`;
     }
 
     function scopeIsSession(id) {
@@ -4348,7 +4338,6 @@
       footerEl.textContent = `${totalItems} item${totalItems === 1 ? '' : 's'}`
         + (pinnedTotal ? ` · ${pinnedTotal} pinned` : '')
         + (promptTotal ? ` · ${promptTotal} prompt${promptTotal === 1 ? '' : 's'}` : '');
-      footerEl.title = collectionStatsTitle();
 
       listEl.innerHTML = '';
       if (visible.length === 0) {
@@ -4489,12 +4478,6 @@
     // empty until some other action forced a full state broadcast.
     function takeCollected(collected) {
       if (!collected) return;
-      if (collected.sessionId === activeSessionId) {
-        collectionStats = {
-          ...collectionStats,
-          activeCollectionRunCaptures: (collectionStats.activeCollectionRunCaptures || 0) + 1,
-        };
-      }
       sessionClips = [
         collected,
         ...sessionClips.filter(c => !(c.id === collected.id && c.sessionId === collected.sessionId)),
@@ -4591,7 +4574,6 @@
       sessions = state.sessions || [];
       sessionClips = state.sessionClips || [];
       activeSessionId = state.activeSessionId || null;
-      collectionStats = state.collectionStats || {};
       render();
     });
 
@@ -4638,7 +4620,6 @@
       sessions = state.sessions || [];
       sessionClips = state.sessionClips || [];
       activeSessionId = state.activeSessionId || null;
-      collectionStats = state.collectionStats || {};
       const paused = await window.api.getPaused();
       applyPausedState(paused);
       render();

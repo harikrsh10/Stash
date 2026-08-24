@@ -4,7 +4,7 @@
 npm test
 ```
 
-175 assertions across five suites, about a minute end to end.
+577 assertions across fifteen suites, about a minute end to end.
 
 ## How they work
 
