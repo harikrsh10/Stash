@@ -638,16 +638,67 @@ function rememberOcrText(id, raw) {
   }
 }
 
+// An app's icon, keyed by the name shown on the row. Icons are 16px PNGs --
+// about half a kilobyte of base64 each -- so the whole cache for a working
+// week of apps is smaller than one screenshot, and it is kept beside the other
+// stores so a restart does not have to re-ask the OS for every one of them.
+let sourceIcons = {};
+let sourceIconStorePath = null;
+
+function loadSourceIcons() {
+  if (!sourceIconStorePath) return;
+  try {
+    if (!fs.existsSync(sourceIconStorePath)) return;
+    const data = JSON.parse(fs.readFileSync(sourceIconStorePath, 'utf8'));
+    if (data && typeof data === 'object') sourceIcons = data;
+    console.log(`[Stash] ${Object.keys(sourceIcons).length} app icon(s) remembered`);
+  } catch (err) {
+    console.error('[Stash] failed to load app icons:', err);
+    sourceIcons = {};
+  }
+}
+
+function saveSourceIcons() {
+  if (!sourceIconStorePath) return;
+  try {
+    fs.writeFileSync(sourceIconStorePath, JSON.stringify(sourceIcons), 'utf8');
+  } catch (err) {
+    console.error('[Stash] failed to save app icons:', err);
+  }
+}
+
+// Ask the OS for an app's icon once and remember it. Everything here is
+// best-effort: an app that will not give up its icon shows as a name, which is
+// what every row looked like before icons existed.
+async function iconFor(name, appPath) {
+  if (!name) return null;
+  if (Object.prototype.hasOwnProperty.call(sourceIcons, name)) return sourceIcons[name];
+  if (!appPath) return null;
+  try {
+    const img = await app.getFileIcon(appPath, { size: 'small' });
+    if (!img || img.isEmpty()) throw new Error('no icon');
+    sourceIcons[name] = img.toDataURL();
+  } catch (_) {
+    // Remembered as a miss so a protected process is not asked on every copy.
+    sourceIcons[name] = null;
+  }
+  saveSourceIcons();
+  return sourceIcons[name];
+}
+
 // Where a clip came from. Asked after the clip is already captured, because the
 // answer takes about ten milliseconds and a copy should never wait on it.
 function attachSourceApp(entry) {
   if (!sourceApp || !sourceApp.supported || settings.recordSourceApp === false) return;
   if (!entry || !entry.id) return;
-  sourceApp.current().then((app) => {
-    if (!app || !app.name) return;
-    if (!updateClipEverywhere(entry.id, { sourceApp: app.name })) return;
+  sourceApp.current().then(async (from) => {
+    if (!from || !from.name) return;
+    if (!updateClipEverywhere(entry.id, { sourceApp: from.name })) return;
+    // The icon is a second, slower question, and the row is already correct
+    // without it -- so the name goes over first and the icon follows.
+    const icon = await iconFor(from.name, from.path);
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('clip:sourced', entry.id, app.name);
+      mainWindow.webContents.send('clip:sourced', entry.id, from.name, icon || null);
     }
   }).catch(() => { /* not knowing where it came from must never cost the clip */ });
 }
@@ -1554,7 +1605,7 @@ function addEntry(entry) {
 }
 
 // ---------- ipc ----------
-ipcMain.handle('history:get', () => ({ history, pinned, ...sessionState() }));
+ipcMain.handle('history:get', () => ({ history, pinned, sourceIcons, ...sessionState() }));
 
 ipcMain.handle('appearance:get', () => ({
   choice: settings.appearance || 'system',
@@ -1564,7 +1615,7 @@ ipcMain.handle('appearance:set', (_e, choice) => setAppearance(choice));
 
 function broadcastState() {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('state:updated', { history, pinned, ...sessionState() });
+    mainWindow.webContents.send('state:updated', { history, pinned, sourceIcons, ...sessionState() });
   }
 }
 
@@ -1673,7 +1724,7 @@ ipcMain.handle('paused:set', (_e, v) => { setPaused(!!v); return isPaused; });
 ipcMain.handle('clip:pin', (_e, id) => {
   const ok = pinItem(id);
   if (ok && mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('state:updated', { history, pinned, ...sessionState() });
+    mainWindow.webContents.send('state:updated', { history, pinned, sourceIcons, ...sessionState() });
   }
   return ok;
 });
@@ -1681,7 +1732,7 @@ ipcMain.handle('clip:pin', (_e, id) => {
 ipcMain.handle('clip:unpin', (_e, id) => {
   const ok = unpinItem(id);
   if (ok && mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('state:updated', { history, pinned, ...sessionState() });
+    mainWindow.webContents.send('state:updated', { history, pinned, sourceIcons, ...sessionState() });
   }
   return ok;
 });
@@ -1689,7 +1740,7 @@ ipcMain.handle('clip:unpin', (_e, id) => {
 ipcMain.handle('clip:prompt', (_e, id) => {
   const ok = promptItem(id);
   if (ok && mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('state:updated', { history, pinned, ...sessionState() });
+    mainWindow.webContents.send('state:updated', { history, pinned, sourceIcons, ...sessionState() });
   }
   return ok;
 });
@@ -1738,7 +1789,7 @@ ipcMain.handle('clip:rename', (_e, id, name) => {
   if (ok) {
     refreshTrayMenu();
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('state:updated', { history, pinned, ...sessionState() });
+      mainWindow.webContents.send('state:updated', { history, pinned, sourceIcons, ...sessionState() });
     }
     if (dockWindow && dockWindow.isVisible()) refreshDock();
   }
@@ -1748,7 +1799,7 @@ ipcMain.handle('clip:rename', (_e, id, name) => {
 ipcMain.handle('prompt:update', (_e, id, patch) => {
   const ok = updatePrompt(id, patch);
   if (ok && mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('state:updated', { history, pinned, ...sessionState() });
+    mainWindow.webContents.send('state:updated', { history, pinned, sourceIcons, ...sessionState() });
   }
   return ok;
 });
@@ -1756,7 +1807,7 @@ ipcMain.handle('prompt:update', (_e, id, patch) => {
 ipcMain.handle('clip:unprompt', (_e, id) => {
   const ok = unpromptItem(id);
   if (ok && mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('state:updated', { history, pinned, ...sessionState() });
+    mainWindow.webContents.send('state:updated', { history, pinned, sourceIcons, ...sessionState() });
   }
   return ok;
 });
@@ -1895,7 +1946,7 @@ ipcMain.handle('clip:delete', (_e, id) => {
   if (hadSession) saveSessions();
   refreshTrayMenu();
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('state:updated', { history, pinned, ...sessionState() });
+    mainWindow.webContents.send('state:updated', { history, pinned, sourceIcons, ...sessionState() });
   }
   return true;
 });
@@ -2457,7 +2508,7 @@ ipcMain.handle('prompt:create', (_e, content) => {
   savePinned();
   refreshTrayMenu();
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('state:updated', { history, pinned, ...sessionState() });
+    mainWindow.webContents.send('state:updated', { history, pinned, sourceIcons, ...sessionState() });
   }
   return true;
 });
@@ -2665,6 +2716,8 @@ app.whenReady().then(() => {
   pinnedStorePath = path.join(app.getPath('userData'), 'pinned.json');
   settingsStorePath = path.join(app.getPath('userData'), 'settings.json');
   sessionStorePath = path.join(app.getPath('userData'), 'sessions.json');
+  sourceIconStorePath = path.join(app.getPath('userData'), 'source-icons.json');
+  loadSourceIcons();
   historyImageDir = path.join(app.getPath('userData'), 'history-images');
   try {
     fs.mkdirSync(historyImageDir, { recursive: true });

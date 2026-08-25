@@ -59,9 +59,14 @@ while ($true) {
       $desc = $p.MainModule.FileVersionInfo.FileDescription
       if ($desc) { $name = $desc }
     } catch {}
-    [Console]::Out.WriteLine("$procId\`t$name")
+    # The executable, so its icon can be asked for. Protected and elevated
+    # processes refuse MainModule, which costs an icon and nothing else.
+    $exe = ""
+    try { $exe = $p.MainModule.FileName } catch {}
+    if (-not $exe) { try { $exe = $p.Path } catch {} }
+    [Console]::Out.WriteLine("$procId\`t$name\`t$exe")
   } catch {
-    [Console]::Out.WriteLine("\`t")
+    [Console]::Out.WriteLine("\`t\`t")
   }
   [Console]::Out.Flush()
 }
@@ -108,6 +113,31 @@ function parseLsAppInfoName(stdout) {
 // quote characters in it. Stripping them makes the ASN bare whichever way
 // lsappinfo would have taken it.
 const MAC_FRONT_CMD = 'lsappinfo info -only name "$(lsappinfo front | tr -d \'"\')"';
+
+// The whole info block for the front app, which carries the bundle path as
+// well as the name. Asked first, because an icon needs the path -- but the
+// narrow command above is the one known to work, so it stays the fallback and
+// a Mac that does not answer this simply goes without icons.
+const MAC_FRONT_FULL_CMD = 'lsappinfo info "$(lsappinfo front | tr -d \'"\')"';
+
+// Where the app lives, so its icon can be asked for. lsappinfo has printed
+// this key under more than one spelling across releases, so all the shapes
+// seen in the wild are accepted rather than betting on one.
+function parseLsAppInfoPath(stdout) {
+  const text = String(stdout || '');
+  const patterns = [
+    /"?bundle\s*path"?\s*=\s*"([^"]+)"/i,
+    /"?bundlepath"?\s*=\s*"([^"]+)"/i,
+    /"?CFBundlePath"?\s*=\s*"([^"]+)"/i,
+    // last resort: anything that looks like an app bundle in the block
+    /"((?:\/[^"\n]*?)\.app)"/,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m && m[1]) return m[1].trim();
+  }
+  return '';
+}
 
 function createSourceApp({
   platform = process.platform,
@@ -175,13 +205,16 @@ function createSourceApp({
     // to the next copy that asked, and every answer after it would be one
     // behind for the rest of the session.
     if (w.timedOut) return;
-    const [pidPart, ...rest] = line.split('\t');
-    const name = tidyAppName(rest.join('\t'));
+    const [pidPart, namePart, ...pathParts] = line.split('\t');
+    const name = tidyAppName(namePart);
+    // A path may itself contain nothing exotic, but rejoining is free and
+    // guards against a stray tab in a filename.
+    const appPath = pathParts.join('\t').trim();
     const pid = Number(pidPart);
     // Our own window being in front means the copy came from inside Stash,
     // which is not something worth recording as where it came from.
     if (!name || pid === selfPid || isIgnored(name)) w.resolve(null);
-    else w.resolve({ name, pid: Number.isFinite(pid) ? pid : null });
+    else w.resolve({ name, pid: Number.isFinite(pid) ? pid : null, path: appPath || null });
   }
 
   // macOS: ask, once, and give up quickly. A copy is already captured by the
@@ -193,11 +226,19 @@ function createSourceApp({
       const done = (v) => { if (!settled) { settled = true; resolve(v); } };
       const timer = setTimer(() => done(null), queryTimeoutMs);
       Promise.resolve()
-        .then(() => runOnce('/bin/sh', ['-c', MAC_FRONT_CMD]))
-        .then((out) => {
+        // The full block first: it carries the bundle path an icon needs.
+        .then(() => runOnce('/bin/sh', ['-c', MAC_FRONT_FULL_CMD]).catch(() => ''))
+        .then((full) => {
+          const name = tidyAppName(parseLsAppInfoName(full));
+          if (name) return { name, path: parseLsAppInfoPath(full) || null };
+          // Whatever that printed, it was not what we can read. Fall back to
+          // the narrow command, which is the one known to answer.
+          return runOnce('/bin/sh', ['-c', MAC_FRONT_CMD])
+            .then((out) => ({ name: tidyAppName(parseLsAppInfoName(out)), path: null }));
+        })
+        .then(({ name, path: appPath }) => {
           clearTimer(timer);
-          const name = tidyAppName(parseLsAppInfoName(out));
-          done(!name || isIgnored(name) ? null : { name, pid: null });
+          done(!name || isIgnored(name) ? null : { name, pid: null, path: appPath });
         })
         .catch((err) => {
           clearTimer(timer);
@@ -282,4 +323,5 @@ function createSourceApp({
 }
 
 module.exports = { createSourceApp, isIgnored, tidyAppName, parseLsAppInfoName,
-                   IGNORED, WIN_HELPER_PS1, MAC_FRONT_CMD, IDLE_STOP_MS };
+                   parseLsAppInfoPath, IGNORED, WIN_HELPER_PS1, MAC_FRONT_CMD,
+                   MAC_FRONT_FULL_CMD, IDLE_STOP_MS };

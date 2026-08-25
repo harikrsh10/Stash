@@ -682,6 +682,18 @@
     .in-image { color: var(--session); }
     /* where a clip came from, quiet enough not to compete with the clip */
     .from-app { color: var(--muted2); }
+    .from-icon {
+      width: 13px;
+      height: 13px;
+      display: inline-block;
+      vertical-align: -2px;
+      border-radius: 2px;
+      /* an app's own colours are louder than anything else on the row, so they
+         sit back until the row is under the cursor */
+      opacity: 0.75;
+      transition: opacity 0.12s;
+    }
+    .item:hover .from-icon { opacity: 1; }
     .ocr-hit {
       margin-top: 6px;
       padding: 5px 8px;
@@ -2405,6 +2417,8 @@
     // collections — named folders that fill themselves while active
     let sessions = [];
     let sessionClips = [];
+    // app icons, keyed by the name shown on a row, sent whole from main
+    let sourceIcons = {};
     let activeSessionId = null;
     const collectionBannerEl = document.getElementById('collectionBanner');
     const collectionBannerNameEl = document.getElementById('collectionBannerName');
@@ -2498,7 +2512,10 @@
 
     // Which app a clip was copied out of, worked out a moment after it arrived.
     // Unlike text inside a picture this shows on the row, so it always redraws.
-    function applySourceApp(id, app) {
+    function applySourceApp(id, app, icon) {
+      // The icon is cached by app rather than by clip, so one answer dresses
+      // every row that came from the same place, including old ones.
+      if (app && icon) sourceIcons[app] = icon;
       let touched = false;
       [history, pinned, sessionClips].forEach(store => {
         store.forEach(c => { if (c.id === id) { c.sourceApp = app; touched = true; } });
@@ -4202,7 +4219,14 @@
       // after they have forgotten the words, so this is the strongest handle on
       // a history thousands of clips deep.
       if (c.sourceApp) {
-        metaParts.push(`<span class="dot">·</span><span class="from-app">${esc(c.sourceApp)}</span>`);
+        const icon = sourceIcons[c.sourceApp];
+        // The logo where there is one, the name where there is not. The name
+        // rides along either way as the title and the alt text: an icon on its
+        // own is unreadable to a screen reader, and unrecognisable for an app
+        // you have not seen the icon of before.
+        metaParts.push('<span class="dot">·</span>' + (icon
+          ? `<img class="from-icon" src="${icon}" alt="${esc(c.sourceApp)}" title="${esc(c.sourceApp)}"/>`
+          : `<span class="from-app" title="${esc(c.sourceApp)}">${esc(c.sourceApp)}</span>`));
       }
 
       // A name the user set outranks the derived headline. What it displaces
@@ -4726,6 +4750,7 @@
       pinned = state.pinned || [];
       sessions = state.sessions || [];
       sessionClips = state.sessionClips || [];
+      sourceIcons = state.sourceIcons || sourceIcons;
       activeSessionId = state.activeSessionId || null;
       render();
     });
@@ -4772,6 +4797,7 @@
       pinned = state.pinned || [];
       sessions = state.sessions || [];
       sessionClips = state.sessionClips || [];
+      sourceIcons = state.sourceIcons || sourceIcons;
       activeSessionId = state.activeSessionId || null;
       const paused = await window.api.getPaused();
       applyPausedState(paused);

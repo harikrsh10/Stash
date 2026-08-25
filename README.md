@@ -127,8 +127,11 @@ read 6 of 26 words on a dark marketing screenshot where Windows read 22.
 
 ## Where a clip came from
 
-Every clip records the app it was copied out of, and it shows on the row:
-*Figma*, *Google Chrome*, *Terminal*. You can search for it too — typing
+Every clip records the app it was copied out of, and its logo shows on the
+row — the name instead where an app will not give up its icon, and always as
+the tooltip and the alt text, since a logo on its own is unreadable to a screen
+reader and unrecognisable for an app you have not learned yet. You can search
+for it too — typing
 `figma` finds what you copied out of Figma, which is how people actually go
 looking for something they half-remember.
 
@@ -151,6 +154,8 @@ which would prompt.
 - Copying inside Stash records nothing; a round trip is not provenance
 - If the answer is slow, missing or unreadable, the clip simply has no source
   app and everything else carries on
+- Icons are asked of the OS once per app and remembered, so a restart does not
+  re-ask for every one of them
 - Tray menu → *Remember which app a clip came from* turns it off
 
 ---
@@ -283,7 +288,7 @@ npm run dev
 npm test
 ```
 
-728 assertions, about a minute. They drive the real renderer in a hidden window
+753 assertions, about a minute. They drive the real renderer in a hidden window
 rather than a copy of it — see [test/README.md](test/README.md).
 
 ### Package for distribution
