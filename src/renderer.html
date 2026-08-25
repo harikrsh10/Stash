@@ -887,6 +887,11 @@
     .type-badge.url  { color: var(--url); background: var(--session-tint); border: 1px solid var(--url-line); }
     .type-badge.img  { color: var(--pinned); background: var(--pinned-tint); border: 1px solid var(--pinned-line); }
     .type-badge.color { color: var(--pinned); background: var(--pinned-tint); border: 1px solid var(--pinned-line); }
+    /* design assets read as their own thing rather than as the text they are
+       made of, so they borrow the colour the drawer already uses for a clip
+       that belongs somewhere */
+    .type-badge.svg { color: var(--session); background: var(--session-tint); border: 1px solid var(--session-line); }
+    .type-badge.figma { color: var(--session); background: var(--session-tint); border: 1px solid var(--session-line); }
 
     /* every picked block is a row of its own, with its own two actions */
     .out-blocks { display: none; flex-direction: column; gap: 10px; }
@@ -4246,7 +4251,11 @@
       if (styled) {
         metaParts.push(`<span class="dot">·</span><span class="styled-mark" title="keeps its formatting — hold ⌥ to copy as plain text">styled</span>`);
       }
-      const badgeKind = c.isPrompt ? 'prompt' : (isColour ? 'color' : c.type);
+      // A design asset says what it is rather than what it is made of: "svg"
+      // and "figma" are more use on a row than "code" and "text", which is all
+      // either of them would otherwise read as.
+      const badgeKind = c.isPrompt ? 'prompt'
+        : (c.asset ? c.asset : (isColour ? 'color' : c.type));
       const metaHtml = `<div class="item-meta">${metaParts.join('')}</div>`;
       // tags ride under the meta line so the library can be skimmed
       const tagsHtml = (c.tags && c.tags.length)

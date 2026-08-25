@@ -12,6 +12,7 @@ const electron = require('electron'); // resolves to the binary path
 
 const SUITES = [
   { file: 'drag.test.js', runtime: 'node', what: 'drag-out file materialization' },
+  { file: 'design.test.js', runtime: 'node', what: 'figma frames, svg and what keeps them intact' },
   { file: 'history.test.js', runtime: 'node', what: 'the history log and what survives a restart' },
   { file: 'ocr-index.test.js', runtime: 'node', what: 'reading the text in pictures, in the background' },
   { file: 'sourceapp.test.js', runtime: 'node', what: 'which app a clip was copied out of' },

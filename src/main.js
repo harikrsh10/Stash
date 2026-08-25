@@ -9,6 +9,7 @@ const { pathToFileURL } = require('url');
 const { createHistoryStore } = require('./history-store');
 const { createOcrIndexer, sanitizeOcrText } = require('./ocr-index');
 const { createSourceApp } = require('./source-app');
+const { sniffAsset, extensionFor, htmlCapFor } = require('./design-assets');
 
 const isDev = process.argv.includes('--dev');
 // History is written down now, so the cap is about what a person could
@@ -931,6 +932,8 @@ function updatePrompt(id, patch) {
       // something the editor no longer shows
       delete entry.html;
       delete entry.rtf;
+      // and it is no longer whatever design asset it arrived as
+      delete entry.asset;
     }
     entry.content = patch.content;
   }
@@ -1511,12 +1514,16 @@ function pollClipboard() {
       return;
     }
 
+    // A design asset is still text underneath -- it drags, searches and stores
+    // as text -- so this rides alongside the type rather than replacing it.
+    const asset = sniffAsset(text, styled.html);
     addEntry({
       id: sig,
       type: sniffType(text),
       content: text,
       ts: Date.now(),
       ...styled,
+      ...(asset ? { asset } : {}),
     });
   } catch (err) {
     console.error('poll error:', err);
@@ -1533,11 +1540,20 @@ const STYLED_MAX = 256 * 1024;
 
 function readStyled() {
   const out = {};
-  try {
-    const html = clipboard.readHTML();
-    if (html && html.length <= STYLED_MAX) out.html = html;
-    else if (html) console.log(`[Stash] dropped ${(html.length / 1024).toFixed(0)}KB of HTML — over the cap`);
-  } catch (_) { /* a clipboard without HTML is the normal case */ }
+  // The catch belongs around the clipboard read and nothing else. With the
+  // decision inside it too, a fault in the decision was indistinguishable from
+  // a clipboard with no HTML on it -- styled text simply stopped working, in
+  // silence.
+  let html = null;
+  try { html = clipboard.readHTML(); } catch (_) { /* no HTML is the normal case */ }
+  if (html) {
+    // A Figma frame lives in the HTML flavour, so for those the payload is the
+    // clip rather than formatting around it, and the cap meant for stray Word
+    // scaffolding would silently throw the frame away.
+    const cap = htmlCapFor(html, STYLED_MAX);
+    if (html.length <= cap) out.html = html;
+    else console.log(`[Stash] dropped ${(html.length / 1024).toFixed(0)}KB of HTML — over the cap`);
+  }
   try {
     // RTF is what native macOS apps and Office read back most faithfully
     const rtf = clipboard.readRTF();
@@ -1971,7 +1987,10 @@ ipcMain.handle('window:hide', () => {
 function materializeForDrag(entry, index = 0) {
   if (entry.type === 'img' && entry.filepath) return entry.filepath;
   const safe = (entry.content || '').slice(0, 40).replace(/[^\w-]+/g, '_') || 'clip';
-  const filepath = path.join(TMP_DIR, `${safe}-${Date.now()}-${index}.txt`);
+  // SVG dragged out as a .txt is something the target app refuses to open, so
+  // a design asset leaves under the extension it actually is.
+  const ext = extensionFor(entry.asset);
+  const filepath = path.join(TMP_DIR, `${safe}-${Date.now()}-${index}${ext}`);
   fs.writeFileSync(filepath, entry.content);
   return filepath;
 }
