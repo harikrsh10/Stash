@@ -13,7 +13,10 @@ const TMP_DIR = path.join(os.tmpdir(), 'stash-drag-test');
 fs.rmSync(TMP_DIR, { recursive: true, force: true });
 fs.mkdirSync(TMP_DIR, { recursive: true });
 
-const ctx = { fs, path, TMP_DIR, module: {}, console };
+// A design asset leaves under its own extension, so the real one comes along
+// rather than being reimplemented here.
+const { extensionFor } = require('../src/design-assets');
+const ctx = { fs, path, TMP_DIR, module: {}, console, extensionFor };
 vm.createContext(ctx);
 vm.runInContext(fn[0] + '\nthis.materializeForDrag = materializeForDrag;', ctx);
 

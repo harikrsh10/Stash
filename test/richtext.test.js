@@ -37,6 +37,8 @@ function makeCtx(available) {
       write: (payload) => written.push({ kind: 'rich', ...payload }),
     },
     written,
+    // a figma frame gets a bigger ceiling than ordinary styled text
+    htmlCapFor: require('../src/design-assets').htmlCapFor,
   };
   vm.createContext(ctx);
   vm.runInContext([grabConst('STYLED_MAX'), grabFn('readStyled'), grabFn('writeClip')].join('\n')

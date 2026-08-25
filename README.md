@@ -45,6 +45,7 @@ See [all releases](https://github.com/harikrsh10/Stash/releases) for older versi
 - **Auto-paste from dock** (optional, off by default) — when enabled, picking an item from the dock automatically pastes it into the focused app. Requires Accessibility permission on macOS
 - **Collections from any row** — the collection button lists every collection, ticking the ones already holding that clip. Pick one to add it, pick a ticked one to take it out. Delete always means delete from Stash, wherever you're standing
 - **Search finds words inside your screenshots**, not just what you copied as text — see below
+- **Keeps Figma frames and SVG in their own format** — paste a frame back into Figma, drag SVG out as a real .svg
 - **Every clip remembers which app it came from** — and you can search by it
 - Search, filter by type (including "pinned" and "prompt"), delete individual items or clear all
 - **Pause capture** — toggle the live/paused indicator in the titlebar (or from the tray menu) when you're copying sensitive stuff you don't want recorded. Anything copied while paused stays ignored after you resume.
@@ -122,6 +123,33 @@ Windows OCR and Apple's Vision framework. A bundled engine was tried first and
 read 6 of 26 words on a dark marketing screenshot where Windows read 22.
 
 **This needs macOS or Windows.** There's no bundled engine to fall back on.
+
+---
+
+## Figma frames, SVG and other design assets
+
+A clipboard is not only text and pictures. Copying a frame in Figma puts an
+encoded description of that frame on the clipboard as HTML; copying artwork out
+of a design tool often puts SVG source on it as plain text. Both used to arrive
+looking like "some text" and be kept as such, which lost the thing that made
+them worth copying.
+
+**A Figma frame is only useful if it goes back to Figma unchanged.** Its payload
+lives in the HTML flavour, and it is not decoration around the text — it *is*
+the clip. Styled text is capped at 256KB because Word and Excel wrap a single
+paragraph in hundreds of kilobytes of scaffolding, and that cap is right for
+scaffolding and exactly wrong here: it silently turned a frame into the word
+"Frame". Frames now get their own ceiling of 8MB — still a ceiling, so one copy
+cannot fill the store. Click the clip and paste into Figma to get the frame
+back.
+
+**SVG is text, but it is a picture.** It says so on its row, and it drags out as
+a real `.svg` rather than a `.txt` that nothing will open. Recognition is
+anchored at the start of the clip and needs a closing tag, so a document that
+merely talks about SVG stays a document.
+
+Both carry their own badge, so a row says what it is rather than what it happens
+to be made of.
 
 ---
 
@@ -288,7 +316,7 @@ npm run dev
 npm test
 ```
 
-753 assertions, about a minute. They drive the real renderer in a hidden window
+784 assertions, about a minute. They drive the real renderer in a hidden window
 rather than a copy of it — see [test/README.md](test/README.md).
 
 ### Package for distribution
