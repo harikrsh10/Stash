@@ -225,6 +225,107 @@ ok('and the log is deleted rather than merely ignored',
 r = runRestore({ userData: path.join(DIR, 'ud3'), log: null });
 ok('a first run restores nothing and does not throw', r.history.length === 0, r.history.length + '');
 
+// ---------- keeping the pictures ----------
+// A picture is the clip you cannot copy again, so it is the one worth keeping
+// and the only one big enough to need a ceiling. These drive the real
+// functions out of main.js against real files on disk.
+function imageCtx({ budget = 1000, historyImageDir = null } = {}) {
+  const ctx = {
+    fs, path, console,
+    HISTORY_IMAGE_BUDGET: budget,
+    history: [], pinned: [], sessionClips: [],
+    historyImageDir,
+    historyStore: { add() {}, remove() {}, clear() {} },
+  };
+  vm.createContext(ctx);
+  vm.runInContext([grab('dropImageFile'), grab('pruneHistoryImages'), grab('sizeOf'),
+                   grab('gcHistoryImages')].join('\n')
+    + '\nthis.api = { dropImageFile, pruneHistoryImages, gcHistoryImages };', ctx);
+  return ctx;
+}
+
+// a file is only removed once nothing anywhere still wants it
+const refDir = path.join(DIR, 'refs');
+fs.mkdirSync(refDir, { recursive: true });
+const shared = path.join(refDir, 'shared.png');
+const lonely = path.join(refDir, 'lonely.png');
+fs.writeFileSync(shared, 'x');
+fs.writeFileSync(lonely, 'x');
+
+let c = imageCtx();
+c.pinned.push({ id: 'p', type: 'img', filepath: shared });
+c.api.dropImageFile(shared);
+ok('a picture a pinned clip still wants is left alone', fs.existsSync(shared), 'deleted');
+c.api.dropImageFile(lonely);
+ok('a picture nothing points at goes', !fs.existsSync(lonely), 'still there');
+
+// the case that used to delete a file out from under the history row
+const heldByHistory = path.join(refDir, 'held.png');
+fs.writeFileSync(heldByHistory, 'x');
+c = imageCtx();
+c.history.push({ id: 'h', type: 'img', filepath: heldByHistory });
+c.api.dropImageFile(heldByHistory);
+ok('leaving a collection does not delete the history copy', fs.existsSync(heldByHistory), 'deleted');
+
+// ---------- the byte budget ----------
+const budDir = path.join(DIR, 'budget');
+fs.mkdirSync(budDir, { recursive: true });
+c = imageCtx({ budget: 250 });
+// newest first, 100 bytes each — four of them is 400, over a 250 ceiling
+for (let i = 4; i >= 1; i--) {
+  const fp = path.join(budDir, `img${i}.png`);
+  fs.writeFileSync(fp, 'z'.repeat(100));
+  c.history.push({ id: 'i' + i, type: 'img', filepath: fp, bytes: 100, ts: i * 1000 });
+}
+c.history.push({ id: 'text', type: 'text', content: 'not a picture', ts: 9000 });
+c.api.pruneHistoryImages();
+ok('the budget drops enough to get under it',
+   c.history.filter(h => h.type === 'img').length === 2,
+   c.history.filter(h => h.type === 'img').length + '');
+ok('and drops the oldest, keeping the newest',
+   c.history.filter(h => h.type === 'img').map(h => h.id).join(',') === 'i4,i3',
+   c.history.filter(h => h.type === 'img').map(h => h.id).join(','));
+ok('their files go with them', !fs.existsSync(path.join(budDir, 'img1.png')), 'still there');
+ok('the kept ones keep theirs', fs.existsSync(path.join(budDir, 'img4.png')), 'deleted');
+ok('text clips are untouched by an image budget',
+   c.history.some(h => h.id === 'text'), 'the text clip was dropped');
+
+// under budget, nothing happens
+c = imageCtx({ budget: 10000 });
+const safe = path.join(budDir, 'safe.png');
+fs.writeFileSync(safe, 'z'.repeat(100));
+c.history.push({ id: 's', type: 'img', filepath: safe, bytes: 100, ts: 1 });
+c.api.pruneHistoryImages();
+ok('under the ceiling nothing is dropped', c.history.length === 1 && fs.existsSync(safe), '');
+
+// a picture captured before sizes were recorded is measured rather than ignored
+c = imageCtx({ budget: 50 });
+const unsized = path.join(budDir, 'unsized.png');
+fs.writeFileSync(unsized, 'z'.repeat(400));
+c.history.push({ id: 'u', type: 'img', filepath: unsized, ts: 1 });
+c.api.pruneHistoryImages();
+ok('a picture with no recorded size is still measured', c.history.length === 0,
+   'it was treated as costing nothing');
+
+// ---------- sweeping what nothing points at ----------
+const gcDir = path.join(DIR, 'gc');
+fs.mkdirSync(gcDir, { recursive: true });
+const referenced = path.join(gcDir, 'kept.png');
+const orphan1 = path.join(gcDir, 'orphan1.png');
+const orphan2 = path.join(gcDir, 'orphan2.png');
+[referenced, orphan1, orphan2].forEach(f => fs.writeFileSync(f, 'x'));
+c = imageCtx({ historyImageDir: gcDir });
+c.history.push({ id: 'k', type: 'img', filepath: referenced });
+c.api.gcHistoryImages();
+ok('a picture a clip points at survives the sweep', fs.existsSync(referenced), 'swept');
+ok('pictures nothing points at are swept',
+   !fs.existsSync(orphan1) && !fs.existsSync(orphan2), 'left behind');
+
+// no directory yet is not an error
+c = imageCtx({ historyImageDir: path.join(DIR, 'does-not-exist') });
+c.api.gcHistoryImages();
+ok('sweeping a directory that is not there does nothing rather than throwing', true, '');
+
 let failed = 0;
 for (const [name, pass, detail] of checks) {
   if (!pass) failed++;

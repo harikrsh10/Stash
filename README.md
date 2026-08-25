@@ -224,7 +224,7 @@ npm run dev
 npm test
 ```
 
-618 assertions, about a minute. They drive the real renderer in a hidden window
+631 assertions, about a minute. They drive the real renderer in a hidden window
 rather than a copy of it — see [test/README.md](test/README.md).
 
 ### Package for distribution
@@ -283,13 +283,15 @@ Stash remembers what you copied, and remembers harder the things you've said to 
 
 | What | Lifetime |
 |------|----------|
-| Regular clips | Survive quit and restart, up to 10,000 |
+| Regular clips | Survive quit and restart, up to 10,000 (images to 1 GB) |
 | Pinned clips (★) | Survive quit, restart, and reboot |
 | Prompts (✦) and their tags | Same — marking one is what makes it permanent |
 | User settings (auto-paste, etc.) | Persisted |
 | Drawer visibility | Hidden ≠ quit — `Esc` or `×` just hides |
 
-History is written to `history.ndjson` as one line per clip, appended as you copy so the cost of a copy does not grow with the size of the history. Pinned clips and prompts share one JSON file at your system's user-data path (`~/Library/Application Support/Stash/` on macOS, `%APPDATA%\Stash\` on Windows), told apart by a flag; they're only kept separate on screen. Pinned images live in a `pinned-images/` subfolder next to it. Nothing else is ever written to disk — extracted text isn't stored anywhere until you copy it.
+History is written to `history.ndjson` as one line per clip, appended as you copy so the cost of a copy does not grow with the size of the history. Pinned clips and prompts share one JSON file at your system's user-data path (`~/Library/Application Support/Stash/` on macOS, `%APPDATA%\Stash\` on Windows), told apart by a flag; they're only kept separate on screen. Pinned images live in a `pinned-images/` subfolder next to it, and history images in `history-images/`. Extracted text isn't stored anywhere until you copy it.
+
+History images are capped at **1 GB**, oldest out first — a picture is the one clip you cannot simply copy again, so it is kept, but it is also the only kind big enough to need a ceiling. A picture is only deleted once no clip anywhere still points at it, and anything left in `history-images/` that nothing points at is swept at launch.
 
 Regular history is capped at **10,000 items** — the oldest fall off as new ones arrive. Pinned clips and prompts don't count toward that cap and don't age out. "Clear history" from the tray menu only clears ordinary clips; anything kept stays untouched (delete those individually if you want them gone).
 

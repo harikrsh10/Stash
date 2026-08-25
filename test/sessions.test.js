@@ -36,7 +36,7 @@ function freshContext() {
   vm.runInContext([
     grab('loadSessions'), grab('saveSessions'), grab('sessionState'), grab('inSession'),
     grab('addToSession'), grab('removeFromSession'), grab('dropSessionImage'),
-    grab('makeImagePermanent'),
+    grab('dropImageFile'), grab('makeImagePermanent'),
   ].join('\n') + `
     this.api = { loadSessions, saveSessions, addToSession, removeFromSession, inSession, sessionState };`, ctx);
   return ctx;
