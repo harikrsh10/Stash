@@ -678,6 +678,22 @@
       line-height: 1.6;
       font-weight: 300;
     }
+    .list-more {
+      display: block;
+      width: calc(100% - 28px);
+      margin: 6px 14px 14px;
+      padding: 10px;
+      background: transparent;
+      border: 1px dashed var(--border2);
+      border-radius: 8px;
+      color: var(--muted2);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: color 0.12s, border-color 0.12s;
+    }
+    .list-more:hover { color: var(--text-2); border-color: var(--border); }
     .empty .empty-sub {
       display: block;
       margin-top: 14px;
@@ -2333,6 +2349,15 @@
     // which place the rail has selected: all | prompts | pinned | a collection id
     let activeScope = 'all';
     let searchQuery = '';
+    // History is thousands of clips deep now, and a row is not cheap: building
+    // every one of them turns opening the drawer into a freeze. So the list
+    // renders a screenful at a time and grows as you reach the bottom. Search
+    // is the way to the old stuff; scrolling is only the way to the near past.
+    const RENDER_PAGE = 150;
+    let renderLimit = RENDER_PAGE;
+    // What the last render was showing. Changing place, search, filter or tag
+    // is a new list, and a new list starts at the top again.
+    let renderKey = '';
     // Section collapse state — in-memory only, resets on app restart
 
     // Multi-select state. `selected` holds clip ids; `renderedOrder` is the
@@ -2344,6 +2369,18 @@
     let anchorId = null;
 
     const listEl = document.getElementById('list');
+    // Reaching the bottom is the same request as pressing "show more", so it
+    // does not need pressing. Guarded on there being more to show, or every
+    // scroll to the end of a short list would re-render for nothing.
+    listEl.addEventListener('scroll', () => {
+      // A list with no height cannot be near its own bottom, but the arithmetic
+      // below says it is -- and growing a hidden list would just keep growing.
+      if (!listEl.clientHeight) return;
+      if (listEl.scrollTop + listEl.clientHeight < listEl.scrollHeight - 400) return;
+      if (!listEl.querySelector('.list-more')) return;
+      renderLimit += RENDER_PAGE;
+      render();
+    });
     const footerEl = document.getElementById('footerInfo');
     const searchEl = document.getElementById('search');
     const toastEl = document.getElementById('toast');
@@ -4328,6 +4365,15 @@
         .filter(c => activeScope !== 'prompts' || !activeTag
           || (c.tags || []).some(t => t.toLowerCase() === activeTag.toLowerCase()));
 
+      const key = [activeScope, searchQuery, activeFilter, activeTag || ''].join(' ');
+      const sameList = key === renderKey;
+      renderKey = key;
+      if (!sameList) renderLimit = RENDER_PAGE;
+      // Emptying the list to rebuild it puts the scroll back at the top, which
+      // would throw you there the moment growing the window reached the
+      // bottom. Where you were is only wrong when the list itself changed.
+      const restoreScroll = sameList ? listEl.scrollTop : 0;
+
       buildRail();
       buildScopeHead(visible.length);
       updateCollectionBanner();
@@ -4347,10 +4393,26 @@
         return;
       }
 
-      visible.forEach(c => listEl.appendChild(buildItemEl(c, activeScope === 'pinned' || (!sessionScope && !!c.pinnedAt), sessionScope)));
+      const shown = visible.slice(0, renderLimit);
+      shown.forEach(c => listEl.appendChild(buildItemEl(c, activeScope === 'pinned' || (!sessionScope && !!c.pinnedAt), sessionScope)));
 
+      const rest = visible.length - shown.length;
+      if (rest > 0) listEl.appendChild(buildMoreEl(rest));
+
+      listEl.scrollTop = restoreScroll;
       syncSelection();
       markEditingRow();
+    }
+
+    // The foot of a windowed list. It says how much is still down there, so a
+    // list that stops after 150 rows does not read as a list that ends there.
+    function buildMoreEl(rest) {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'list-more';
+      el.textContent = `${rest} older clip${rest === 1 ? '' : 's'} — show more`;
+      el.addEventListener('click', () => { renderLimit += RENDER_PAGE; render(); });
+      return el;
     }
 
     // Each place says something different when it has nothing to show, because

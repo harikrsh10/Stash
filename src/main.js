@@ -6,9 +6,12 @@ const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
 const { pathToFileURL } = require('url');
+const { createHistoryStore } = require('./history-store');
 
 const isDev = process.argv.includes('--dev');
-const HISTORY_LIMIT = 100;
+// History is written down now, so the cap is about what a person could
+// plausibly want back rather than what fits in memory for one sitting.
+const HISTORY_LIMIT = 10000;
 const POLL_INTERVAL = 600;
 const TMP_DIR = path.join(os.tmpdir(), 'stash-drag');
 
@@ -25,6 +28,9 @@ let isPaused = false;
 let pausedClipboardSigs = new Set();
 let pinnedStorePath = null; // set once app is ready (needs app.getPath)
 let settingsStorePath = null;
+// The log behind `history`. Created once app is ready, since it needs a path.
+// Until then it is a no-op, so anything that runs early can call it safely.
+let historyStore = createHistoryStore({ filePath: null });
 
 // Drawer drag state — set by IPC from the renderer. Used by the blur handler
 // to suppress hide-on-blur while the OS is driving a drag operation.
@@ -38,6 +44,7 @@ let settings = {
   watchScreenshots: true,   // macOS only — see the watcher for why this one is on
   activeSessionId: null,    // capture into this session; null means ordinary copying
   appearance: 'system',     // system | dark | light
+  rememberHistory: true,    // write history to disk; off returns it to memory-only
 };
 
 // Setting themeSource is what flips prefers-color-scheme inside the windows, so
@@ -316,6 +323,32 @@ function refreshTrayMenu() {
       },
     }] : []),
     {
+      label: 'Remember history between restarts',
+      type: 'checkbox',
+      checked: settings.rememberHistory !== false,
+      click: (item) => {
+        settings.rememberHistory = item.checked;
+        saveSettings();
+        if (item.checked) {
+          // Nothing to restore -- what is on screen is all there is -- but the
+          // log has to start carrying it from here on.
+          historyStore = createHistoryStore({
+            filePath: path.join(app.getPath('userData'), 'history.ndjson'),
+            limit: HISTORY_LIMIT,
+            enabled: true,
+          });
+          historyStore.load();
+          history.forEach(h => historyStore.add(h));
+        } else {
+          // Switching it off means what is already written goes too, otherwise
+          // the setting only stops the log growing and quietly keeps the rest.
+          historyStore.clear();
+          historyStore = createHistoryStore({ filePath: null, enabled: false });
+        }
+        refreshTrayMenu();
+      },
+    },
+    {
       label: `${history.length} clip${history.length === 1 ? '' : 's'}${pinCount ? ` · ${pinCount} pinned` : ''}${promptCount ? ` · ${promptCount} prompt${promptCount === 1 ? '' : 's'}` : ''}${isPaused ? ' (paused)' : ''}`,
       enabled: false,
     },
@@ -329,6 +362,7 @@ function refreshTrayMenu() {
           }
         });
         history = [];
+        historyStore.clear();
         if (mainWindow) mainWindow.webContents.send('history:cleared');
         refreshTrayMenu();
       },
@@ -518,6 +552,67 @@ function savePinned() {
   }
 }
 
+// Bring back what was copied before the last quit. Runs once, after settings
+// are loaded, since the user can turn the whole thing off.
+function restoreHistory() {
+  historyStore = createHistoryStore({
+    filePath: path.join(app.getPath('userData'), 'history.ndjson'),
+    limit: HISTORY_LIMIT,
+    enabled: settings.rememberHistory !== false,
+  });
+
+  if (!historyStore.enabled) {
+    // Turning it off is a request to forget, not merely to stop remembering.
+    try { fs.rmSync(historyStore.path, { force: true }); } catch (_) {}
+    history = [];
+    return;
+  }
+
+  const { entries, evicted } = historyStore.load();
+
+  // Whatever the cap pushed out no longer has anything pointing at its file.
+  evicted.forEach(e => {
+    if (e.filepath && fs.existsSync(e.filepath)) {
+      try { fs.unlinkSync(e.filepath); } catch (_) {}
+    }
+  });
+
+  let dropped = 0;
+  history = entries.filter(entry => {
+    if (entry.type !== 'img') return true;
+    // An image whose file has gone renders as a hole in the drawer, so it is
+    // dropped the way the pinned store already drops its own. Ordinary history
+    // pictures still live in the temp directory, so this is most of them until
+    // they get somewhere durable to live.
+    if (!entry.filepath || !fs.existsSync(entry.filepath)) {
+      historyStore.remove(entry.id);
+      dropped += 1;
+      return false;
+    }
+    // The thumbnail is deliberately not written to the log -- it is base64 and
+    // would dwarf every other field -- so it is rebuilt from the file here.
+    try {
+      const img = nativeImage.createFromPath(entry.filepath);
+      if (img.isEmpty()) throw new Error('unreadable');
+      entry.dataUrl = img.resize({ width: 240 }).toDataURL();
+    } catch (_) {
+      historyStore.remove(entry.id);
+      dropped += 1;
+      return false;
+    }
+    return true;
+  });
+
+  // Dropping a clip only writes a tombstone in front of it, which is the right
+  // trade during a copy but not here: history pictures still live in the temp
+  // directory, so most of them are gone every launch, and the log would carry
+  // their dead lines for ever. Startup is already touching the file, so fold
+  // them away now.
+  if (dropped) historyStore.compact();
+
+  console.log(`[Stash] restored ${history.length} clips from history`);
+}
+
 // For pinned images, we need to copy the temp file to a permanent location
 // so it survives tmpdir cleanup.
 function makeImagePermanent(entry) {
@@ -547,6 +642,7 @@ function pinItem(id) {
   pinned.unshift(entry);
   // also remove from history so it's not duplicated in the UI
   history.splice(idx, 1);
+  historyStore.remove(id);
   savePinned();
   refreshTrayMenu();
   return true;
@@ -560,6 +656,7 @@ function unpinItem(id) {
   delete removed.pinnedAt;
   removed.ts = Date.now();
   history.unshift(removed);
+  historyStore.add(removed);
   savePinned();
   refreshTrayMenu();
   return true;
@@ -590,6 +687,7 @@ function promptItem(id) {
   entry.pinnedAt = Date.now();
   pinned.unshift(entry);
   history.splice(idx, 1);
+  historyStore.remove(id);
   savePinned();
   refreshTrayMenu();
   return true;
@@ -651,6 +749,7 @@ function unpromptItem(id) {
   delete removed.pinnedAt;
   removed.ts = Date.now();
   history.unshift(removed);
+  historyStore.add(removed);
   savePinned();
   refreshTrayMenu();
   return true;
@@ -1053,6 +1152,7 @@ function ingestImage(png) {
     const existing = history.splice(existingIdx, 1)[0];
     existing.ts = Date.now();
     history.unshift(existing);
+    historyStore.add(existing);
     broadcastPromote(existing, collectIfActive(existing));
     return sig;
   }
@@ -1137,6 +1237,7 @@ function pollClipboard() {
       const existing = history.splice(existingIdx, 1)[0];
       existing.ts = Date.now();
       history.unshift(existing);
+      historyStore.add(existing);
       // copying it again counts as copying it, so a live session takes it too
       broadcastPromote(existing, collectIfActive(existing));
       return;
@@ -1217,9 +1318,11 @@ function addEntry(entry) {
 
   history = history.filter(h => h.id !== entry.id);
   history.unshift(entry);
+  historyStore.add(entry);
   if (history.length > HISTORY_LIMIT) {
     const dropped = history.splice(HISTORY_LIMIT);
     dropped.forEach(d => {
+      historyStore.remove(d.id);
       if (d.filepath && fs.existsSync(d.filepath)) {
         try { fs.unlinkSync(d.filepath); } catch (_) {}
       }
@@ -1391,18 +1494,22 @@ function renameClip(id, name) {
   let inPinned = false;
   let inSessions = false;
 
+  let inHistory = false;
+
   const apply = (entry) => {
     if (clean) entry.name = clean;
     else delete entry.name;   // an empty name is a reset, not a blank title
     touched = true;
   };
 
-  history.forEach(h => { if (h.id === id) apply(h); });
+  history.forEach(h => { if (h.id === id) { apply(h); inHistory = true; } });
   pinned.forEach(p => { if (p.id === id) { apply(p); inPinned = true; } });
   sessionClips.forEach(s => { if (s.id === id) { apply(s); inSessions = true; } });
 
-  // Only the kept things are written down; ordinary history is memory-only, so
-  // a name on an unpinned clip lives exactly as long as the clip does.
+  // Every store the clip sits in gets written, history included — a name is
+  // worth more than the clip it is on, and losing it to a restart was the
+  // thing that made naming an unpinned clip feel pointless.
+  if (inHistory) history.forEach(h => { if (h.id === id) historyStore.add(h); });
   if (inPinned) savePinned();
   if (inSessions) saveSessions();
   return touched;
@@ -1525,6 +1632,7 @@ ipcMain.handle('clip:write', (_e, entry, plain) => {
     const existing = history.splice(idx, 1)[0];
     existing.ts = Date.now();
     history.unshift(existing);
+    historyStore.add(existing);
     broadcastPromote(existing);
   }
   return true;
@@ -1555,6 +1663,7 @@ ipcMain.handle('clip:delete', (_e, id) => {
   take(pinned);
   take(sessionClips);
   if (!found) return false;
+  historyStore.remove(id);
 
   // The same picture can back several clips, so a file only goes once nothing
   // at all still points at it.
@@ -1581,6 +1690,7 @@ ipcMain.handle('clip:clear', () => {
     }
   });
   history = [];
+  historyStore.clear();
   refreshTrayMenu();
   return true;
 });
@@ -2340,6 +2450,7 @@ app.whenReady().then(() => {
   loadPinned();
   loadSettings();
   loadSessions();
+  restoreHistory();
   // a session deleted outside the app shouldn't leave capture pointing at it
   if (settings.activeSessionId && !sessions.some(s => s.id === settings.activeSessionId)) {
     settings.activeSessionId = null;

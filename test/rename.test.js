@@ -15,12 +15,15 @@ const grab = (n) => {
   return m[0];
 };
 
-const saved = { pinned: 0, sessions: 0 };
+const saved = { pinned: 0, sessions: 0, history: 0 };
 const ctx = {
   console,
   history: [], pinned: [], sessionClips: [],
   savePinned: () => { saved.pinned++; },
   saveSessions: () => { saved.sessions++; },
+  // a name on a history clip is written to the log now, same as the other
+  // stores. Counted so the suite can say so.
+  historyStore: { add: () => { saved.history++; }, remove() {}, clear() {} },
 };
 vm.createContext(ctx);
 vm.runInContext(grab('renameClip') + '\nthis.api={renameClip};', ctx);

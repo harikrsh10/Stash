@@ -30,7 +30,7 @@ See [all releases](https://github.com/harikrsh10/Stash/releases) for older versi
 ## What it does
 
 - Monitors your system clipboard in the background
-- Keeps the last 100 items (text, code, URLs, images)
+- Keeps the last 10,000 items (text, code, URLs, images), and keeps them across restarts — search finds something you copied last week, not just this session
 - Lives in your **menu bar / system tray** — click the S icon to toggle the drawer, right-click for a menu
 - Two ways to access your clips:
   - **Drawer** — Press **⌘⇧V** (Cmd+Shift+V / Ctrl+Shift+V) to slide the full drawer in from the right edge. Use this to browse, search, filter, and manage.
@@ -38,7 +38,7 @@ See [all releases](https://github.com/harikrsh10/Stash/releases) for older versi
 - Drag any entry from the drawer into any other app — Notion, VS Code, Figma, Finder, browser address bar, anywhere that accepts file or text drops
 - Click an entry to re-copy it (then ⌘V elsewhere as normal). Styled text keeps its formatting — a clip that carries any is marked `styled`. Hold **⌥/Alt** while clicking to copy it as plain text instead
 - **Preview and name any clip** — press **view** to see it in full and give it a title of your own; the derived headline moves out of the way rather than disappearing
-- **Pin items** (★) to keep them across restarts — pinned clips live in their own section at the top and don't count toward the 100-item cap
+- **Pin items** (★) to keep them across restarts — pinned clips live in their own section at the top and don't count toward the 10,000-item cap
 - **Updates itself** — new versions download in the background; the titlebar badge becomes a restart when one is ready
 - **Catches the screenshots you take** (macOS) — screenshots saved to disk turn up in Stash like anything you copy
 - **Pull colours out of an image** — hover a screenshot, press **color**, and get its palette as clickable swatches with hex values
@@ -224,7 +224,7 @@ npm run dev
 npm test
 ```
 
-577 assertions, about a minute. They drive the real renderer in a hidden window
+618 assertions, about a minute. They drive the real renderer in a hidden window
 rather than a copy of it — see [test/README.md](test/README.md).
 
 ### Package for distribution
@@ -279,19 +279,19 @@ Temp files are cleaned up on app quit.
 
 ## Persistence & lifecycle
 
-Stash keeps **ordinary history in memory only**, and persists the things you've said to keep.
+Stash remembers what you copied, and remembers harder the things you've said to keep.
 
 | What | Lifetime |
 |------|----------|
-| Regular clips | Lost on quit or restart |
+| Regular clips | Survive quit and restart, up to 10,000 |
 | Pinned clips (★) | Survive quit, restart, and reboot |
 | Prompts (✦) and their tags | Same — marking one is what makes it permanent |
 | User settings (auto-paste, etc.) | Persisted |
 | Drawer visibility | Hidden ≠ quit — `Esc` or `×` just hides |
 
-Pinned clips and prompts share one JSON file at your system's user-data path (`~/Library/Application Support/Stash/` on macOS, `%APPDATA%\Stash\` on Windows), told apart by a flag; they're only kept separate on screen. Pinned images live in a `pinned-images/` subfolder next to it. Nothing else is ever written to disk — extracted text isn't stored anywhere until you copy it.
+History is written to `history.ndjson` as one line per clip, appended as you copy so the cost of a copy does not grow with the size of the history. Pinned clips and prompts share one JSON file at your system's user-data path (`~/Library/Application Support/Stash/` on macOS, `%APPDATA%\Stash\` on Windows), told apart by a flag; they're only kept separate on screen. Pinned images live in a `pinned-images/` subfolder next to it. Nothing else is ever written to disk — extracted text isn't stored anywhere until you copy it.
 
-Regular history is capped at **100 items** — pinned clips and prompts don't count toward that cap and don't age out. "Clear history" from the tray menu only clears ordinary clips; anything kept stays untouched (delete those individually if you want them gone).
+Regular history is capped at **10,000 items** — the oldest fall off as new ones arrive. Pinned clips and prompts don't count toward that cap and don't age out. "Clear history" from the tray menu only clears ordinary clips; anything kept stays untouched (delete those individually if you want them gone).
 
 ## Security
 
@@ -308,7 +308,7 @@ When something is skipped, a small green dot pulses briefly next to the item cou
 
 The detection is tuned to minimize false positives — a regular URL, piece of code, or sentence will never be blocked. But no heuristic is perfect: treat Stash as a helpful collection tool, not a secure vault. Truly sensitive values should still go through a password manager.
 
-Since regular history is memory-only, quitting Stash clears everything unpinned regardless.
+History now outlives the process, so anything the detection misses outlives it too. **Remember history between restarts** in the tray menu turns persistence off and deletes what is already on disk; pause capture still keeps a copy out of Stash entirely.
 
 ## Known limitations
 

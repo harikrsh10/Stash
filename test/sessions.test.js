@@ -29,6 +29,8 @@ function freshContext() {
     sessionStorePath, pinnedStorePath,
     sessions: [], sessionClips: [], pinned: [], history: [],
     settings: { activeSessionId: null },
+    // capturing writes to the history log as well; it has its own suite
+    historyStore: { add() {}, remove() {}, clear() {} },
   };
   vm.createContext(ctx);
   vm.runInContext([
