@@ -17,10 +17,11 @@ app.whenReady().then(async () => {
     const tick = (ms) => new Promise(r => setTimeout(r, ms));
     const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
-    let multiPayload = null, multiIcon = null, singlePayload = null;
+    let multiPayload = null, multiIcon = null, singlePayload = null, written = null;
     window.api = {
-      write: async () => {}, delete: async () => {}, clear: async () => {},
+      write: async (entry) => { written = entry; }, delete: async () => {}, clear: async () => {},
       pin: async () => {}, unpin: async () => {}, hide: () => {},
+      expandWindow: async () => {},
       startDrag: (e) => { singlePayload = e; },
       startDragMulti: (e, icon) => { multiPayload = e; multiIcon = icon; },
       drawerDragStart: () => {}, drawerDragEnd: () => {},
@@ -37,27 +38,52 @@ app.whenReady().then(async () => {
     const cards = () => [...document.querySelectorAll('.stack-card')];
     const click = (el, opts) => el.dispatchEvent(new MouseEvent('click', { bubbles: true, ...opts }));
     const tray = document.getElementById('stackTray');
+    const panel = document.getElementById('selectionPanel');
     const badge = document.getElementById('stackCount');
 
     ok('renders all 8 rows', rows().length === 8, rows().length + ' rows');
     ok('tray hidden with no selection', !tray.classList.contains('show'), '');
+    ok('selection panel hidden with no selection', !panel.classList.contains('show'), '');
 
     // --- selection still works as before ---
     click(rows()[1], { ctrlKey: true });
     ok('ctrl+click selects one', selected.size === 1 && selected.has('h1'), [...selected].join(','));
     ok('tray appears on first pick', tray.classList.contains('show'), '');
+    ok('selection panel appears on first pick', panel.classList.contains('show'), '');
     ok('one card in the deck', cards().length === 1, cards().length + '');
     ok('badge reads 1', badge.textContent === '01', badge.textContent);
-    ok('title reads singular', document.getElementById('stackTitle').textContent === '01 clip stacked',
+    ok('title reads singular', document.getElementById('stackTitle').textContent === '01 clip selected',
        document.getElementById('stackTitle').textContent);
+    ok('side panel count reads 1', document.getElementById('selectionPanelCount').textContent === '01',
+       document.getElementById('selectionPanelCount').textContent);
 
     click(rows()[3], { shiftKey: true });
     ok('shift+click makes a range of 3', selected.size === 3 && ['h1','h2','h3'].every(i => selected.has(i)),
        [...selected].join(','));
     ok('deck grew to 3 cards', cards().length === 3, cards().length + '');
     ok('badge reads 3', badge.textContent === '03', badge.textContent);
-    ok('title reads plural', document.getElementById('stackTitle').textContent === '03 clips stacked',
+    ok('title reads plural', document.getElementById('stackTitle').textContent === '03 clips selected',
        document.getElementById('stackTitle').textContent);
+    ok('side panel count reads 3', document.getElementById('selectionPanelCount').textContent === '03',
+       document.getElementById('selectionPanelCount').textContent);
+
+    history[0].content = 'api_key=supersecret12345';
+    click(document.getElementById('selRedactBtn'), {});
+    ok('redact uses the selection panel',
+       panel.classList.contains('show') && document.getElementById('utilityTitle').textContent === 'safe paste',
+       document.getElementById('utilityTitle').textContent);
+    ok('redact masks secret-looking text',
+       document.getElementById('utilityBody').value.includes('[REDACTED]'),
+       document.getElementById('utilityBody').value);
+    ok('redact explains what changed',
+       document.getElementById('utilityWarnings').classList.contains('show'),
+       document.getElementById('utilityWarnings').textContent);
+    click(document.getElementById('utilityCopyBtn'), {});
+    await tick(0);
+    ok('utility copy writes text',
+       written && written.type === 'text' && written.content.includes('[REDACTED]'),
+       written ? written.content.slice(0, 60) : 'no write');
+    document.getElementById('utilityBody').blur();
 
     // cards are offset and tilted, back-to-front
     const xs = cards().map(c => c.style.getPropertyValue('--x'));
@@ -112,6 +138,7 @@ app.whenReady().then(async () => {
     multiPayload = null; singlePayload = null;
     clearSelection();
     ok('tray hides when empty', !tray.classList.contains('show'), '');
+    ok('selection panel hides when empty', !panel.classList.contains('show'), '');
     ok('deck emptied', cards().length === 0, cards().length + '');
     rows()[5].dispatchEvent(new DragEvent('dragstart', { bubbles: true }));
     ok('unselected row drags alone', multiPayload === null && singlePayload && singlePayload.id === 'h5',

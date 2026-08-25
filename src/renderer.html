@@ -197,7 +197,7 @@
     }
 
     /* The window is a fixed-width drawer that widens to the left when an image
-       is being inspected. The shell holds both columns. */
+       or a multi-selection is being inspected. The shell holds both columns. */
     .shell { display: flex; height: 100vh; }
     /* The drawer is the panel plus the rail. The rail is navigation — every
        top-level place lives there, which is why the list has no section
@@ -327,8 +327,9 @@
     .scope-btn.on { color: var(--on-accent); background: var(--session); border-color: var(--session); }
     .scope-btn.danger:hover { color: var(--danger); border-color: var(--danger-line); }
 
-    /* ---------- image inspector ---------- */
-    .inspector {
+    /* ---------- left-side inspectors ---------- */
+    .inspector,
+    .selection-panel {
       display: none;
       order: 1;
       flex: 1;
@@ -336,7 +337,8 @@
       flex-direction: column;
       height: 100vh;
     }
-    .inspector.show { display: flex; }
+    .inspector.show,
+    .selection-panel.show { display: flex; }
 
     .insp-head {
       display: flex;
@@ -1282,6 +1284,184 @@
       color: var(--muted);
       display: block;
     }
+    .stack-close { flex-shrink: 0; }
+
+    .selection-panel {
+      padding: 16px 0 16px 16px;
+      gap: 8px;
+      box-sizing: border-box;
+    }
+    .selection-card {
+      display: flex;
+      flex-direction: column;
+      background: var(--card);
+      border: 1px solid var(--card-line);
+      border-radius: 12px;
+      box-shadow: 0 1px 2px var(--card-shadow-near), 0 10px 28px var(--card-shadow);
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+    .selection-card.output {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+    .selection-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 14px 8px;
+      flex-shrink: 0;
+    }
+    .selection-eyebrow {
+      flex: 1;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--select);
+    }
+    .selection-status {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--muted2);
+    }
+    .selection-summary {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+      padding: 8px 14px 12px;
+    }
+    .selection-number {
+      height: 54px;
+      width: 54px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      background: var(--select);
+      color: var(--on-accent);
+      font-family: var(--font-mono);
+      font-size: 19px;
+      font-weight: 700;
+      box-shadow: 0 4px 14px var(--shadow);
+    }
+    .selection-copy {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .selection-title {
+      font-family: var(--font-mono);
+      font-size: 18px;
+      line-height: 1.15;
+      color: var(--text);
+    }
+    .selection-subtitle {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .selection-thumbs {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      min-height: 30px;
+    }
+    .selection-thumb {
+      width: 34px;
+      height: 34px;
+      border-radius: 7px;
+      border: 1px solid var(--hairline);
+      background: var(--surface2);
+      color: var(--muted);
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      line-height: 1;
+    }
+    .selection-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .selection-thumb.more {
+      color: var(--select);
+      border-color: var(--select-dim);
+      background: var(--select-wash);
+    }
+    .selection-actions {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      padding: 0 14px 14px;
+    }
+    .utility-btn {
+      -webkit-app-region: no-drag;
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 10px;
+      border-radius: 7px;
+      border: 1px solid var(--select-dim);
+      background: var(--surface2);
+      color: var(--select);
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: color 0.12s, background 0.12s, border-color 0.12s;
+    }
+    .utility-btn:hover {
+      color: var(--text);
+      background: var(--select-wash);
+      border-color: var(--select);
+    }
+    .utility-btn.danger { color: var(--danger-dim); border-color: var(--danger-line); }
+    .utility-btn.danger:hover { color: var(--danger); background: var(--danger-line); }
+
+    .utility-head { padding-top: 12px; }
+    .selection-panel .editor-title { color: var(--select); }
+    .utility-body {
+      flex: 1 1 auto;
+      min-height: 180px;
+      max-height: none;
+    }
+    .utility-warnings {
+      display: none;
+      margin: 0 14px 10px;
+      padding: 8px 10px;
+      border-radius: 5px;
+      border: 1px solid var(--pinned-line-2);
+      background: var(--pinned-tint-2);
+      color: var(--pinned-2);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      line-height: 1.45;
+    }
+    .utility-warnings.show { display: block; }
+    .utility-foot {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px 12px;
+      flex-shrink: 0;
+    }
+    .utility-meta {
+      min-width: 0;
+      flex: 1;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
     @media (prefers-reduced-motion: reduce) {
       .stack-tray.show, .stack-deck.delivered, .stack-count.bump { animation: none; }
@@ -2197,6 +2377,44 @@
 
   </div>
 
+  <div class="selection-panel" id="selectionPanel">
+    <div class="selection-card">
+      <div class="selection-head">
+        <span class="selection-eyebrow">selection</span>
+        <span class="selection-status" id="selectionPanelStatus">0 selected</span>
+        <button class="close-btn" id="selectionClose" title="clear selection (Esc)">×</button>
+      </div>
+      <div class="selection-summary">
+        <div class="selection-number" id="selectionPanelCount">00</div>
+        <div class="selection-copy">
+          <div class="selection-title" id="selectionPanelTitle">clips selected</div>
+          <div class="selection-subtitle" id="selectionPanelHint">Drag the deck, or prepare text for AI.</div>
+          <div class="selection-thumbs" id="selectionThumbs"></div>
+        </div>
+      </div>
+      <div class="selection-actions">
+        <button class="utility-btn danger" id="selRedactBtn" type="button" title="review and copy with secrets redacted">redact</button>
+        <button class="utility-btn" id="selCleanBtn" type="button" title="clean selected text and links">clean</button>
+        <button class="utility-btn" id="selDiffBtn" type="button" title="diff two selected text clips">diff</button>
+        <button class="utility-btn" id="selCopyBtn" type="button" title="copy selected text as one block">copy</button>
+      </div>
+    </div>
+
+    <div class="selection-card output">
+      <div class="editor-head utility-head">
+        <span class="editor-title" id="utilityTitle">review output</span>
+        <span class="editor-saved" id="utilityStatus"></span>
+      </div>
+      <div class="utility-warnings" id="utilityWarnings"></div>
+      <textarea class="editor-body utility-body" id="utilityBody" spellcheck="false"
+                placeholder="choose an action above to prepare the selected text"></textarea>
+      <div class="utility-foot">
+        <span class="utility-meta" id="utilityMeta">0 text items</span>
+        <button class="utility-btn" id="utilityCopyBtn" type="button">copy</button>
+      </div>
+    </div>
+  </div>
+
   <div class="app">
   <div class="panel">
     <div class="card card-head">
@@ -2311,8 +2529,8 @@
         <span class="stack-count" id="stackCount">0</span>
       </div>
       <span class="stack-info">
-        <span class="stack-title" id="stackTitle">0 stacked</span>
-        <span class="stack-hint">drag it anywhere</span>
+        <span class="stack-title" id="stackTitle">0 selected</span>
+        <span class="stack-hint">drag the deck, or use tools on the left</span>
       </span>
       <button class="clear-btn stack-close" id="selClearBtn" title="deselect">×</button>
     </div>
@@ -2359,6 +2577,61 @@
   </script>
 
   <script>
+    const noop = () => {};
+    const ok = async () => true;
+    const previewApi = {
+      addToSession: ok,
+      clear: ok,
+      createPrompt: async () => false,
+      createSession: async () => null,
+      delete: ok,
+      deleteSession: ok,
+      drawerDragEnd: noop,
+      drawerDragStart: noop,
+      expandWindow: ok,
+      getAppearance: async () => null,
+      getHistory: async () => ({ history: [], pinned: [], sessions: [], sessionClips: [] }),
+      getPaused: async () => false,
+      getUpdateState: async () => null,
+      hide: noop,
+      installUpdate: ok,
+      markPrompt: ok,
+      ocr: async () => ({ ok: false, text: '', blocks: [] }),
+      onAppearanceChanged: noop,
+      onHistoryCleared: noop,
+      onClipIndexed: noop,
+      onNewClip: noop,
+      onOcrProgress: noop,
+      onPauseChanged: noop,
+      onPromoted: noop,
+      onSkipped: noop,
+      onStateUpdated: noop,
+      onUpdateAvailable: noop,
+      palette: async () => ({ ok: false, colors: [] }),
+      pin: ok,
+      removeFromSession: ok,
+      renameClip: ok,
+      renameSession: ok,
+      reorderPinned: ok,
+      reorderSession: ok,
+      setActiveSession: ok,
+      setAppearance: ok,
+      setPaused: ok,
+      startDrag: noop,
+      startDragMulti: noop,
+      unmarkPrompt: ok,
+      unpin: ok,
+      updatePrompt: ok,
+      write: ok,
+    };
+    const stashApi = new Proxy(previewApi, {
+      get(target, prop) {
+        const realApi = window.api;
+        const value = realApi && realApi[prop];
+        return value === undefined ? target[prop] : value;
+      },
+    });
+
     let history = [];
     let pinned = [];
     let activeFilter = 'all';
@@ -2429,6 +2702,20 @@
     const stackDeckEl = document.getElementById('stackDeck');
     const stackCountEl = document.getElementById('stackCount');
     const stackTitleEl = document.getElementById('stackTitle');
+    const selectionPanelEl = document.getElementById('selectionPanel');
+    const selectionPanelStatusEl = document.getElementById('selectionPanelStatus');
+    const selectionPanelCountEl = document.getElementById('selectionPanelCount');
+    const selectionPanelTitleEl = document.getElementById('selectionPanelTitle');
+    const selectionPanelHintEl = document.getElementById('selectionPanelHint');
+    const selectionThumbsEl = document.getElementById('selectionThumbs');
+    const utilityTitleEl = document.getElementById('utilityTitle');
+    const utilityBodyEl = document.getElementById('utilityBody');
+    const utilityWarningsEl = document.getElementById('utilityWarnings');
+    const utilityMetaEl = document.getElementById('utilityMeta');
+    const utilityStatusEl = document.getElementById('utilityStatus');
+    const utilityCopyBtn = document.getElementById('utilityCopyBtn');
+    let utilityMode = 'copy';
+    let utilitySelectionKey = '';
     // ids currently drawn in the deck, so we only animate what actually changed
     let stackDrawn = [];
     // rasterized stack, handed to the OS as the drag cursor; rebuilt off the
@@ -2601,6 +2888,7 @@
         n.classList.toggle('selected', selected.has(n.dataset.id));
       });
       updateStack(originRect);
+      updateSelectionPanel();
     }
 
     // ---------- the rail ----------
@@ -2729,7 +3017,7 @@
             ev.preventDefault();
             const name = input.value.trim();
             if (!name) return;
-            const id = await window.api.createSession(name);
+            const id = await stashApi.createSession(name);
             if (id) activeScope = id;
             toast('collecting into “' + name + '”');
           }
@@ -2786,7 +3074,7 @@
       collect.textContent = collecting ? 'collecting' : 'collect here';
       collect.title = collecting ? 'stop collecting into this collection' : 'send new copies here';
       collect.addEventListener('click', () => {
-        window.api.setActiveSession(collecting ? null : session.id);
+        stashApi.setActiveSession(collecting ? null : session.id);
       });
 
       const rename = document.createElement('button');
@@ -2805,7 +3093,7 @@
           if (ev.key === 'Enter') {
             ev.preventDefault();
             const name = input.value.trim();
-            if (name) await window.api.renameSession(session.id, name);
+            if (name) await stashApi.renameSession(session.id, name);
             else render();
           }
           if (ev.key === 'Escape') { ev.preventDefault(); render(); }
@@ -2830,7 +3118,7 @@
           setTimeout(() => { del.dataset.armed = '0'; del.textContent = 'delete'; }, 2500);
           return;
         }
-        await window.api.deleteSession(session.id);
+        await stashApi.deleteSession(session.id);
         activeScope = 'all';
         toast('collection deleted');
       });
@@ -2928,7 +3216,7 @@
           });
         }
       } else {
-        await window.api.expandWindow(true);
+        await stashApi.expandWindow(true);
         inspectorEl.classList.add('show');
         inspDetailTextEl.textContent = c.content || '';
         inspDetailTextEl.classList.add('show');
@@ -3086,7 +3374,7 @@
       const c = findClip(detailId);
       const next = inspNameEl.value.trim();
       if (!c || (c.name || '') === next) return;
-      await window.api.renameClip(detailId, next);
+      await stashApi.renameClip(detailId, next);
     }
 
     inspNameEl.addEventListener('keydown', (e) => {
@@ -3174,10 +3462,10 @@
         b.addEventListener('click', async (ev) => {
           ev.stopPropagation();
           if (inIt) {
-            await window.api.removeFromSession(clipId, s.id);
+            await stashApi.removeFromSession(clipId, s.id);
             toast('removed from ' + s.name);
           } else {
-            await window.api.addToSession(clipId, s.id);
+            await stashApi.addToSession(clipId, s.id);
             toast('added to ' + s.name);
           }
           closeSessionMenu();
@@ -3211,7 +3499,7 @@
       const c = findClip(editingId);
       const next = editorBodyEl.value;
       if (!c || !next.trim() || next === c.content) return;
-      window.api.updatePrompt(editingId, { content: next }).then(ok => { if (ok) flashSaved(); });
+      stashApi.updatePrompt(editingId, { content: next }).then(ok => { if (ok) flashSaved(); });
     }
 
     function renderEditorTags() {
@@ -3236,7 +3524,7 @@
 
     async function setTags(tags) {
       if (!editingId) return;
-      const ok = await window.api.updatePrompt(editingId, { tags });
+      const ok = await stashApi.updatePrompt(editingId, { tags });
       if (ok) flashSaved();
     }
 
@@ -3318,7 +3606,7 @@
       inspMode = 'text';
       inspectorEl.dataset.mode = 'text';
       syncInspOut();
-      window.api.expandWindow(false);
+      stashApi.expandWindow(false);
     }
 
     // Both modes show the same picture at the same size, so opening it is
@@ -3327,7 +3615,7 @@
       inspSrcW = w || 0;
       inspSrcH = h || 0;
       inspStageEl.innerHTML = '';
-      await window.api.expandWindow(true);
+      await stashApi.expandWindow(true);
       inspectorEl.classList.add('show');
 
       const img = new Image();
@@ -3403,7 +3691,7 @@
         // One colour, one copy. Colours never accumulate a selection the way
         // text blocks do -- tapping one puts exactly it on the clipboard.
         el.addEventListener('click', async () => {
-          await window.api.write({ type: 'text', content: c.hex });
+          await stashApi.write({ type: 'text', content: c.hex });
           toast('copied ' + c.hex);
         });
         frag.appendChild(el);
@@ -3516,11 +3804,11 @@
         const acts = document.createElement('div');
         acts.className = 'out-block-acts';
         acts.appendChild(outAction(ICON.copy, 'copy this text', async () => {
-          await window.api.write({ type: 'text', content: block.text });
+          await stashApi.write({ type: 'text', content: block.text });
           toast('copied — paste with ⌘V');
         }));
         acts.appendChild(outAction(ICON.prompt, 'add to prompts', async () => {
-          const ok = await window.api.createPrompt(block.text);
+          const ok = await stashApi.createPrompt(block.text);
           toast(ok ? 'saved as a prompt — kept forever' : 'could not save that');
         }));
 
@@ -3552,7 +3840,7 @@
       // the first run also unpacks the language data, so it's the slow one
       showOcrStatus('reading the image…', 0.05);
       try {
-        const res = await window.api.ocr(id);
+        const res = await stashApi.ocr(id);
         if (!res || !res.ok) {
           ocrListEl.innerHTML = `<div class="ocr-empty">${esc((res && res.error) || 'could not read that image')}</div>`;
           ocrCountEl.textContent = '';
@@ -3587,7 +3875,7 @@
       ocrCountEl.textContent = 'reading…';
       showOcrStatus('picking out the colours…', 0.3);
       try {
-        const res = await window.api.palette(id);
+        const res = await stashApi.palette(id);
         if (!res || !res.ok) {
           ocrListEl.innerHTML = `<div class="ocr-empty">${esc((res && res.error) || 'could not read that image')}</div>`;
           ocrCountEl.textContent = '';
@@ -3777,7 +4065,7 @@
       }
 
       const padded = n < 10 ? '0' + n : String(n);
-      stackTitleEl.textContent = padded + (n === 1 ? ' clip stacked' : ' clips stacked');
+      stackTitleEl.textContent = padded + (n === 1 ? ' clip selected' : ' clips selected');
       if (stackCountEl.textContent !== padded) {
         stackCountEl.textContent = padded;
         if (!reduceMotion && wasShown) {
@@ -3833,6 +4121,90 @@
 
       stackDrawn = shownIds;
       buildStackIcon(clips);
+    }
+
+    function summarizeSelection(clips) {
+      const counts = clips.reduce((acc, c) => {
+        const key = c.type || 'clip';
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+      return Object.entries(counts).map(([type, count]) =>
+        `${count} ${type === 'img' ? 'image' : type}${count === 1 ? '' : 's'}`
+      ).join(' · ');
+    }
+
+    function buildSelectionThumb(c) {
+      const el = document.createElement('span');
+      el.className = 'selection-thumb';
+      el.title = c.name || c.title || c.meta || typeLabel(c);
+      if (c.type === 'img' && c.dataUrl) {
+        const img = document.createElement('img');
+        img.src = c.dataUrl;
+        img.alt = '';
+        el.appendChild(img);
+      } else {
+        el.textContent = GLYPH[c.type] || (c.type || 'clip').slice(0, 2).toUpperCase();
+      }
+      return el;
+    }
+
+    function resetUtilityOutput(clips = selectedClips()) {
+      utilitySelectionKey = clips.map(c => c.id).join('|');
+      utilityTitleEl.textContent = 'review output';
+      utilityBodyEl.value = '';
+      utilityWarningsEl.textContent = '';
+      utilityWarningsEl.classList.remove('show');
+      utilityStatusEl.classList.remove('show');
+      const textCount = clips.filter(c => c.type !== 'img' && String(c.content || '').trim()).length;
+      utilityMetaEl.textContent = textCount + (textCount === 1 ? ' text item' : ' text items');
+    }
+
+    function updateSelectionPanel() {
+      const clips = selectedClips();
+      const n = clips.length;
+      const selectionKey = clips.map(c => c.id).join('|');
+      const wasShown = selectionPanelEl.classList.contains('show');
+      selectionPanelEl.classList.toggle('show', n > 0);
+
+      if (n === 0) {
+        selectionThumbsEl.replaceChildren();
+        selectionPanelCountEl.textContent = '00';
+        selectionPanelStatusEl.textContent = '0 selected';
+        selectionPanelTitleEl.textContent = 'clips selected';
+        selectionPanelHintEl.textContent = 'Drag the deck, or prepare text for AI.';
+        resetUtilityOutput([]);
+        // only on the way down. Firing this on every render collapsed the
+        // window while nothing was selected, which is most renders.
+        if (wasShown && !inspectorEl.classList.contains('show')) stashApi.expandWindow?.(false);
+        return;
+      }
+
+      if (!wasShown) {
+        closeSessionMenu();
+        closeTagPicker();
+        closeEditor();
+        closeOcr();
+        closeInspector();
+        stashApi.expandWindow?.(true);
+      }
+
+      const padded = n < 10 ? '0' + n : String(n);
+      selectionPanelCountEl.textContent = padded;
+      selectionPanelStatusEl.textContent = n + (n === 1 ? ' item selected' : ' items selected');
+      selectionPanelTitleEl.textContent = n === 1 ? 'clip selected' : 'clips selected';
+      selectionPanelHintEl.textContent = summarizeSelection(clips) || 'Drag the deck, or prepare text for AI.';
+
+      const preview = clips.slice(0, 8).map(buildSelectionThumb);
+      if (clips.length > preview.length) {
+        const more = document.createElement('span');
+        more.className = 'selection-thumb more';
+        more.textContent = '+' + (clips.length - preview.length);
+        preview.push(more);
+      }
+      selectionThumbsEl.replaceChildren(...preview);
+
+      if (utilitySelectionKey !== selectionKey || !utilityBodyEl.value.trim()) resetUtilityOutput(clips);
     }
 
     // card leaves the row it was picked from and lands in the deck
@@ -3906,6 +4278,151 @@
 
       if (token !== stackIconToken) return;
       stackIconUrl = canvas.toDataURL('image/png');
+    }
+
+    function textClipsFromSelection() {
+      return selectedClips().filter(c => c.type !== 'img').map((c, i) => ({
+        clip: c,
+        label: c.name || c.title || c.meta || `${c.type || 'clip'} ${i + 1}`,
+        text: String(c.content || '').replace(/\r\n/g, '\n').trim(),
+      })).filter(c => c.text);
+    }
+
+    function combinedSelectionText(clips = textClipsFromSelection()) {
+      return clips.map(({ clip, label, text }) => {
+        if (clip.type === 'code') return [`### ${label}`, '```' + (detectLang(text) || ''), text, '```'].join('\n');
+        return [`### ${label}`, text].join('\n');
+      }).join('\n\n');
+    }
+
+    function cleanUtilityText(text) {
+      return String(text || '')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/[?&](utm_[^=\s&]+|fbclid|gclid|mc_cid|mc_eid)=[^)\]\s&]+/gi, '')
+        .replace(/\?&/g, '?')
+        .replace(/\?($|\s)/g, '$1')
+        .trim();
+    }
+
+    function redactUtilityText(text) {
+      const counts = {};
+      const rules = [
+        ['api keys', /\b(?:sk-[A-Za-z0-9_-]{20,}|pk_[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{20,})\b/g],
+        ['tokens', /\b(?:token|secret|api[_-]?key|access[_-]?key|password)\s*[:=]\s*["']?[^"'\s]{8,}/gi],
+        ['bearer tokens', /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/g],
+        ['emails', /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi],
+        ['private urls', /\bhttps?:\/\/(?:localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[0-1])\.\d+\.\d+)[^\s)]*/gi],
+      ];
+      let out = String(text || '');
+      rules.forEach(([label, re]) => {
+        out = out.replace(re, (match) => {
+          counts[label] = (counts[label] || 0) + 1;
+          if (/^[a-z0-9_-]+\s*[:=]/i.test(match)) return match.replace(/[:=]\s*["']?.*$/, '= [REDACTED]');
+          return `[REDACTED ${label.slice(0, -1).toUpperCase()}]`;
+        });
+      });
+      return { text: out, counts };
+    }
+
+    function diffLines(a, b) {
+      const left = String(a || '').split('\n');
+      const right = String(b || '').split('\n');
+      const max = Math.max(left.length, right.length);
+      const lines = [];
+      for (let i = 0; i < max; i++) {
+        if (left[i] === right[i]) {
+          if (left[i] !== undefined) lines.push('  ' + left[i]);
+        } else {
+          if (left[i] !== undefined) lines.push('- ' + left[i]);
+          if (right[i] !== undefined) lines.push('+ ' + right[i]);
+        }
+      }
+      return lines.join('\n');
+    }
+
+    function showUtility({ title, body, meta, warning, mode }) {
+      closeSessionMenu();
+      closeTagPicker();
+      closeEditor();
+      closeOcr();
+      closeInspector();
+      selectionPanelEl.classList.add('show');
+      stashApi.expandWindow?.(true);
+      utilityMode = mode || 'copy';
+      utilitySelectionKey = selectedClips().map(c => c.id).join('|');
+      utilityTitleEl.textContent = title;
+      utilityBodyEl.value = body;
+      utilityMetaEl.textContent = meta;
+      utilityWarningsEl.textContent = warning || '';
+      utilityWarningsEl.classList.toggle('show', !!warning);
+      utilityStatusEl.classList.remove('show');
+      utilityBodyEl.focus();
+      utilityBodyEl.setSelectionRange(0, 0);
+    }
+
+    function openCopyUtility() {
+      const clips = textClipsFromSelection();
+      if (!clips.length) return toast('select text, code, or links');
+      showUtility({
+        title: 'copy selection',
+        body: combinedSelectionText(clips),
+        meta: `${clips.length} text item${clips.length === 1 ? '' : 's'}`,
+        mode: 'copy',
+      });
+    }
+
+    function openCleanUtility() {
+      const clips = textClipsFromSelection();
+      if (!clips.length) return toast('select text, code, or links');
+      showUtility({
+        title: 'clean selection',
+        body: cleanUtilityText(combinedSelectionText(clips)),
+        meta: `${clips.length} item${clips.length === 1 ? '' : 's'} cleaned`,
+        warning: 'Clean removes tracking params and normalizes extra whitespace. Review before copying.',
+        mode: 'clean',
+      });
+    }
+
+    function openRedactUtility() {
+      const clips = textClipsFromSelection();
+      if (!clips.length) return toast('select text, code, or links');
+      const result = redactUtilityText(combinedSelectionText(clips));
+      const total = Object.values(result.counts).reduce((sum, n) => sum + n, 0);
+      const details = Object.entries(result.counts).map(([k, v]) => `${v} ${k}`).join(', ');
+      showUtility({
+        title: 'safe paste',
+        body: result.text,
+        meta: total ? `${total} risky match${total === 1 ? '' : 'es'} redacted` : 'no risky patterns found',
+        warning: total ? `Redacted ${details}. Review before sending to AI.` : 'No obvious secrets found. Still review before sending sensitive work.',
+        mode: 'redact',
+      });
+    }
+
+    function openDiffUtility() {
+      const clips = textClipsFromSelection();
+      if (clips.length !== 2) return toast('select exactly two text clips');
+      showUtility({
+        title: 'diff',
+        body: diffLines(clips[0].text, clips[1].text),
+        meta: `${clips[0].label} -> ${clips[1].label}`,
+        mode: 'diff',
+      });
+    }
+
+    function closeUtility() {
+      resetUtilityOutput();
+    }
+
+    async function copyUtilityOutput() {
+      const text = utilityBodyEl.value.trim();
+      if (!text) return;
+      await stashApi.write({ type: 'text', content: text });
+      utilityStatusEl.textContent = 'copied';
+      utilityStatusEl.classList.add('show');
+      clearTimeout(copyUtilityOutput._t);
+      copyUtilityOutput._t = setTimeout(() => utilityStatusEl.classList.remove('show'), 900);
+      toast(utilityMode === 'redact' ? 'safe copy ready' : 'copied');
     }
 
     // ---------- manual order ----------
@@ -4067,8 +4584,8 @@
       applyOrder(sessionId ? sessionClips : pinned, ids);
 
       const ok = sessionId
-        ? await window.api.reorderSession?.(sessionId, ids)
-        : await window.api.reorderPinned?.(ids);
+        ? await stashApi.reorderSession?.(sessionId, ids)
+        : await stashApi.reorderPinned?.(ids);
       if (ok === false) render(); // rejected — fall back to what the store says
     }
 
@@ -4271,25 +4788,25 @@
         cancelArm();
         if (lift) { e.preventDefault(); return; }
         e.preventDefault();
-        window.api.drawerDragStart();
+        stashApi.drawerDragStart();
         if (selected.has(c.id) && selected.size > 1) {
           const entries = selectedClips();
           document.querySelectorAll('.item.selected').forEach(n => n.classList.add('dragging'));
-          window.api.startDragMulti(entries, stackIconUrl);
+          stashApi.startDragMulti(entries, stackIconUrl);
         } else {
           el.classList.add('dragging');
-          window.api.startDrag(c);
+          stashApi.startDrag(c);
         }
       });
       el.addEventListener('dragend', () => {
         document.querySelectorAll('.item.dragging').forEach(n => n.classList.remove('dragging'));
-        window.api.drawerDragEnd();
+        stashApi.drawerDragEnd();
       });
 
       el.querySelector('[data-act="copy"]').addEventListener('click', async (e) => {
         e.stopPropagation();
         const plain = e.altKey;
-        await window.api.write(c, plain);
+        await stashApi.write(c, plain);
         toast(plain ? 'copied as plain text' : 'copied — paste with ⌘V');
       });
 
@@ -4298,7 +4815,7 @@
         // Delete is delete, in a collection view as anywhere else. Taking a clip
         // out of one collection without destroying it is what the collection button
         // is for.
-        await window.api.delete(c.id);
+        await stashApi.delete(c.id);
         sessionClips = sessionClips.filter(s => s.id !== c.id);
         if (isPinned) pinned = pinned.filter(p => p.id !== c.id);
         else history = history.filter(h => h.id !== c.id);
@@ -4312,7 +4829,7 @@
 
       el.querySelector('[data-act="unses"]')?.addEventListener('click', async (e) => {
         e.stopPropagation();
-        await window.api.removeFromSession(c.id, sessionId);
+        await stashApi.removeFromSession(c.id, sessionId);
         sessionClips = sessionClips.filter(s => !(s.id === c.id && s.sessionId === sessionId));
         toast('removed from this collection');
         render();
@@ -4322,10 +4839,10 @@
       el.querySelector('[data-act="pin"]')?.addEventListener('click', async (e) => {
         e.stopPropagation();
         if (isPinned) {
-          await window.api.unpin(c.id);
+          await stashApi.unpin(c.id);
           toast('unpinned');
         } else {
-          await window.api.pin(c.id);
+          await stashApi.pin(c.id);
           toast('pinned — kept across restarts');
         }
       });
@@ -4354,10 +4871,10 @@
       el.querySelector('[data-act="prompt"]').addEventListener('click', async (e) => {
         e.stopPropagation();
         if (c.isPrompt) {
-          await window.api.unmarkPrompt(c.id);
+          await stashApi.unmarkPrompt(c.id);
           toast('no longer a prompt — back in history');
         } else {
-          await window.api.markPrompt(c.id);
+          await stashApi.markPrompt(c.id);
           toast('saved as a prompt — kept forever');
         }
       });
@@ -4386,7 +4903,7 @@
         if (selected.size > 0) clearSelection();
         // alt drops the formatting on the way out — the paste-plain path
         const plain = e.altKey;
-        await window.api.write(c, plain);
+        await stashApi.write(c, plain);
         toast(plain ? 'copied as plain text' : 'copied — paste with ⌘V');
       });
 
@@ -4531,25 +5048,31 @@
     // clear
     document.getElementById('clearBtn').addEventListener('click', async () => {
       if (history.length === 0) return;
-      await window.api.clear();
+      await stashApi.clear();
       history = [];
       render();
     });
 
     // close/hide
-    document.getElementById('closeBtn').addEventListener('click', () => window.api.hide());
+    document.getElementById('closeBtn').addEventListener('click', () => stashApi.hide());
 
     document.getElementById('selClearBtn').addEventListener('click', clearSelection);
+    document.getElementById('selRedactBtn').addEventListener('click', openRedactUtility);
+    document.getElementById('selCleanBtn').addEventListener('click', openCleanUtility);
+    document.getElementById('selDiffBtn').addEventListener('click', openDiffUtility);
+    document.getElementById('selCopyBtn').addEventListener('click', openCopyUtility);
+    document.getElementById('selectionClose').addEventListener('click', clearSelection);
+    utilityCopyBtn.addEventListener('click', copyUtilityOutput);
 
     // the deck itself is a drag source — gather, then throw, one gesture
     stackDeckEl.addEventListener('dragstart', (e) => {
       e.preventDefault();
       if (selected.size === 0) return;
-      window.api.drawerDragStart();
-      window.api.startDragMulti(selectedClips(), stackIconUrl);
+      stashApi.drawerDragStart();
+      stashApi.startDragMulti(selectedClips(), stackIconUrl);
     });
     stackDeckEl.addEventListener('dragend', () => {
-      window.api.drawerDragEnd();
+      stashApi.drawerDragEnd();
       // the deck settles back after the throw. The selection is deliberately
       // kept: the OS never tells us whether the drop landed, and silently
       // losing a hand-picked stack on a mis-drop is worse than one extra Esc.
@@ -4573,10 +5096,11 @@
         else if (ocrSheetEl.classList.contains('show')) closeOcr();
         else if (editingId) closeEditor();
         else if (selected.size > 0) clearSelection();
-        else window.api.hide();
+        else stashApi.hide();
       }
       // cmd/ctrl+a selects everything currently visible
       const typing = document.activeElement === searchEl || document.activeElement === editorBodyEl
+        || document.activeElement === utilityBodyEl
         || document.activeElement?.classList.contains('tag-input');
       if ((e.metaKey || e.ctrlKey) && e.key === 'a' && !typing) {
         e.preventDefault();
@@ -4592,7 +5116,7 @@
     });
 
     // listen for new clips from main
-    window.api.onNewClip((entry, collected) => {
+    stashApi.onNewClip((entry, collected) => {
       entry._new = true;
       history = history.filter(h => h.id !== entry.id);
       history.unshift(entry);
@@ -4612,7 +5136,7 @@
     }
 
     // listen for promoted (re-copied) clips — bump to top with flash animation
-    window.api.onPromoted((entry, collected) => {
+    stashApi.onPromoted((entry, collected) => {
       takeCollected(collected);
       // check if it's in pinned or history
       const pinnedIdx = pinned.findIndex(p => p.id === entry.id);
@@ -4628,12 +5152,12 @@
       render();
     });
 
-    window.api.onClipIndexed(applyIndexedText);
+    stashApi.onClipIndexed(applyIndexedText);
 
     // listen for skipped (secret-looking) clips — pulse the footer dot briefly
     const skipPulse = document.getElementById('skipPulse');
     let skipTimer;
-    window.api.onSkipped(() => {
+    stashApi.onSkipped(() => {
       skipPulse.classList.add('on');
       clearTimeout(skipTimer);
       skipTimer = setTimeout(() => skipPulse.classList.remove('on'), 2500);
@@ -4649,15 +5173,15 @@
       pauseBtn.title = paused ? 'resume clipboard capture' : 'pause clipboard capture';
     }
     pauseBtn.addEventListener('click', async () => {
-      const current = await window.api.getPaused();
-      await window.api.setPaused(!current);
+      const current = await stashApi.getPaused();
+      await stashApi.setPaused(!current);
       // applyPausedState will be called via onPauseChanged
     });
-    window.api.onPauseChanged((v) => applyPausedState(v));
+    stashApi.onPauseChanged((v) => applyPausedState(v));
 
     collectionStopBtn.addEventListener('click', async () => {
       const active = activeSession();
-      await window.api.setActiveSession(null);
+      await stashApi.setActiveSession(null);
       toast(active ? 'stopped collecting into ' + active.name : 'stopped collecting');
     });
 
@@ -4682,22 +5206,22 @@
       const next = THEME_NEXT[themeChoice];
       // paint immediately; the main process echoes the change back anyway
       showAppearance({ choice: next });
-      await window.api?.setAppearance?.(next);
+      await stashApi?.setAppearance?.(next);
     });
-    window.api?.onAppearanceChanged?.((state) => showAppearance(state));
-    window.api?.getAppearance?.().then(showAppearance).catch(() => {});
+    stashApi?.onAppearanceChanged?.((state) => showAppearance(state));
+    stashApi?.getAppearance?.().then(showAppearance).catch(() => {});
     showAppearance({ choice: themeChoice });
 
     // listen for history cleared from tray menu
-    window.api.onHistoryCleared(() => {
+    stashApi.onHistoryCleared(() => {
       history = [];
       render();
     });
 
-    window.api.onOcrProgress(onOcrProgress);
+    stashApi.onOcrProgress(onOcrProgress);
 
     // listen for state updates (pin/unpin actions from main)
-    window.api.onStateUpdated((state) => {
+    stashApi.onStateUpdated((state) => {
       history = state.history || [];
       pinned = state.pinned || [];
       sessions = state.sessions || [];
@@ -4731,25 +5255,25 @@
       updateBadge.style.display = 'flex';
     }
 
-    window.api.onUpdateAvailable(showUpdateState);
+    stashApi.onUpdateAvailable(showUpdateState);
     updateBadge.addEventListener('click', async () => {
       // Nothing to do while it's still coming down — clicking then would only
       // be an invitation to lose whatever is on the clipboard.
       if (!updateReady) return;
-      await window.api.installUpdate();
+      await stashApi.installUpdate();
     });
     // a window opened after the download finished still has to learn about it
-    window.api.getUpdateState().then(showUpdateState);
+    stashApi.getUpdateState().then(showUpdateState);
 
     // initial load
     (async () => {
-      const state = await window.api.getHistory();
+      const state = await stashApi.getHistory();
       history = state.history || [];
       pinned = state.pinned || [];
       sessions = state.sessions || [];
       sessionClips = state.sessionClips || [];
       activeSessionId = state.activeSessionId || null;
-      const paused = await window.api.getPaused();
+      const paused = await stashApi.getPaused();
       applyPausedState(paused);
       render();
       setInterval(render, 30000);
