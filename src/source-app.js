@@ -5,16 +5,22 @@
 // It is the strongest handle there is on a history thousands of clips deep,
 // and the clipboard itself carries none of it.
 //
-// The catch is that asking the OS costs real time. On Windows the answer needs
-// P/Invoke, which means PowerShell, which means ~430ms of shell startup plus
-// ~570ms compiling the interop type -- once per process. Doing that per copy
-// would be absurd. So the helper is started once, lazily, and then answers over
-// its stdin in about ten milliseconds.
+// The two platforms want opposite shapes, because asking costs wildly
+// different amounts.
 //
-// It is idle-stopped rather than kept for ever: someone who copies nothing for
-// an hour should not be paying for a resident PowerShell.
+// On Windows the answer needs P/Invoke, which means PowerShell: ~430ms of shell
+// startup plus ~570ms compiling the interop type, once per process. Doing that
+// per copy would be absurd, so one helper is started lazily and then answers
+// over its stdin in about ten milliseconds. It is idle-stopped rather than kept
+// for ever -- someone who copies nothing for an hour should not be paying for a
+// resident PowerShell.
 //
-// No electron import, so this is drivable from a test with a fake spawn.
+// On macOS `lsappinfo` answers directly and cheaply, so there is nothing to
+// keep alive and the question is simply asked each time. Keeping a process
+// around there would be the more expensive choice, not the cheaper one.
+//
+// No electron import, so both paths are drivable from a test without a real
+// shell.
 
 const path = require('path');
 
@@ -80,10 +86,34 @@ function tidyAppName(name) {
   return String(name || '').trim().replace(/\.exe$/i, '').trim();
 }
 
+// macOS answers a different way. `lsappinfo` is part of CoreServices and sits
+// on every Mac, it needs no Accessibility permission -- unlike asking System
+// Events through osascript, which prompts -- and it is cheap enough to run per
+// copy rather than keeping a process alive. It prints one line:
+//
+//   "LSDisplayName"="Figma"
+//
+// A Mac with nothing at all in front prints nothing, which is not an error.
+function parseLsAppInfoName(stdout) {
+  const m = String(stdout || '').match(/"LSDisplayName"\s*=\s*"([^"]*)"/);
+  return m ? m[1].trim() : '';
+}
+
+// One shell so the inner `lsappinfo front` can name the app for the outer call
+// without a round trip back into node.
+//
+// The `tr` is not decoration. `lsappinfo front` prints its answer already
+// quoted -- "ASN:0x0-0x1e01e:" -- and command substitution does not strip
+// quotes, so passing it straight on hands lsappinfo an argument with literal
+// quote characters in it. Stripping them makes the ASN bare whichever way
+// lsappinfo would have taken it.
+const MAC_FRONT_CMD = 'lsappinfo info -only name "$(lsappinfo front | tr -d \'"\')"';
+
 function createSourceApp({
   platform = process.platform,
-  spawn,                 // (cmd, args, opts) -> ChildProcess
-  writeScript,           // (contents) -> path on disk
+  spawn,                 // (cmd, args, opts) -> ChildProcess       [windows]
+  writeScript,           // (contents) -> path on disk              [windows]
+  runOnce,               // (cmd, args) -> Promise<stdout>          [macos]
   selfPid = process.pid,
   idleStopMs = IDLE_STOP_MS,
   queryTimeoutMs = QUERY_TIMEOUT_MS,
@@ -98,7 +128,12 @@ function createSourceApp({
   let idleTimer = null;
   let stopped = false;
 
-  const supported = platform === 'win32';
+  // Two different shapes behind one question. Windows keeps a helper alive
+  // because starting one costs a second; macOS just asks, because asking is
+  // cheap and a resident process would be the more expensive choice.
+  const isWindows = platform === 'win32';
+  const isMac = platform === 'darwin';
+  const supported = isWindows || isMac;
 
   function settleAll(value) {
     const pending = waiting;
@@ -149,8 +184,31 @@ function createSourceApp({
     else w.resolve({ name, pid: Number.isFinite(pid) ? pid : null });
   }
 
+  // macOS: ask, once, and give up quickly. A copy is already captured by the
+  // time this runs, so the worst a slow answer costs is a row without a source.
+  function askMac() {
+    if (typeof runOnce !== 'function') return Promise.resolve(null);
+    let settled = false;
+    return new Promise((resolve) => {
+      const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+      const timer = setTimer(() => done(null), queryTimeoutMs);
+      Promise.resolve()
+        .then(() => runOnce('/bin/sh', ['-c', MAC_FRONT_CMD]))
+        .then((out) => {
+          clearTimer(timer);
+          const name = tidyAppName(parseLsAppInfoName(out));
+          done(!name || isIgnored(name) ? null : { name, pid: null });
+        })
+        .catch((err) => {
+          clearTimer(timer);
+          onError(err);
+          done(null);
+        });
+    });
+  }
+
   function ensure() {
-    if (child || stopped || !supported) return;
+    if (child || stopped || !isWindows) return;
     let scriptPath;
     try {
       scriptPath = writeScript(WIN_HELPER_PS1);
@@ -191,6 +249,7 @@ function createSourceApp({
     // knowing where a clip came from is normal and must never cost the clip.
     current() {
       if (stopped || !supported) return Promise.resolve(null);
+      if (isMac) return askMac();
       ensure();
       if (!child) return Promise.resolve(null);
       touchIdle();
@@ -222,4 +281,5 @@ function createSourceApp({
   };
 }
 
-module.exports = { createSourceApp, isIgnored, tidyAppName, IGNORED, WIN_HELPER_PS1, IDLE_STOP_MS };
+module.exports = { createSourceApp, isIgnored, tidyAppName, parseLsAppInfoName,
+                   IGNORED, WIN_HELPER_PS1, MAC_FRONT_CMD, IDLE_STOP_MS };

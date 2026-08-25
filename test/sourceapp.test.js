@@ -2,7 +2,8 @@
 // is under test is the lazy start, the queueing, what gets ignored and what
 // happens when the helper misbehaves — not whether Windows can name a window.
 const { EventEmitter } = require('events');
-const { createSourceApp, isIgnored, tidyAppName } = require('../src/source-app');
+const { createSourceApp, isIgnored, tidyAppName, parseLsAppInfoName,
+        MAC_FRONT_CMD } = require('../src/source-app');
 
 const checks = [];
 const ok = (name, pass, detail = '') => checks.push([name, pass, detail]);
@@ -168,11 +169,77 @@ ok('surrounding whitespace goes', tidyAppName('  Figma  ') === 'Figma', '');
   ok('a script that cannot be written answers null too',
      (await noScript.current()) === null, '');
 
-  // ---------- platforms with no way to ask ----------
-  const mac = createSourceApp({ platform: 'darwin', spawn: () => fakeHelper(), writeScript: () => 'x' });
-  ok('an unsupported platform says so', mac.supported === false, '');
-  ok('and answers null without starting anything', (await mac.current()) === null, '');
-  ok('having spawned nothing', mac.running === false, '');
+  // ---------- macOS asks instead of keeping a helper ----------
+  // Everything here is real except lsappinfo itself, which cannot run on the
+  // machine this was written on. The command sent to the shell is asserted
+  // exactly, so at least the thing that would be run is pinned down.
+  function macHarness(reply) {
+    const calls = [];
+    const sa = createSourceApp({
+      platform: 'darwin',
+      spawn: () => { throw new Error('macOS must not spawn a resident helper'); },
+      writeScript: () => { throw new Error('macOS must not write a script'); },
+      runOnce: (cmd, args) => { calls.push([cmd, args]); return Promise.resolve(reply); },
+      onError: () => {},
+    });
+    return { sa, calls };
+  }
+
+  let m = macHarness('"LSDisplayName"="Figma"\n');
+  const macAnswer = await m.sa.current();
+  ok('macOS is supported', m.sa.supported === true, '');
+  ok('and names the app in front', macAnswer && macAnswer.name === 'Figma', JSON.stringify(macAnswer));
+  ok('without keeping anything alive', m.sa.running === false, '');
+  ok('asking through a shell so lsappinfo can feed itself',
+     m.calls[0][0] === '/bin/sh' && m.calls[0][1][0] === '-c'
+       && m.calls[0][1][1] === MAC_FRONT_CMD,
+     JSON.stringify(m.calls[0]));
+  // lsappinfo prints its ASN already quoted and command substitution keeps the
+  // quotes, so without stripping them the argument carries literal quote
+  // characters. This is the one part of the macOS path that cannot be run here,
+  // so the command itself is pinned rather than merely assumed.
+  ok('the front-app ASN is stripped of the quotes lsappinfo prints around it',
+     MAC_FRONT_CMD.includes("tr -d '\"'"), MAC_FRONT_CMD);
+
+  m = macHarness('"LSDisplayName"="Google Chrome"\n');
+  ok('a name with a space survives', (await m.sa.current()).name === 'Google Chrome', '');
+
+  m = macHarness('"LSDisplayName"="Stash"\n');
+  ok('stash in front records nothing on macOS too', (await m.sa.current()) === null, '');
+
+  m = macHarness('');
+  ok('nothing in front records nothing', (await m.sa.current()) === null, '');
+
+  m = macHarness('some unexpected output');
+  ok('output it cannot parse records nothing rather than guessing',
+     (await m.sa.current()) === null, '');
+
+  // lsappinfo missing or refusing
+  const macBroken = createSourceApp({
+    platform: 'darwin',
+    runOnce: () => Promise.reject(new Error('lsappinfo: command not found')),
+    onError: () => {},
+  });
+  ok('a mac where the command fails answers null rather than throwing',
+     (await macBroken.current()) === null, '');
+
+  const macNoRunner = createSourceApp({ platform: 'darwin' });
+  ok('a mac with no way to run anything answers null',
+     (await macNoRunner.current()) === null, '');
+
+  // the parser on its own
+  ok('the parser reads the display name',
+     parseLsAppInfoName('"LSDisplayName"="Terminal"') === 'Terminal', '');
+  ok('and copes with spacing',
+     parseLsAppInfoName('  "LSDisplayName" = "Notes"  ') === 'Notes',
+     parseLsAppInfoName('  "LSDisplayName" = "Notes"  '));
+  ok('and gives nothing back for nothing', parseLsAppInfoName('') === '', '');
+
+  // ---------- a platform with no way to ask at all ----------
+  const linux = createSourceApp({ platform: 'linux', spawn: () => fakeHelper(), writeScript: () => 'x' });
+  ok('an unsupported platform says so', linux.supported === false, '');
+  ok('and answers null without starting anything', (await linux.current()) === null, '');
+  ok('having spawned nothing', linux.running === false, '');
 
   // ---------- stopping ----------
   h = harness();
