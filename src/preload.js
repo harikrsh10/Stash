@@ -63,6 +63,8 @@ contextBridge.exposeInMainWorld('api', {
   // `collected` is the session's own copy when a session took the clip too
   onNewClip: (cb) => ipcRenderer.on('clip:new', (_e, entry, collected) => cb(entry, collected)),
   onPromoted: (cb) => ipcRenderer.on('clip:promoted', (_e, entry, collected) => cb(entry, collected)),
+  // a picture's text has been read, and search can now reach it
+  onClipIndexed: (cb) => ipcRenderer.on('clip:indexed', (_e, id, text) => cb(id, text)),
   onSkipped: (cb) => ipcRenderer.on('clip:skipped', (_e, info) => cb(info)),
   onPauseChanged: (cb) => ipcRenderer.on('paused:changed', (_e, v) => cb(v)),
   onHistoryCleared: (cb) => ipcRenderer.on('history:cleared', () => cb()),

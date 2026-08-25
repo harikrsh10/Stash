@@ -678,6 +678,22 @@
       line-height: 1.6;
       font-weight: 300;
     }
+    /* why a picture is in the results for a word that is nowhere on its row */
+    .in-image { color: var(--session); }
+    .ocr-hit {
+      margin-top: 6px;
+      padding: 5px 8px;
+      border-left: 2px solid var(--session-line-2);
+      background: var(--session-tint);
+      border-radius: 0 4px 4px 0;
+      color: var(--text-2);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      line-height: 1.5;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .list-more {
       display: block;
       width: calc(100% - 28px);
@@ -2466,11 +2482,56 @@
       return String(text).trim().match(COLOUR_VALUE) || [];
     }
 
+    // A picture's text has been read in the background. Patch every copy the
+    // drawer holds so a search can reach it, and only re-render if a search is
+    // running — otherwise nothing on screen changes and a redraw would fight
+    // whatever the user is doing.
+    function applyIndexedText(id, text) {
+      let touched = false;
+      [history, pinned, sessionClips].forEach(store => {
+        store.forEach(c => { if (c.id === id) { c.ocrText = text; touched = true; } });
+      });
+      if (touched && searchQuery) render();
+    }
+
+    // What a search looks at. A picture's content is its filename, which nobody
+    // remembers; what they remember is what was *in* it, which is why the text
+    // read out of it is searched too. A name the user gave it counts as well —
+    // they chose those words to find it by.
+    function matchesSearch(c) {
+      if (!searchQuery) return true;
+      if (String(c.content || '').toLowerCase().includes(searchQuery)) return true;
+      if (String(c.name || '').toLowerCase().includes(searchQuery)) return true;
+      return String(c.ocrText || '').toLowerCase().includes(searchQuery);
+    }
+
+    // True when the only reason this clip is on screen is the text inside it.
+    // A screenshot turning up in the results for a word that is nowhere in the
+    // row reads as a bug unless the row says why it is there.
+    function matchedOnImageText(c) {
+      if (!searchQuery || c.type !== 'img') return false;
+      if (String(c.content || '').toLowerCase().includes(searchQuery)) return false;
+      if (String(c.name || '').toLowerCase().includes(searchQuery)) return false;
+      return String(c.ocrText || '').toLowerCase().includes(searchQuery);
+    }
+
+    // The line of the extracted text the search actually hit, trimmed to
+    // something that fits on a row, so the match is legible rather than merely
+    // asserted.
+    function imageTextExcerpt(c) {
+      const text = String(c.ocrText || '');
+      const at = text.toLowerCase().indexOf(searchQuery);
+      if (at === -1) return '';
+      const from = Math.max(0, at - 24);
+      const slice = text.slice(from, at + searchQuery.length + 40).replace(/\s+/g, ' ').trim();
+      return (from > 0 ? '…' : '') + slice + (at + searchQuery.length + 40 < text.length ? '…' : '');
+    }
+
     function itemMatchesFilter(c, isPinned) {
       // The rail decides which place you're in; these only narrow by type.
       // prompt and pinned used to live here as pseudo-types, which is why the
       // row wrapped onto two lines.
-      if (searchQuery && !c.content.toLowerCase().includes(searchQuery)) return false;
+      if (searchQuery && !matchesSearch(c)) return false;
       if (activeFilter === 'color') return looksLikeColour(c.content);
       if (activeFilter !== 'all' && c.type !== activeFilter) return false;
       return true;
@@ -4093,6 +4154,10 @@
         if (c.dataUrl) {
           extraHtml = `<img class="item-image" src="${c.dataUrl}" alt=""/>`;
         }
+        if (matchedOnImageText(c)) {
+          metaParts.push('<span class="dot">·</span><span class="in-image">text in image</span>');
+          extraHtml += `<div class="ocr-hit">${esc(imageTextExcerpt(c))}</div>`;
+        }
       } else if (isColour) {
         // The colour itself is never written into the markup -- see below.
         const chips = colours.slice(0, 4)
@@ -4562,6 +4627,8 @@
       }
       render();
     });
+
+    window.api.onClipIndexed(applyIndexedText);
 
     // listen for skipped (secret-looking) clips — pulse the footer dot briefly
     const skipPulse = document.getElementById('skipPulse');

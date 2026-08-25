@@ -7,6 +7,7 @@ const os = require('os');
 const crypto = require('crypto');
 const { pathToFileURL } = require('url');
 const { createHistoryStore } = require('./history-store');
+const { createOcrIndexer, sanitizeOcrText } = require('./ocr-index');
 
 const isDev = process.argv.includes('--dev');
 // History is written down now, so the cap is about what a person could
@@ -54,6 +55,7 @@ let settings = {
   activeSessionId: null,    // capture into this session; null means ordinary copying
   appearance: 'system',     // system | dark | light
   rememberHistory: true,    // write history to disk; off returns it to memory-only
+  indexImageText: true,     // read the text in pictures so it can be searched for
 };
 
 // Setting themeSource is what flips prefers-color-scheme inside the windows, so
@@ -357,6 +359,18 @@ function refreshTrayMenu() {
         refreshTrayMenu();
       },
     },
+    // Nothing to offer where there is no OS engine to do the reading.
+    ...(ocrIndexingAvailable() ? [{
+      label: 'Search text inside images',
+      type: 'checkbox',
+      checked: settings.indexImageText !== false,
+      click: (item) => {
+        settings.indexImageText = item.checked;
+        saveSettings();
+        startOcrIndexer();
+        refreshTrayMenu();
+      },
+    }] : []),
     {
       label: `${history.length} clip${history.length === 1 ? '' : 's'}${pinCount ? ` · ${pinCount} pinned` : ''}${promptCount ? ` · ${promptCount} prompt${promptCount === 1 ? '' : 's'}` : ''}${isPaused ? ' (paused)' : ''}`,
       enabled: false,
@@ -556,6 +570,51 @@ function savePinned() {
   } catch (err) {
     console.error('[Stash] failed to save pinned:', err);
   }
+}
+
+// Reading the text in pictures, quietly, one at a time, in the background.
+// Null until the app is ready and we know whether the platform can do it.
+let ocrIndexer = null;
+
+// Put extracted text on every copy of a clip and write down whichever stores
+// hold it. Used by the background queue and by reading a picture by hand.
+function rememberOcrText(id, raw) {
+  if (settings.indexImageText === false) return;
+  const text = sanitizeOcrText(raw, looksSecret);
+  let inHistory = false, inPinned = false, inSessions = false;
+  history.forEach(h => { if (h.id === id) { h.ocrText = text; inHistory = true; } });
+  pinned.forEach(p => { if (p.id === id) { p.ocrText = text; inPinned = true; } });
+  sessionClips.forEach(s => { if (s.id === id) { s.ocrText = text; inSessions = true; } });
+  if (!inHistory && !inPinned && !inSessions) return;
+  if (inHistory) history.forEach(h => { if (h.id === id) historyStore.add(h); });
+  if (inPinned) savePinned();
+  if (inSessions) saveSessions();
+  if (ocrIndexer) ocrIndexer.forget(id);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('clip:indexed', id, text);
+  }
+}
+
+function ocrIndexingAvailable() {
+  return process.platform === 'win32' || process.platform === 'darwin';
+}
+
+function startOcrIndexer() {
+  if (ocrIndexer) ocrIndexer.stop();
+  ocrIndexer = null;
+  if (settings.indexImageText === false || !ocrIndexingAvailable()) return;
+
+  ocrIndexer = createOcrIndexer({
+    extract: async (filepath) => {
+      const data = await runNativeOcr(filepath);
+      return clusterLines(runsFromWords(wordsFrom(data))).map(b => b.text).join('\n');
+    },
+    looksSecret,
+    // Failures mark the clip rather than storing anything, so there is nothing
+    // to write down and nothing for the drawer to search.
+    onText: (clip, text) => { if (text !== null) rememberOcrText(clip.id, text); },
+  });
+  ocrIndexer.queue(history.filter(h => h.type === 'img'));
 }
 
 // Pictures whose clip did not come back have nothing pointing at them and
@@ -1270,6 +1329,8 @@ function ingestImage(png) {
     ts: Date.now(),
   });
   pruneHistoryImages();
+  // The picture just copied is the one most likely to be searched for next.
+  if (ocrIndexer) ocrIndexer.queueFirst(history.find(h => h.id === sig));
   return sig;
 }
 
@@ -2382,6 +2443,9 @@ ipcMain.handle('ocr:run', async (_e, id) => {
     send({ status: 'recognizing text', progress: 0.2 });
     const data = await runNativeOcr(entry.filepath);
     const blocks = clusterLines(runsFromWords(wordsFrom(data)));
+    // Reading it by hand is a read like any other, so the index takes it too
+    // rather than making the background queue do the same work again.
+    rememberOcrText(entry.id, blocks.map(b => b.text).join('\n'));
     // The renderer draws boxes over the picture, so it must show the very image
     // OCR read — not entry.dataUrl, which is a 240px preview thumbnail. Box
     // coordinates are in the full image's pixel space, so against the thumbnail
@@ -2556,6 +2620,7 @@ app.whenReady().then(() => {
   restoreHistory();
   gcHistoryImages();
   pruneHistoryImages();
+  startOcrIndexer();
   // a session deleted outside the app shouldn't leave capture pointing at it
   if (settings.activeSessionId && !sessions.some(s => s.id === settings.activeSessionId)) {
     settings.activeSessionId = null;

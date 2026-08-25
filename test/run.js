@@ -13,6 +13,8 @@ const electron = require('electron'); // resolves to the binary path
 const SUITES = [
   { file: 'drag.test.js', runtime: 'node', what: 'drag-out file materialization' },
   { file: 'history.test.js', runtime: 'node', what: 'the history log and what survives a restart' },
+  { file: 'ocr-index.test.js', runtime: 'node', what: 'reading the text in pictures, in the background' },
+  { file: 'imagesearch.test.js', runtime: 'electron', what: 'finding a picture by the words inside it' },
   { file: 'stack.test.js', runtime: 'electron', what: 'multi-select and the drag stack' },
   { file: 'prompts.test.js', runtime: 'electron', what: 'the prompt library and its store' },
   { file: 'tags.test.js', runtime: 'electron', what: 'prompt editing, tags and tag filtering' },

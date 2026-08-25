@@ -44,6 +44,7 @@ See [all releases](https://github.com/harikrsh10/Stash/releases) for older versi
 - **Pull colours out of an image** — hover a screenshot, press **color**, and get its palette as clickable swatches with hex values
 - **Auto-paste from dock** (optional, off by default) — when enabled, picking an item from the dock automatically pastes it into the focused app. Requires Accessibility permission on macOS
 - **Collections from any row** — the collection button lists every collection, ticking the ones already holding that clip. Pick one to add it, pick a ticked one to take it out. Delete always means delete from Stash, wherever you're standing
+- **Search finds words inside your screenshots**, not just what you copied as text — see below
 - Search, filter by type (including "pinned" and "prompt"), delete individual items or clear all
 - **Pause capture** — toggle the live/paused indicator in the titlebar (or from the tray menu) when you're copying sensitive stuff you don't want recorded. Anything copied while paused stays ignored after you resume.
 - **Re-copy promotion** — if you copy the same thing again, it flashes and bumps to the top instead of being dropped as a duplicate
@@ -120,6 +121,33 @@ Windows OCR and Apple's Vision framework. A bundled engine was tried first and
 read 6 of 26 words on a dark marketing screenshot where Windows read 22.
 
 **This needs macOS or Windows.** There's no bundled engine to fall back on.
+
+---
+
+## Searching what is inside a picture
+
+Type `invalid token` and get back the screenshot of the error, not just the
+clips you copied as text.
+
+The text in every picture is read in the background and kept on the clip, so
+search reaches inside images as well as across them. A screenshot found this
+way says so on its row and shows the line it matched, because a picture
+turning up for a word that is nowhere on its row otherwise reads as a bug.
+
+- One picture at a time, with a gap between them. On Windows every read spawns
+  a PowerShell process, so this is a slow queue rather than a sweep
+- Newest first — the picture you want back is far more often the one from ten
+  minutes ago than the one from last month
+- Reading a picture by hand with **text** counts as a read, so anything you
+  have already looked at is already searchable
+- A picture that cannot be read is marked and not tried again
+- **Anything that looks like a credential is left out of the index.** An API
+  key or a token visible in a screenshot would otherwise become searchable
+  plain text on disk. The words around it are still indexed
+- Tray menu → *Search text inside images* turns the whole thing off
+
+Like the text extractor it uses, this needs macOS or Windows — there is no
+bundled engine to fall back on.
 
 ---
 
@@ -224,7 +252,7 @@ npm run dev
 npm test
 ```
 
-631 assertions, about a minute. They drive the real renderer in a hidden window
+677 assertions, about a minute. They drive the real renderer in a hidden window
 rather than a copy of it — see [test/README.md](test/README.md).
 
 ### Package for distribution
@@ -289,7 +317,7 @@ Stash remembers what you copied, and remembers harder the things you've said to 
 | User settings (auto-paste, etc.) | Persisted |
 | Drawer visibility | Hidden ≠ quit — `Esc` or `×` just hides |
 
-History is written to `history.ndjson` as one line per clip, appended as you copy so the cost of a copy does not grow with the size of the history. Pinned clips and prompts share one JSON file at your system's user-data path (`~/Library/Application Support/Stash/` on macOS, `%APPDATA%\Stash\` on Windows), told apart by a flag; they're only kept separate on screen. Pinned images live in a `pinned-images/` subfolder next to it, and history images in `history-images/`. Extracted text isn't stored anywhere until you copy it.
+History is written to `history.ndjson` as one line per clip, appended as you copy so the cost of a copy does not grow with the size of the history. Pinned clips and prompts share one JSON file at your system's user-data path (`~/Library/Application Support/Stash/` on macOS, `%APPDATA%\Stash\` on Windows), told apart by a flag; they're only kept separate on screen. Pinned images live in a `pinned-images/` subfolder next to it, and history images in `history-images/`. The text read out of a picture is stored on its clip so search can reach it — see below.
 
 History images are capped at **1 GB**, oldest out first — a picture is the one clip you cannot simply copy again, so it is kept, but it is also the only kind big enough to need a ceiling. A picture is only deleted once no clip anywhere still points at it, and anything left in `history-images/` that nothing points at is swept at launch.
 
