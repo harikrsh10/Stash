@@ -6,9 +6,18 @@ const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
 const { pathToFileURL } = require('url');
+const { createHistoryStore } = require('./history-store');
+const { createOcrIndexer, sanitizeOcrText } = require('./ocr-index');
 
 const isDev = process.argv.includes('--dev');
-const HISTORY_LIMIT = 100;
+// History is written down now, so the cap is about what a person could
+// plausibly want back rather than what fits in memory for one sitting.
+const HISTORY_LIMIT = 10000;
+// Pictures are the clips you cannot simply copy again — the window has moved
+// on — so they are the ones worth keeping, and also the only ones big enough
+// to need a ceiling. Text runs to the item cap; images run to this many bytes,
+// oldest out first.
+const HISTORY_IMAGE_BUDGET = 1024 * 1024 * 1024;
 const POLL_INTERVAL = 600;
 const TMP_DIR = path.join(os.tmpdir(), 'stash-drag');
 
@@ -25,6 +34,13 @@ let isPaused = false;
 let pausedClipboardSigs = new Set();
 let pinnedStorePath = null; // set once app is ready (needs app.getPath)
 let settingsStorePath = null;
+// Where history's pictures live. The temp directory was fine while history
+// died with the process; it is not somewhere a screenshot from last Tuesday
+// can be expected to survive.
+let historyImageDir = null;
+// The log behind `history`. Created once app is ready, since it needs a path.
+// Until then it is a no-op, so anything that runs early can call it safely.
+let historyStore = createHistoryStore({ filePath: null });
 
 // Drawer drag state — set by IPC from the renderer. Used by the blur handler
 // to suppress hide-on-blur while the OS is driving a drag operation.
@@ -38,6 +54,8 @@ let settings = {
   watchScreenshots: true,   // macOS only — see the watcher for why this one is on
   activeSessionId: null,    // capture into this session; null means ordinary copying
   appearance: 'system',     // system | dark | light
+  rememberHistory: true,    // write history to disk; off returns it to memory-only
+  indexImageText: true,     // read the text in pictures so it can be searched for
 };
 
 // Setting themeSource is what flips prefers-color-scheme inside the windows, so
@@ -274,10 +292,7 @@ function refreshTrayMenu() {
     ...(activeSession ? [{
       label: `Collecting into "${activeSession.name}"`,
       click: () => {
-        settings.activeSessionId = null;
-        saveSettings();
-        refreshTrayMenu();
-        broadcastState();
+        setActiveSession(null);
       },
       toolTip: 'click to stop collecting',
     }] : []),
@@ -319,6 +334,44 @@ function refreshTrayMenu() {
       },
     }] : []),
     {
+      label: 'Remember history between restarts',
+      type: 'checkbox',
+      checked: settings.rememberHistory !== false,
+      click: (item) => {
+        settings.rememberHistory = item.checked;
+        saveSettings();
+        if (item.checked) {
+          // Nothing to restore -- what is on screen is all there is -- but the
+          // log has to start carrying it from here on.
+          historyStore = createHistoryStore({
+            filePath: path.join(app.getPath('userData'), 'history.ndjson'),
+            limit: HISTORY_LIMIT,
+            enabled: true,
+          });
+          historyStore.load();
+          history.forEach(h => historyStore.add(h));
+        } else {
+          // Switching it off means what is already written goes too, otherwise
+          // the setting only stops the log growing and quietly keeps the rest.
+          historyStore.clear();
+          historyStore = createHistoryStore({ filePath: null, enabled: false });
+        }
+        refreshTrayMenu();
+      },
+    },
+    // Nothing to offer where there is no OS engine to do the reading.
+    ...(ocrIndexingAvailable() ? [{
+      label: 'Search text inside images',
+      type: 'checkbox',
+      checked: settings.indexImageText !== false,
+      click: (item) => {
+        settings.indexImageText = item.checked;
+        saveSettings();
+        startOcrIndexer();
+        refreshTrayMenu();
+      },
+    }] : []),
+    {
       label: `${history.length} clip${history.length === 1 ? '' : 's'}${pinCount ? ` · ${pinCount} pinned` : ''}${promptCount ? ` · ${promptCount} prompt${promptCount === 1 ? '' : 's'}` : ''}${isPaused ? ' (paused)' : ''}`,
       enabled: false,
     },
@@ -326,12 +379,10 @@ function refreshTrayMenu() {
       label: 'Clear history (pinned items kept)',
       enabled: history.length > 0,
       click: () => {
-        history.forEach(h => {
-          if (h.filepath && fs.existsSync(h.filepath)) {
-            try { fs.unlinkSync(h.filepath); } catch (_) {}
-          }
-        });
+        const wasHolding = history;
         history = [];
+        wasHolding.forEach(h => dropImageFile(h.filepath));
+        historyStore.clear();
         if (mainWindow) mainWindow.webContents.send('history:cleared');
         refreshTrayMenu();
       },
@@ -521,6 +572,135 @@ function savePinned() {
   }
 }
 
+// Reading the text in pictures, quietly, one at a time, in the background.
+// Null until the app is ready and we know whether the platform can do it.
+let ocrIndexer = null;
+
+// Put extracted text on every copy of a clip and write down whichever stores
+// hold it. Used by the background queue and by reading a picture by hand.
+function rememberOcrText(id, raw) {
+  if (settings.indexImageText === false) return;
+  const text = sanitizeOcrText(raw, looksSecret);
+  let inHistory = false, inPinned = false, inSessions = false;
+  history.forEach(h => { if (h.id === id) { h.ocrText = text; inHistory = true; } });
+  pinned.forEach(p => { if (p.id === id) { p.ocrText = text; inPinned = true; } });
+  sessionClips.forEach(s => { if (s.id === id) { s.ocrText = text; inSessions = true; } });
+  if (!inHistory && !inPinned && !inSessions) return;
+  if (inHistory) history.forEach(h => { if (h.id === id) historyStore.add(h); });
+  if (inPinned) savePinned();
+  if (inSessions) saveSessions();
+  if (ocrIndexer) ocrIndexer.forget(id);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('clip:indexed', id, text);
+  }
+}
+
+function ocrIndexingAvailable() {
+  return process.platform === 'win32' || process.platform === 'darwin';
+}
+
+function startOcrIndexer() {
+  if (ocrIndexer) ocrIndexer.stop();
+  ocrIndexer = null;
+  if (settings.indexImageText === false || !ocrIndexingAvailable()) return;
+
+  ocrIndexer = createOcrIndexer({
+    extract: async (filepath) => {
+      const data = await runNativeOcr(filepath);
+      return clusterLines(runsFromWords(wordsFrom(data))).map(b => b.text).join('\n');
+    },
+    looksSecret,
+    // Failures mark the clip rather than storing anything, so there is nothing
+    // to write down and nothing for the drawer to search.
+    onText: (clip, text) => { if (text !== null) rememberOcrText(clip.id, text); },
+  });
+  ocrIndexer.queue(history.filter(h => h.type === 'img'));
+}
+
+// Pictures whose clip did not come back have nothing pointing at them and
+// would otherwise sit there for ever: a clip deleted while the app was closed,
+// a run that ended before the log was written, a crash mid-capture. Runs once,
+// after history has been restored, so "referenced" means what it says.
+function gcHistoryImages() {
+  if (!historyImageDir) return;
+  let files = [];
+  try {
+    files = fs.readdirSync(historyImageDir);
+  } catch (_) {
+    return;
+  }
+  const referenced = new Set([...history, ...pinned, ...sessionClips]
+    .map(c => c.filepath).filter(Boolean));
+  let swept = 0;
+  files.forEach(f => {
+    const fp = path.join(historyImageDir, f);
+    if (referenced.has(fp)) return;
+    try { fs.unlinkSync(fp); swept += 1; } catch (_) {}
+  });
+  if (swept) console.log(`[Stash] swept ${swept} unreferenced history image(s)`);
+}
+
+// Bring back what was copied before the last quit. Runs once, after settings
+// are loaded, since the user can turn the whole thing off.
+function restoreHistory() {
+  historyStore = createHistoryStore({
+    filePath: path.join(app.getPath('userData'), 'history.ndjson'),
+    limit: HISTORY_LIMIT,
+    enabled: settings.rememberHistory !== false,
+  });
+
+  if (!historyStore.enabled) {
+    // Turning it off is a request to forget, not merely to stop remembering.
+    try { fs.rmSync(historyStore.path, { force: true }); } catch (_) {}
+    history = [];
+    return;
+  }
+
+  const { entries, evicted } = historyStore.load();
+
+  // Whatever the cap pushed out no longer has anything pointing at its file.
+  evicted.forEach(e => {
+    if (e.filepath && fs.existsSync(e.filepath)) {
+      try { fs.unlinkSync(e.filepath); } catch (_) {}
+    }
+  });
+
+  let dropped = 0;
+  history = entries.filter(entry => {
+    if (entry.type !== 'img') return true;
+    // An image whose file has gone renders as a hole in the drawer, so it is
+    // dropped the way the pinned store already drops its own. Pictures kept
+    // before they had a durable home lived in the temp directory, so an old
+    // history is mostly these on its first launch after the change.
+    if (!entry.filepath || !fs.existsSync(entry.filepath)) {
+      historyStore.remove(entry.id);
+      dropped += 1;
+      return false;
+    }
+    // The thumbnail is deliberately not written to the log -- it is base64 and
+    // would dwarf every other field -- so it is rebuilt from the file here.
+    try {
+      const img = nativeImage.createFromPath(entry.filepath);
+      if (img.isEmpty()) throw new Error('unreadable');
+      entry.dataUrl = img.resize({ width: 240 }).toDataURL();
+    } catch (_) {
+      historyStore.remove(entry.id);
+      dropped += 1;
+      return false;
+    }
+    return true;
+  });
+
+  // Dropping a clip only writes a tombstone in front of it, which is the right
+  // trade during a copy but not here: history pictures still live in the temp
+  // directory, so most of them are gone every launch, and the log would carry
+  // their dead lines for ever. Startup is already touching the file, so fold
+  // them away now.
+  if (dropped) historyStore.compact();
+
+  console.log(`[Stash] restored ${history.length} clips from history`);
+}
+
 // For pinned images, we need to copy the temp file to a permanent location
 // so it survives tmpdir cleanup.
 function makeImagePermanent(entry) {
@@ -545,11 +725,16 @@ function pinItem(id) {
   const idx = history.findIndex(h => h.id === id);
   if (idx === -1) return false;
   let entry = history[idx];
+  // makeImagePermanent copies rather than moves, so note where the picture was
+  // to clear up after it.
+  const wasAt = entry.filepath;
   entry = makeImagePermanent(entry);
   entry.pinnedAt = Date.now();
   pinned.unshift(entry);
   // also remove from history so it's not duplicated in the UI
   history.splice(idx, 1);
+  historyStore.remove(id);
+  if (wasAt && wasAt !== entry.filepath) dropImageFile(wasAt);
   savePinned();
   refreshTrayMenu();
   return true;
@@ -563,6 +748,7 @@ function unpinItem(id) {
   delete removed.pinnedAt;
   removed.ts = Date.now();
   history.unshift(removed);
+  historyStore.add(removed);
   savePinned();
   refreshTrayMenu();
   return true;
@@ -587,12 +773,15 @@ function promptItem(id) {
   const idx = history.findIndex(h => h.id === id);
   if (idx === -1) return false;
   let entry = history[idx];
+  const wasAt = entry.filepath;
   entry = makeImagePermanent(entry);
   entry.isPrompt = true;
   entry.promptedAt = Date.now();
   entry.pinnedAt = Date.now();
   pinned.unshift(entry);
   history.splice(idx, 1);
+  historyStore.remove(id);
+  if (wasAt && wasAt !== entry.filepath) dropImageFile(wasAt);
   savePinned();
   refreshTrayMenu();
   return true;
@@ -654,6 +843,7 @@ function unpromptItem(id) {
   delete removed.pinnedAt;
   removed.ts = Date.now();
   history.unshift(removed);
+  historyStore.add(removed);
   savePinned();
   refreshTrayMenu();
   return true;
@@ -729,12 +919,65 @@ function removeFromSession(clipId, sessionId) {
 // same picture can sit in two sessions, or be pinned as well.
 function dropSessionImage(clip) {
   if (!clip || clip.type !== 'img' || !clip.filepath) return;
-  const stillUsed = sessionClips.some(c => c.filepath === clip.filepath)
-    || pinned.some(p => p.filepath === clip.filepath);
+  dropImageFile(clip.filepath);
+}
+
+// A picture is only safe to remove once no clip anywhere still points at it.
+// History used to be exempt from this question because its pictures lived in
+// the temp directory and died with the process anyway; now that they are kept,
+// taking a clip out of a collection could delete the file out from under the
+// history row showing the same picture.
+function dropImageFile(filepath) {
+  if (!filepath) return;
+  const stillUsed = history.some(h => h.filepath === filepath)
+    || pinned.some(p => p.filepath === filepath)
+    || sessionClips.some(c => c.filepath === filepath);
   if (stillUsed) return;
   try {
-    if (fs.existsSync(clip.filepath)) fs.unlinkSync(clip.filepath);
+    if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
   } catch (_) { /* a leftover file is better than a crash */ }
+}
+
+// Keep the pictures under their byte ceiling by dropping the oldest, which are
+// the least likely to be wanted and the most likely to be forgotten about.
+// Whole clips go, not just their files — a row whose picture is gone is worse
+// than no row.
+function pruneHistoryImages() {
+  let total = 0;
+  const kept = [];
+  for (const h of history) {
+    if (h.type !== 'img' || !h.filepath) continue;
+    total += sizeOf(h);
+    kept.push(h);
+  }
+  if (total <= HISTORY_IMAGE_BUDGET) return;
+
+  // kept is newest-first, so walking back from the end drops the oldest.
+  const doomed = [];
+  for (let i = kept.length - 1; i >= 0 && total > HISTORY_IMAGE_BUDGET; i--) {
+    total -= sizeOf(kept[i]);
+    doomed.push(kept[i]);
+  }
+  const goners = new Set(doomed);
+  history = history.filter(h => !goners.has(h));
+  doomed.forEach(h => {
+    historyStore.remove(h.id);
+    // after the filter above, so the reference check sees it gone
+    dropImageFile(h.filepath);
+  });
+  console.log(`[Stash] history images over budget — dropped ${doomed.length}`);
+}
+
+// What a picture costs on disk. Recorded at capture; anything captured before
+// that is measured once and remembered.
+function sizeOf(entry) {
+  if (Number.isFinite(entry.bytes)) return entry.bytes;
+  try {
+    entry.bytes = fs.statSync(entry.filepath).size;
+  } catch (_) {
+    entry.bytes = 0;
+  }
+  return entry.bytes;
 }
 
 // ---------- settings persistence ----------
@@ -757,6 +1000,15 @@ function saveSettings() {
   } catch (err) {
     console.error('[Stash] failed to save settings:', err);
   }
+}
+
+function setActiveSession(id) {
+  const next = id && sessions.some(s => s.id === id) ? id : null;
+  settings.activeSessionId = next;
+  saveSettings();
+  refreshTrayMenu();
+  broadcastState();
+  return next;
 }
 
 // ---------- auto-paste (platform-specific) ----------
@@ -1047,14 +1299,22 @@ function ingestImage(png) {
     const existing = history.splice(existingIdx, 1)[0];
     existing.ts = Date.now();
     history.unshift(existing);
+    historyStore.add(existing);
     broadcastPromote(existing, collectIfActive(existing));
     return sig;
   }
 
   const size = img.getSize();
   const filename = `clip-${Date.now()}.png`;
-  const filepath = path.join(TMP_DIR, filename);
-  fs.writeFileSync(filepath, png);
+  // Somewhere durable if we have one. Falling back to the temp directory keeps
+  // capture working before the app is ready rather than dropping the picture.
+  const filepath = path.join(historyImageDir || TMP_DIR, filename);
+  try {
+    fs.writeFileSync(filepath, png);
+  } catch (err) {
+    console.error('[Stash] could not write the image:', err);
+    return null;
+  }
 
   addEntry({
     id: sig,
@@ -1063,8 +1323,14 @@ function ingestImage(png) {
     filepath,
     dataUrl: img.resize({ width: 240 }).toDataURL(),
     meta: `${size.width}×${size.height}`,
+    // Written down so the budget below is arithmetic rather than a stat() per
+    // picture per copy.
+    bytes: png.length,
     ts: Date.now(),
   });
+  pruneHistoryImages();
+  // The picture just copied is the one most likely to be searched for next.
+  if (ocrIndexer) ocrIndexer.queueFirst(history.find(h => h.id === sig));
   return sig;
 }
 
@@ -1131,6 +1397,7 @@ function pollClipboard() {
       const existing = history.splice(existingIdx, 1)[0];
       existing.ts = Date.now();
       history.unshift(existing);
+      historyStore.add(existing);
       // copying it again counts as copying it, so a live session takes it too
       broadcastPromote(existing, collectIfActive(existing));
       return;
@@ -1211,12 +1478,14 @@ function addEntry(entry) {
 
   history = history.filter(h => h.id !== entry.id);
   history.unshift(entry);
+  historyStore.add(entry);
   if (history.length > HISTORY_LIMIT) {
     const dropped = history.splice(HISTORY_LIMIT);
     dropped.forEach(d => {
-      if (d.filepath && fs.existsSync(d.filepath)) {
-        try { fs.unlinkSync(d.filepath); } catch (_) {}
-      }
+      historyStore.remove(d.id);
+      // splice already took it out of history, so the reference check below is
+      // asking whether anything *else* still wants the picture.
+      dropImageFile(d.filepath);
     });
   }
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1288,12 +1557,7 @@ ipcMain.handle('sessions:delete', (_e, id) => {
 });
 
 ipcMain.handle('sessions:setActive', (_e, id) => {
-  const next = id && sessions.some(s => s.id === id) ? id : null;
-  settings.activeSessionId = next;
-  saveSettings();
-  refreshTrayMenu();
-  broadcastState();
-  return next;
+  return setActiveSession(id);
 });
 
 // add or remove a clip that already exists, from anywhere in the drawer
@@ -1390,18 +1654,22 @@ function renameClip(id, name) {
   let inPinned = false;
   let inSessions = false;
 
+  let inHistory = false;
+
   const apply = (entry) => {
     if (clean) entry.name = clean;
     else delete entry.name;   // an empty name is a reset, not a blank title
     touched = true;
   };
 
-  history.forEach(h => { if (h.id === id) apply(h); });
+  history.forEach(h => { if (h.id === id) { apply(h); inHistory = true; } });
   pinned.forEach(p => { if (p.id === id) { apply(p); inPinned = true; } });
   sessionClips.forEach(s => { if (s.id === id) { apply(s); inSessions = true; } });
 
-  // Only the kept things are written down; ordinary history is memory-only, so
-  // a name on an unpinned clip lives exactly as long as the clip does.
+  // Every store the clip sits in gets written, history included — a name is
+  // worth more than the clip it is on, and losing it to a restart was the
+  // thing that made naming an unpinned clip feel pointless.
+  if (inHistory) history.forEach(h => { if (h.id === id) historyStore.add(h); });
   if (inPinned) savePinned();
   if (inSessions) saveSessions();
   return touched;
@@ -1524,6 +1792,7 @@ ipcMain.handle('clip:write', (_e, entry, plain) => {
     const existing = history.splice(idx, 1)[0];
     existing.ts = Date.now();
     history.unshift(existing);
+    historyStore.add(existing);
     broadcastPromote(existing);
   }
   return true;
@@ -1554,6 +1823,7 @@ ipcMain.handle('clip:delete', (_e, id) => {
   take(pinned);
   take(sessionClips);
   if (!found) return false;
+  historyStore.remove(id);
 
   // The same picture can back several clips, so a file only goes once nothing
   // at all still points at it.
@@ -1574,12 +1844,10 @@ ipcMain.handle('clip:delete', (_e, id) => {
 
 ipcMain.handle('clip:clear', () => {
   // Only clear history, never pinned. Pinned is explicit user commitment.
-  history.forEach(h => {
-    if (h.filepath && fs.existsSync(h.filepath)) {
-      try { fs.unlinkSync(h.filepath); } catch (_) {}
-    }
-  });
+  const wasHolding = history;
   history = [];
+  wasHolding.forEach(h => dropImageFile(h.filepath));
+  historyStore.clear();
   refreshTrayMenu();
   return true;
 });
@@ -2175,6 +2443,9 @@ ipcMain.handle('ocr:run', async (_e, id) => {
     send({ status: 'recognizing text', progress: 0.2 });
     const data = await runNativeOcr(entry.filepath);
     const blocks = clusterLines(runsFromWords(wordsFrom(data)));
+    // Reading it by hand is a read like any other, so the index takes it too
+    // rather than making the background queue do the same work again.
+    rememberOcrText(entry.id, blocks.map(b => b.text).join('\n'));
     // The renderer draws boxes over the picture, so it must show the very image
     // OCR read — not entry.dataUrl, which is a 240px preview thumbnail. Box
     // coordinates are in the full image's pixel space, so against the thumbnail
@@ -2336,9 +2607,20 @@ app.whenReady().then(() => {
   pinnedStorePath = path.join(app.getPath('userData'), 'pinned.json');
   settingsStorePath = path.join(app.getPath('userData'), 'settings.json');
   sessionStorePath = path.join(app.getPath('userData'), 'sessions.json');
+  historyImageDir = path.join(app.getPath('userData'), 'history-images');
+  try {
+    fs.mkdirSync(historyImageDir, { recursive: true });
+  } catch (err) {
+    console.error('[Stash] no history image directory, falling back to temp:', err.message);
+    historyImageDir = null;
+  }
   loadPinned();
   loadSettings();
   loadSessions();
+  restoreHistory();
+  gcHistoryImages();
+  pruneHistoryImages();
+  startOcrIndexer();
   // a session deleted outside the app shouldn't leave capture pointing at it
   if (settings.activeSessionId && !sessions.some(s => s.id === settings.activeSessionId)) {
     settings.activeSessionId = null;

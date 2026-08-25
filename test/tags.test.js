@@ -29,7 +29,8 @@ const grabConst = (name) => {
 };
 
 function freshContext() {
-  const ctx = { fs, path, console, pinnedStorePath, pinned: [], history: [], refreshTrayMenu: () => {} };
+  const ctx = { fs, path, console, pinnedStorePath, pinned: [], history: [], refreshTrayMenu: () => {},
+                historyStore: { add() {}, remove() {}, clear() {} } };
   vm.createContext(ctx);
   vm.runInContext(
     [grabConst('TAG_MAX_LEN'), grabConst('TAG_MAX_COUNT'),

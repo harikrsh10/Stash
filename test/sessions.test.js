@@ -29,12 +29,14 @@ function freshContext() {
     sessionStorePath, pinnedStorePath,
     sessions: [], sessionClips: [], pinned: [], history: [],
     settings: { activeSessionId: null },
+    // capturing writes to the history log as well; it has its own suite
+    historyStore: { add() {}, remove() {}, clear() {} },
   };
   vm.createContext(ctx);
   vm.runInContext([
     grab('loadSessions'), grab('saveSessions'), grab('sessionState'), grab('inSession'),
     grab('addToSession'), grab('removeFromSession'), grab('dropSessionImage'),
-    grab('makeImagePermanent'),
+    grab('dropImageFile'), grab('makeImagePermanent'),
   ].join('\n') + `
     this.api = { loadSessions, saveSessions, addToSession, removeFromSession, inSession, sessionState };`, ctx);
   return ctx;
@@ -202,6 +204,14 @@ app.whenReady().then(async () => {
        document.querySelectorAll('.section-label').length + '');
     ok('the session being collected into is marked on the rail',
        !!document.querySelector('.rail-item.session .rec'), '');
+    ok('the active collection banner is visible',
+       document.getElementById('collectionBanner').classList.contains('show'), '');
+    ok('the active collection banner names the collection',
+       document.getElementById('collectionBannerName').textContent === 'Redesign',
+       document.getElementById('collectionBannerName').textContent);
+    ok('the active collection banner shows collection size',
+       document.getElementById('collectionBannerCount').textContent === '2',
+       document.getElementById('collectionBannerCount').textContent);
 
     goTo('ses1');
     ok('the header names the session', document.getElementById('scopeName').textContent === 'Redesign',
@@ -218,22 +228,25 @@ app.whenReady().then(async () => {
        inSes.querySelector('[data-act=\\"del\\"]').title.includes('delete from Stash'),
        inSes.querySelector('[data-act=\\"del\\"]').title);
 
-    // the session button is the membership editor, and shows this clip is held
+    // Standing inside a collection, the only collection the button can mean is
+    // this one, so it stops being the membership menu and becomes the way out:
+    // one press, no list to read.
     const sesMenu = document.getElementById('sesMenu');
-    ok('a clip in a session says so on its session button',
-       inSes.querySelector('[data-act=\\"ses\\"]').classList.contains('in-session'), '');
-    inSes.querySelector('[data-act=\\"ses\\"]').click();
+    ok('inside a collection the button is a way out of it',
+       !!inSes.querySelector('[data-act=\\"unses\\"]'), '');
+    ok('and no menu button, which would only list where you are standing',
+       !inSes.querySelector('[data-act=\\"ses\\"]'), '');
+    inSes.querySelector('[data-act=\\"unses\\"]').click();
     await tick();
-    ok('the session button opens a list', sesMenu.classList.contains('show'), '');
-    const held = sesMenu.querySelector('button[data-session=\\"ses1\\"]');
-    ok('with the session it is already in ticked', held && held.classList.contains('on'),
-       held ? held.className : 'missing');
-    held.click();
-    await tick();
-    ok('picking a ticked session takes the clip out of it',
+    ok('pressing it takes the clip out of this collection',
        JSON.stringify(calls[calls.length - 1]) === '[\\"remove\\",\\"sc1\\",\\"ses1\\"]',
        JSON.stringify(calls[calls.length - 1]));
-    ok('and the list puts itself away', !sesMenu.classList.contains('show'), '');
+    ok('and the row leaves with it', !rows().some(r => r.dataset.id === 'sc1'),
+       rows().map(r => r.dataset.id).join(','));
+    // put it back — the rest of this suite still expects both clips in ses1
+    sessionClips.unshift({ id: 'sc1', sessionId: 'ses1', type: 'text',
+                           content: 'collected while working', ts: Date.now() });
+    render();
 
     // an ordinary clip can be put into any session, not only the collected one
     goTo('all');

@@ -33,6 +33,9 @@ function freshContext() {
     pinnedStorePath,
     pinned: [], history: [],
     refreshTrayMenu: () => {},
+    // pinning and prompting take a clip out of history, which now means out of
+    // the log too. The log itself has its own suite; here it only has to exist.
+    historyStore: { add() {}, remove() {}, clear() {} },
   };
   vm.createContext(ctx);
   vm.runInContext(
