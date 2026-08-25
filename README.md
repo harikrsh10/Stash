@@ -151,6 +151,10 @@ merely talks about SVG stays a document.
 Both carry their own badge, so a row says what it is rather than what it happens
 to be made of.
 
+A frame is not a file and cannot be made into one, so **dragging one puts it back
+on the clipboard** and says which key finishes the job, rather than handing the
+target app a .txt it will refuse. SVG, being a real file, still drags as one.
+
 ---
 
 ## Where a clip came from
@@ -316,7 +320,7 @@ npm run dev
 npm test
 ```
 
-784 assertions, about a minute. They drive the real renderer in a hidden window
+797 assertions, about a minute. They drive the real renderer in a hidden window
 rather than a copy of it — see [test/README.md](test/README.md).
 
 ### Package for distribution

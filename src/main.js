@@ -601,6 +601,8 @@ let sourceApp = createSourceApp({
     fs.writeFileSync(p, body, 'utf8');
     return p;
   },
+  // Only worth a second process for an app we have no icon for yet.
+  needsPath: (name) => !Object.prototype.hasOwnProperty.call(sourceIcons, name),
   // macOS asks per copy instead of keeping a helper alive; see source-app.js.
   runOnce: (cmd, args) => new Promise((resolve, reject) => {
     require('child_process').execFile(cmd, args, { timeout: 2000 }, (err, stdout) => {
@@ -2007,6 +2009,22 @@ function dragIcon(paths) {
 }
 
 ipcMain.on('ondragstart', (event, entry) => {
+  // A Figma frame is not a file and cannot be made into one -- its payload is a
+  // clipboard flavour that only Figma's own paste handler can read. Dragging it
+  // out wrote a .txt of the frame's *text*, which Figma then refused to import,
+  // and the refusal was the first anyone heard about it. So the gesture does
+  // the thing the user meant instead: puts the frame back on the clipboard, and
+  // says which key finishes the job.
+  if (entry && entry.asset === 'figma') {
+    writeClip(entry, false);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('clip:pasteInstead', {
+        reason: 'figma',
+        key: process.platform === 'darwin' ? '⌘V' : 'Ctrl+V',
+      });
+    }
+    return;
+  }
   try {
     const filepath = materializeForDrag(entry);
     event.sender.startDrag({ file: filepath, icon: dragIcon([filepath]) });

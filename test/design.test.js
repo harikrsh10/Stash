@@ -96,6 +96,50 @@ ok('with the source intact', fs.readFileSync(svgFile, 'utf8') === SVG, '');
 const textFile = ctx.materializeForDrag({ type: 'text', content: 'just words' }, 1);
 ok('a text clip is still a .txt', textFile.endsWith('.txt'), textFile);
 
+// ---------- dragging a frame ----------
+// A frame is not a file and cannot be made into one: its payload is a clipboard
+// flavour only Figma's paste handler reads. Dragging one used to write a .txt of
+// the frame's *text*, and the first anyone heard about it was Figma refusing to
+// import it. The drag now does what the gesture meant instead.
+const dragHandler = MAIN.match(/ipcMain\.on\('ondragstart',[\s\S]*?\n\}\);/);
+ok('the single-clip drag handler is still findable', !!dragHandler, '');
+if (dragHandler) {
+  const wrote = [];
+  const sent = [];
+  const dctx = {
+    fs, path, TMP_DIR, console, extensionFor,
+    process: { platform: 'darwin' },
+    writeClip: (entry, plain) => wrote.push({ id: entry.id, plain }),
+    materializeForDrag: () => { throw new Error('a frame must not be made into a file'); },
+    dragIcon: () => ({}),
+    mainWindow: { isDestroyed: () => false, webContents: { send: (...a) => sent.push(a) } },
+    ipcMain: { on: (_name, fn) => { dctx.handler = fn; } },
+  };
+  vm.createContext(dctx);
+  vm.runInContext(dragHandler[0], dctx);
+
+  const dragged = [];
+  const event = { sender: { startDrag: (o) => dragged.push(o) } };
+  dctx.handler(event, { id: 'frame1', type: 'text', content: 'Frame 12', asset: 'figma' });
+
+  ok('dragging a frame does not start a file drag', dragged.length === 0,
+     JSON.stringify(dragged));
+  ok('it puts the frame back on the clipboard instead',
+     wrote.length === 1 && wrote[0].id === 'frame1', JSON.stringify(wrote));
+  ok('with its formatting, which is where the frame lives',
+     wrote[0] && wrote[0].plain === false, JSON.stringify(wrote[0]));
+  ok('and the drawer is told to say so',
+     sent.length === 1 && sent[0][0] === 'clip:pasteInstead', JSON.stringify(sent));
+  ok('naming the key that finishes the job',
+     sent[0] && sent[0][1] && sent[0][1].key === '⌘V', JSON.stringify(sent[0] && sent[0][1]));
+
+  // everything else still drags as a file
+  dctx.materializeForDrag = (e) => path.join(TMP_DIR, 'x.txt');
+  dctx.handler(event, { id: 'plain1', type: 'text', content: 'just words' });
+  ok('an ordinary clip still drags out as a file', dragged.length === 1,
+     JSON.stringify(dragged.length));
+}
+
 fs.rmSync(TMP_DIR, { recursive: true, force: true });
 
 let failed = 0;

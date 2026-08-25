@@ -68,6 +68,8 @@ contextBridge.exposeInMainWorld('api', {
   // we worked out which app a clip was copied out of
   onClipSourced: (cb) => ipcRenderer.on('clip:sourced', (_e, id, app, icon) => cb(id, app, icon)),
   onSkipped: (cb) => ipcRenderer.on('clip:skipped', (_e, info) => cb(info)),
+  // this clip pastes rather than drags, and has been put on the clipboard
+  onPasteInstead: (cb) => ipcRenderer.on('clip:pasteInstead', (_e, info) => cb(info)),
   onPauseChanged: (cb) => ipcRenderer.on('paused:changed', (_e, v) => cb(v)),
   onHistoryCleared: (cb) => ipcRenderer.on('history:cleared', () => cb()),
   onStateUpdated: (cb) => ipcRenderer.on('state:updated', (_e, state) => cb(state)),

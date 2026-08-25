@@ -3,7 +3,8 @@
 // happens when the helper misbehaves — not whether Windows can name a window.
 const { EventEmitter } = require('events');
 const { createSourceApp, isIgnored, tidyAppName, parseLsAppInfoName,
-        MAC_FRONT_CMD, MAC_FRONT_FULL_CMD, parseLsAppInfoPath } = require('../src/source-app');
+        MAC_FRONT_CMD, MAC_FRONT_FULL_CMD, MAC_FRONT_PATH_CMD,
+        parseLsAppInfoPath } = require('../src/source-app');
 
 const checks = [];
 const ok = (name, pass, detail = '') => checks.push([name, pass, detail]);
@@ -183,17 +184,28 @@ ok('surrounding whitespace goes', tidyAppName('  Figma  ') === 'Figma', '');
   // Everything here is real except lsappinfo itself, which cannot run on the
   // machine this was written on. The command sent to the shell is asserted
   // exactly, so at least the thing that would be run is pinned down.
-  function macHarness(reply) {
+  // `reply` may be one answer for everything, or one per command.
+  function macHarness(reply, opts = {}) {
     const calls = [];
     const sa = createSourceApp({
       platform: 'darwin',
       spawn: () => { throw new Error('macOS must not spawn a resident helper'); },
       writeScript: () => { throw new Error('macOS must not write a script'); },
-      runOnce: (cmd, args) => { calls.push([cmd, args]); return Promise.resolve(reply); },
+      runOnce: (cmd, args) => {
+        calls.push([cmd, args]);
+        const out = typeof reply === 'function' ? reply(args[1]) : reply;
+        return Promise.resolve(out);
+      },
       onError: () => {},
+      ...opts,
     });
     return { sa, calls };
   }
+  const macReplies = (name, bundlePath) => (cmd) => {
+    if (cmd === MAC_FRONT_CMD) return name ? '"LSDisplayName"="' + name + '"' : '';
+    if (cmd === MAC_FRONT_PATH_CMD) return bundlePath ? '"bundlepath"="' + bundlePath + '"' : '';
+    return '';
+  };
 
   let m = macHarness('"LSDisplayName"="Figma"\n');
   const macAnswer = await m.sa.current();
@@ -202,7 +214,7 @@ ok('surrounding whitespace goes', tidyAppName('  Figma  ') === 'Figma', '');
   ok('without keeping anything alive', m.sa.running === false, '');
   ok('asking through a shell so lsappinfo can feed itself',
      m.calls[0][0] === '/bin/sh' && m.calls[0][1][0] === '-c'
-       && m.calls[0][1][1] === MAC_FRONT_FULL_CMD,
+       && m.calls[0][1][1] === MAC_FRONT_CMD,
      JSON.stringify(m.calls[0]));
   // lsappinfo prints its ASN already quoted and command substitution keeps the
   // quotes, so without stripping them the argument carries literal quote
@@ -241,33 +253,57 @@ ok('surrounding whitespace goes', tidyAppName('  Figma  ') === 'Figma', '');
   // The full info block is asked for first because it carries the path. If it
   // answers with something unreadable the narrow command is tried instead, so
   // a Mac that only speaks the old shape still gets names.
-  const full = '"LSDisplayName"="Figma"\n  bundle path="/Applications/Figma.app"\n';
-  m = macHarness(full);
+  // The name and the path are asked the same narrow way. The first attempt at
+  // this asked for the whole info block instead and got back something that
+  // would not parse, which is how Macs ended up with names and no icons.
+  m = macHarness(macReplies('Figma', '/Applications/Figma.app'));
   const withPath = await m.sa.current();
-  ok('the full block gives both the name and the path',
-     withPath && withPath.name === 'Figma' && withPath.path === '/Applications/Figma.app',
+  ok('the name comes back', withPath && withPath.name === 'Figma', JSON.stringify(withPath));
+  ok('and the bundle path with it', withPath && withPath.path === '/Applications/Figma.app',
      JSON.stringify(withPath));
-  ok('and it is asked for first', m.calls[0][1][1] === MAC_FRONT_FULL_CMD, m.calls[0][1][1]);
+  ok('the name is asked for first', m.calls[0][1][1] === MAC_FRONT_CMD, m.calls[0][1][1]);
+  ok('and the path second, the same narrow way',
+     m.calls[1] && m.calls[1][1][1] === MAC_FRONT_PATH_CMD,
+     m.calls[1] ? m.calls[1][1][1] : 'never asked');
 
-  // the fallback: full block unreadable, narrow command still answers
+  // a path that will not come costs an icon and nothing else
+  m = macHarness(macReplies('Safari', null));
+  const noBundle = await m.sa.current();
+  ok('an app whose path will not come still gives its name',
+     noBundle && noBundle.name === 'Safari' && noBundle.path === null, JSON.stringify(noBundle));
+
+  // and one that errors outright is the same
   {
-    const calls = [];
     const sa = createSourceApp({
       platform: 'darwin',
-      runOnce: (cmd, args) => {
-        calls.push(args[1]);
-        return Promise.resolve(args[1] === MAC_FRONT_FULL_CMD
-          ? 'something this cannot read'
-          : '"LSDisplayName"="Safari"');
-      },
+      runOnce: (cmd, args) => args[1] === MAC_FRONT_CMD
+        ? Promise.resolve('"LSDisplayName"="Notes"')
+        : Promise.reject(new Error('lsappinfo: unknown key')),
       onError: () => {},
     });
-    const fell = await sa.current();
-    ok('an unreadable full block falls back to the narrow command',
-       fell && fell.name === 'Safari' && fell.path === null, JSON.stringify(fell));
-    ok('having tried the full one first', calls[0] === MAC_FRONT_FULL_CMD && calls.length === 2,
-       JSON.stringify(calls.length));
+    const errored = await sa.current();
+    ok('a path lookup that fails outright still gives the name',
+       errored && errored.name === 'Notes' && errored.path === null, JSON.stringify(errored));
   }
+
+  // an app we already hold an icon for is not asked about twice
+  m = macHarness(macReplies('Figma', '/Applications/Figma.app'), { needsPath: () => false });
+  const cached = await m.sa.current();
+  ok('an app whose icon is already held costs one process, not two',
+     m.calls.length === 1, m.calls.length + ' calls');
+  ok('and still names itself', cached && cached.name === 'Figma', JSON.stringify(cached));
+
+  // Ground truth: this is what a Mac actually printed for
+  // `lsappinfo info -only bundlepath`. The key asked for is `bundlepath` and
+  // the key returned is `LSBundlePath`, which no amount of reasoning would
+  // have produced.
+  ok('the real thing a mac prints back parses',
+     parseLsAppInfoPath('"LSBundlePath"="/System/Applications/Utilities/Terminal.app"')
+       === '/System/Applications/Utilities/Terminal.app',
+     parseLsAppInfoPath('"LSBundlePath"="/System/Applications/Utilities/Terminal.app"'));
+  ok('and an ordinary app bundle the same way',
+     parseLsAppInfoPath('"LSBundlePath"="/Applications/Comet.app"') === '/Applications/Comet.app',
+     parseLsAppInfoPath('"LSBundlePath"="/Applications/Comet.app"'));
 
   // the path parser copes with the spellings lsappinfo has used
   ok('bundle path with a space in the key',
