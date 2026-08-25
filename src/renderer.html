@@ -680,6 +680,8 @@
     }
     /* why a picture is in the results for a word that is nowhere on its row */
     .in-image { color: var(--session); }
+    /* where a clip came from, quiet enough not to compete with the clip */
+    .from-app { color: var(--muted2); }
     .ocr-hit {
       margin-top: 6px;
       padding: 5px 8px;
@@ -2494,6 +2496,16 @@
       if (touched && searchQuery) render();
     }
 
+    // Which app a clip was copied out of, worked out a moment after it arrived.
+    // Unlike text inside a picture this shows on the row, so it always redraws.
+    function applySourceApp(id, app) {
+      let touched = false;
+      [history, pinned, sessionClips].forEach(store => {
+        store.forEach(c => { if (c.id === id) { c.sourceApp = app; touched = true; } });
+      });
+      if (touched) render();
+    }
+
     // What a search looks at. A picture's content is its filename, which nobody
     // remembers; what they remember is what was *in* it, which is why the text
     // read out of it is searched too. A name the user gave it counts as well —
@@ -2502,6 +2514,9 @@
       if (!searchQuery) return true;
       if (String(c.content || '').toLowerCase().includes(searchQuery)) return true;
       if (String(c.name || '').toLowerCase().includes(searchQuery)) return true;
+      // "figma" should find what you copied out of Figma, which is how people
+      // actually go looking for something they half-remember.
+      if (String(c.sourceApp || '').toLowerCase().includes(searchQuery)) return true;
       return String(c.ocrText || '').toLowerCase().includes(searchQuery);
     }
 
@@ -2512,6 +2527,7 @@
       if (!searchQuery || c.type !== 'img') return false;
       if (String(c.content || '').toLowerCase().includes(searchQuery)) return false;
       if (String(c.name || '').toLowerCase().includes(searchQuery)) return false;
+      if (String(c.sourceApp || '').toLowerCase().includes(searchQuery)) return false;
       return String(c.ocrText || '').toLowerCase().includes(searchQuery);
     }
 
@@ -4182,6 +4198,13 @@
         }
       }
 
+      // Where it came from, on every kind of row. People remember the app long
+      // after they have forgotten the words, so this is the strongest handle on
+      // a history thousands of clips deep.
+      if (c.sourceApp) {
+        metaParts.push(`<span class="dot">·</span><span class="from-app">${esc(c.sourceApp)}</span>`);
+      }
+
       // A name the user set outranks the derived headline. What it displaces
       // isn't dropped: an image's dimensions move to the meta line, and any
       // other type keeps its preview underneath. Nothing visible is lost by
@@ -4629,6 +4652,7 @@
     });
 
     window.api.onClipIndexed(applyIndexedText);
+    window.api.onClipSourced(applySourceApp);
 
     // listen for skipped (secret-looking) clips — pulse the footer dot briefly
     const skipPulse = document.getElementById('skipPulse');

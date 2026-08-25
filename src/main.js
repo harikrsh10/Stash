@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const { pathToFileURL } = require('url');
 const { createHistoryStore } = require('./history-store');
 const { createOcrIndexer, sanitizeOcrText } = require('./ocr-index');
+const { createSourceApp } = require('./source-app');
 
 const isDev = process.argv.includes('--dev');
 // History is written down now, so the cap is about what a person could
@@ -56,6 +57,7 @@ let settings = {
   appearance: 'system',     // system | dark | light
   rememberHistory: true,    // write history to disk; off returns it to memory-only
   indexImageText: true,     // read the text in pictures so it can be searched for
+  recordSourceApp: true,    // remember which app a clip was copied out of
 };
 
 // Setting themeSource is what flips prefers-color-scheme inside the windows, so
@@ -359,6 +361,18 @@ function refreshTrayMenu() {
         refreshTrayMenu();
       },
     },
+    ...(sourceApp && sourceApp.supported ? [{
+      label: 'Remember which app a clip came from',
+      type: 'checkbox',
+      checked: settings.recordSourceApp !== false,
+      click: (item) => {
+        settings.recordSourceApp = item.checked;
+        saveSettings();
+        // Switching it off should stop the helper too, not merely stop asking.
+        if (!item.checked && sourceApp) sourceApp.stop();
+        refreshTrayMenu();
+      },
+    }] : []),
     // Nothing to offer where there is no OS engine to do the reading.
     ...(ocrIndexingAvailable() ? [{
       label: 'Search text inside images',
@@ -576,23 +590,59 @@ function savePinned() {
 // Null until the app is ready and we know whether the platform can do it.
 let ocrIndexer = null;
 
-// Put extracted text on every copy of a clip and write down whichever stores
-// hold it. Used by the background queue and by reading a picture by hand.
-function rememberOcrText(id, raw) {
-  if (settings.indexImageText === false) return;
-  const text = sanitizeOcrText(raw, looksSecret);
+// Which app was in front when something was copied. The helper behind this is
+// started on the first copy rather than at launch, so an app that is opened and
+// never used costs nothing.
+let sourceApp = createSourceApp({
+  spawn: require('child_process').spawn,
+  writeScript: (body) => {
+    const p = path.join(TMP_DIR, 'stash-source-app.ps1');
+    fs.writeFileSync(p, body, 'utf8');
+    return p;
+  },
+  onError: (err) => console.error('[Stash] source app helper:', err.message),
+});
+
+// The same clip can be held in history, in pinned and in any number of
+// collections at once, so learning something about it means learning it about
+// every copy. Writes down whichever stores hold it. Returns false when the clip
+// has gone -- deleted, or aged out, while whatever discovered this was working.
+function updateClipEverywhere(id, patch) {
   let inHistory = false, inPinned = false, inSessions = false;
-  history.forEach(h => { if (h.id === id) { h.ocrText = text; inHistory = true; } });
-  pinned.forEach(p => { if (p.id === id) { p.ocrText = text; inPinned = true; } });
-  sessionClips.forEach(s => { if (s.id === id) { s.ocrText = text; inSessions = true; } });
-  if (!inHistory && !inPinned && !inSessions) return;
+  history.forEach(h => { if (h.id === id) { Object.assign(h, patch); inHistory = true; } });
+  pinned.forEach(p => { if (p.id === id) { Object.assign(p, patch); inPinned = true; } });
+  sessionClips.forEach(s => { if (s.id === id) { Object.assign(s, patch); inSessions = true; } });
+  if (!inHistory && !inPinned && !inSessions) return false;
   if (inHistory) history.forEach(h => { if (h.id === id) historyStore.add(h); });
   if (inPinned) savePinned();
   if (inSessions) saveSessions();
+  return true;
+}
+
+// Put extracted text on every copy of a clip. Used by the background queue and
+// by reading a picture by hand.
+function rememberOcrText(id, raw) {
+  if (settings.indexImageText === false) return;
+  const text = sanitizeOcrText(raw, looksSecret);
+  if (!updateClipEverywhere(id, { ocrText: text })) return;
   if (ocrIndexer) ocrIndexer.forget(id);
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('clip:indexed', id, text);
   }
+}
+
+// Where a clip came from. Asked after the clip is already captured, because the
+// answer takes about ten milliseconds and a copy should never wait on it.
+function attachSourceApp(entry) {
+  if (!sourceApp || !sourceApp.supported || settings.recordSourceApp === false) return;
+  if (!entry || !entry.id) return;
+  sourceApp.current().then((app) => {
+    if (!app || !app.name) return;
+    if (!updateClipEverywhere(entry.id, { sourceApp: app.name })) return;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('clip:sourced', entry.id, app.name);
+    }
+  }).catch(() => { /* not knowing where it came from must never cost the clip */ });
 }
 
 function ocrIndexingAvailable() {
@@ -1493,6 +1543,7 @@ function addEntry(entry) {
   }
   if (dockWindow && dockWindow.isVisible()) refreshDock();
   refreshTrayMenu();
+  attachSourceApp(entry);
 }
 
 // ---------- ipc ----------
@@ -2717,6 +2768,9 @@ app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   if (pollTimer) clearInterval(pollTimer);
   stopScreenshotWatcher();
+  if (ocrIndexer) ocrIndexer.stop();
+  // the helper is a separate process and will not go on its own
+  if (sourceApp) sourceApp.stop();
   // Clean up temp drag files, but leave pinned-images directory alone
   const pinnedImagePaths = new Set(pinned.filter(p => p.filepath).map(p => p.filepath));
   try {
