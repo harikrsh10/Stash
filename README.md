@@ -45,6 +45,7 @@ See [all releases](https://github.com/harikrsh10/Stash/releases) for older versi
 - **Auto-paste from dock** (optional, off by default) — when enabled, picking an item from the dock automatically pastes it into the focused app. Requires Accessibility permission on macOS
 - **Collections from any row** — the collection button lists every collection, ticking the ones already holding that clip. Pick one to add it, pick a ticked one to take it out. Delete always means delete from Stash, wherever you're standing
 - **Search finds words inside your screenshots**, not just what you copied as text — see below
+- **Every clip remembers which app it came from** (Windows) — and you can search by it
 - Search, filter by type (including "pinned" and "prompt"), delete individual items or clear all
 - **Pause capture** — toggle the live/paused indicator in the titlebar (or from the tray menu) when you're copying sensitive stuff you don't want recorded. Anything copied while paused stays ignored after you resume.
 - **Re-copy promotion** — if you copy the same thing again, it flashes and bumps to the top instead of being dropped as a duplicate
@@ -121,6 +122,32 @@ Windows OCR and Apple's Vision framework. A bundled engine was tried first and
 read 6 of 26 words on a dark marketing screenshot where Windows read 22.
 
 **This needs macOS or Windows.** There's no bundled engine to fall back on.
+
+---
+
+## Where a clip came from
+
+Every clip records the app it was copied out of, and it shows on the row:
+*Figma*, *Google Chrome*, *Terminal*. You can search for it too — typing
+`figma` finds what you copied out of Figma, which is how people actually go
+looking for something they half-remember.
+
+The clipboard carries none of this, so it has to be asked of the OS, and asking
+is not free: on Windows the answer needs P/Invoke, which means PowerShell, which
+means about 430ms of shell startup plus 570ms compiling the interop type. Doing
+that on every copy would be absurd. So a small helper is started once — on your
+first copy, not at launch — and then answers in about ten milliseconds. It is
+stopped again after ten minutes of nothing being copied, rather than sitting
+there all night.
+
+- Asked *after* the clip is safely captured, so a copy never waits on it
+- Copying inside Stash records nothing; a round trip is not provenance
+- If the helper is slow, missing or broken, the clip simply has no source app
+  and everything else carries on
+- Tray menu → *Remember which app a clip came from* turns it off
+
+**Windows only for now.** macOS needs a different mechanism and doesn't have one
+here yet, so clips on a Mac carry no source app.
 
 ---
 
@@ -252,7 +279,7 @@ npm run dev
 npm test
 ```
 
-677 assertions, about a minute. They drive the real renderer in a hidden window
+714 assertions, about a minute. They drive the real renderer in a hidden window
 rather than a copy of it — see [test/README.md](test/README.md).
 
 ### Package for distribution

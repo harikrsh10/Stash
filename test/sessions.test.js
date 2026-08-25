@@ -111,6 +111,8 @@ Object.assign(cap, {
   dockWindow: null,
   refreshDock: () => {},
   refreshTrayMenu: () => {},
+  // capture also asks which app was in front; that has its own suite
+  attachSourceApp: () => {},
 });
 vm.runInContext([grab('collectIfActive'), grab('addEntry')].join('\n')
   + '\nthis.api.collectIfActive = collectIfActive; this.api.addEntry = addEntry;', cap);

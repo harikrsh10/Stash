@@ -65,6 +65,8 @@ contextBridge.exposeInMainWorld('api', {
   onPromoted: (cb) => ipcRenderer.on('clip:promoted', (_e, entry, collected) => cb(entry, collected)),
   // a picture's text has been read, and search can now reach it
   onClipIndexed: (cb) => ipcRenderer.on('clip:indexed', (_e, id, text) => cb(id, text)),
+  // we worked out which app a clip was copied out of
+  onClipSourced: (cb) => ipcRenderer.on('clip:sourced', (_e, id, app) => cb(id, app)),
   onSkipped: (cb) => ipcRenderer.on('clip:skipped', (_e, info) => cb(info)),
   onPauseChanged: (cb) => ipcRenderer.on('paused:changed', (_e, v) => cb(v)),
   onHistoryCleared: (cb) => ipcRenderer.on('history:cleared', () => cb()),
