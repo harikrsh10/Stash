@@ -600,7 +600,14 @@ let sourceApp = createSourceApp({
     fs.writeFileSync(p, body, 'utf8');
     return p;
   },
-  onError: (err) => console.error('[Stash] source app helper:', err.message),
+  // macOS asks per copy instead of keeping a helper alive; see source-app.js.
+  runOnce: (cmd, args) => new Promise((resolve, reject) => {
+    require('child_process').execFile(cmd, args, { timeout: 2000 }, (err, stdout) => {
+      if (err) reject(err);
+      else resolve(stdout);
+    });
+  }),
+  onError: (err) => console.error('[Stash] source app:', err.message),
 });
 
 // The same clip can be held in history, in pinned and in any number of
