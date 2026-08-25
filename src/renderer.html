@@ -4687,6 +4687,15 @@
     window.api.onClipIndexed(applyIndexedText);
     window.api.onClipSourced(applySourceApp);
 
+    // A frame cannot be dragged anywhere useful, so the drag put it on the
+    // clipboard instead and this says what finishes the job. Held longer than
+    // an ordinary toast because it is an instruction, not an acknowledgement.
+    window.api.onPasteInstead((info) => {
+      toast(`frame copied — press ${(info && info.key) || 'Ctrl+V'} in Figma`);
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove('show'), 4000);
+    });
+
     // listen for skipped (secret-looking) clips — pulse the footer dot briefly
     const skipPulse = document.getElementById('skipPulse');
     let skipTimer;

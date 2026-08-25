@@ -120,12 +120,27 @@ const MAC_FRONT_CMD = 'lsappinfo info -only name "$(lsappinfo front | tr -d \'"\
 // a Mac that does not answer this simply goes without icons.
 const MAC_FRONT_FULL_CMD = 'lsappinfo info "$(lsappinfo front | tr -d \'"\')"';
 
-// Where the app lives, so its icon can be asked for. lsappinfo has printed
-// this key under more than one spelling across releases, so all the shapes
-// seen in the wild are accepted rather than betting on one.
+// Where the front app lives, asked the same way its name is asked. The first
+// attempt at this used the whole info block instead, on the theory that one
+// call is tidier than two -- and it came back with something that would not
+// parse, so Macs got names and no icons. The narrow form is the one shape
+// known to answer, so the path uses it too rather than a second guess.
+const MAC_FRONT_PATH_CMD = 'lsappinfo info -only bundlepath "$(lsappinfo front | tr -d \'"\')"';
+
+// Where the app lives, so its icon can be asked for.
+//
+// The key asked for is `bundlepath` and the key printed back is `LSBundlePath`,
+// which is not a spelling anyone would guess -- it came from running the thing
+// on a Mac:
+//
+//   "LSBundlePath"="/System/Applications/Utilities/Terminal.app"
+//
+// That exact shape is matched first. The looser patterns under it stay as
+// insurance for other macOS versions, since one machine is one data point.
 function parseLsAppInfoPath(stdout) {
   const text = String(stdout || '');
   const patterns = [
+    /"LSBundlePath"\s*=\s*"([^"]+)"/,
     /"?bundle\s*path"?\s*=\s*"([^"]+)"/i,
     /"?bundlepath"?\s*=\s*"([^"]+)"/i,
     /"?CFBundlePath"?\s*=\s*"([^"]+)"/i,
@@ -144,6 +159,10 @@ function createSourceApp({
   spawn,                 // (cmd, args, opts) -> ChildProcess       [windows]
   writeScript,           // (contents) -> path on disk              [windows]
   runOnce,               // (cmd, args) -> Promise<stdout>          [macos]
+  // Whether this app's location is still worth asking for. The caller knows
+  // whether it already holds an icon; asking again per copy would be two
+  // processes for an answer already on hand.
+  needsPath = () => true,
   selfPid = process.pid,
   idleStopMs = IDLE_STOP_MS,
   queryTimeoutMs = QUERY_TIMEOUT_MS,
@@ -226,15 +245,18 @@ function createSourceApp({
       const done = (v) => { if (!settled) { settled = true; resolve(v); } };
       const timer = setTimer(() => done(null), queryTimeoutMs);
       Promise.resolve()
-        // The full block first: it carries the bundle path an icon needs.
-        .then(() => runOnce('/bin/sh', ['-c', MAC_FRONT_FULL_CMD]).catch(() => ''))
-        .then((full) => {
-          const name = tidyAppName(parseLsAppInfoName(full));
-          if (name) return { name, path: parseLsAppInfoPath(full) || null };
-          // Whatever that printed, it was not what we can read. Fall back to
-          // the narrow command, which is the one known to answer.
-          return runOnce('/bin/sh', ['-c', MAC_FRONT_CMD])
-            .then((out) => ({ name: tidyAppName(parseLsAppInfoName(out)), path: null }));
+        .then(() => runOnce('/bin/sh', ['-c', MAC_FRONT_CMD]))
+        .then((out) => {
+          const name = tidyAppName(parseLsAppInfoName(out));
+          // The path is only wanted for an icon, and only for an app we have
+          // not already got one for, so most copies never ask the second
+          // question at all.
+          if (!name || isIgnored(name) || !needsPath(name)) return { name, path: null };
+          return runOnce('/bin/sh', ['-c', MAC_FRONT_PATH_CMD])
+            // A path that will not come is an icon that will not appear, and
+            // nothing worse: the name is already in hand.
+            .catch(() => '')
+            .then((pathOut) => ({ name, path: parseLsAppInfoPath(pathOut) || null }));
         })
         .then(({ name, path: appPath }) => {
           clearTimer(timer);
@@ -324,4 +346,4 @@ function createSourceApp({
 
 module.exports = { createSourceApp, isIgnored, tidyAppName, parseLsAppInfoName,
                    parseLsAppInfoPath, IGNORED, WIN_HELPER_PS1, MAC_FRONT_CMD,
-                   MAC_FRONT_FULL_CMD, IDLE_STOP_MS };
+                   MAC_FRONT_FULL_CMD, MAC_FRONT_PATH_CMD, IDLE_STOP_MS };
