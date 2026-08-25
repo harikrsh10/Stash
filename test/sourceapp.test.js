@@ -3,7 +3,7 @@
 // happens when the helper misbehaves — not whether Windows can name a window.
 const { EventEmitter } = require('events');
 const { createSourceApp, isIgnored, tidyAppName, parseLsAppInfoName,
-        MAC_FRONT_CMD } = require('../src/source-app');
+        MAC_FRONT_CMD, MAC_FRONT_FULL_CMD, parseLsAppInfoPath } = require('../src/source-app');
 
 const checks = [];
 const ok = (name, pass, detail = '') => checks.push([name, pass, detail]);
@@ -76,10 +76,20 @@ ok('surrounding whitespace goes', tidyAppName('  Figma  ') === 'Figma', '');
 
   // the helper announces itself before it can answer
   h.last().say('ready');
-  h.last().say('4321\tFigma');
+  h.last().say('4321\tFigma\tC:\\Apps\\Figma\\Figma.exe');
   const answer = await p;
   ok('the app comes back with its name', answer && answer.name === 'Figma', JSON.stringify(answer));
   ok('and the pid it belongs to', answer && answer.pid === 4321, JSON.stringify(answer));
+  ok('and where it lives, so its icon can be asked for',
+     answer && answer.path === 'C:\\Apps\\Figma\\Figma.exe', JSON.stringify(answer));
+
+  // a protected process gives a name but no path; that costs an icon, not the row
+  let noPath = h.sa.current();
+  h.last().say('55\tSome Guarded App\t');
+  const guarded = await noPath;
+  ok('an app that will not give up its path still gives its name',
+     guarded && guarded.name === 'Some Guarded App' && guarded.path === null,
+     JSON.stringify(guarded));
 
   // a second ask reuses the same helper rather than paying the startup again
   const before = h.spawned.length;
@@ -192,7 +202,7 @@ ok('surrounding whitespace goes', tidyAppName('  Figma  ') === 'Figma', '');
   ok('without keeping anything alive', m.sa.running === false, '');
   ok('asking through a shell so lsappinfo can feed itself',
      m.calls[0][0] === '/bin/sh' && m.calls[0][1][0] === '-c'
-       && m.calls[0][1][1] === MAC_FRONT_CMD,
+       && m.calls[0][1][1] === MAC_FRONT_FULL_CMD,
      JSON.stringify(m.calls[0]));
   // lsappinfo prints its ASN already quoted and command substitution keeps the
   // quotes, so without stripping them the argument carries literal quote
@@ -226,6 +236,49 @@ ok('surrounding whitespace goes', tidyAppName('  Figma  ') === 'Figma', '');
   const macNoRunner = createSourceApp({ platform: 'darwin' });
   ok('a mac with no way to run anything answers null',
      (await macNoRunner.current()) === null, '');
+
+  // ---------- the bundle path, which is what an icon needs ----------
+  // The full info block is asked for first because it carries the path. If it
+  // answers with something unreadable the narrow command is tried instead, so
+  // a Mac that only speaks the old shape still gets names.
+  const full = '"LSDisplayName"="Figma"\n  bundle path="/Applications/Figma.app"\n';
+  m = macHarness(full);
+  const withPath = await m.sa.current();
+  ok('the full block gives both the name and the path',
+     withPath && withPath.name === 'Figma' && withPath.path === '/Applications/Figma.app',
+     JSON.stringify(withPath));
+  ok('and it is asked for first', m.calls[0][1][1] === MAC_FRONT_FULL_CMD, m.calls[0][1][1]);
+
+  // the fallback: full block unreadable, narrow command still answers
+  {
+    const calls = [];
+    const sa = createSourceApp({
+      platform: 'darwin',
+      runOnce: (cmd, args) => {
+        calls.push(args[1]);
+        return Promise.resolve(args[1] === MAC_FRONT_FULL_CMD
+          ? 'something this cannot read'
+          : '"LSDisplayName"="Safari"');
+      },
+      onError: () => {},
+    });
+    const fell = await sa.current();
+    ok('an unreadable full block falls back to the narrow command',
+       fell && fell.name === 'Safari' && fell.path === null, JSON.stringify(fell));
+    ok('having tried the full one first', calls[0] === MAC_FRONT_FULL_CMD && calls.length === 2,
+       JSON.stringify(calls.length));
+  }
+
+  // the path parser copes with the spellings lsappinfo has used
+  ok('bundle path with a space in the key',
+     parseLsAppInfoPath('bundle path="/Applications/Figma.app"') === '/Applications/Figma.app', '');
+  ok('bundlepath without one',
+     parseLsAppInfoPath('"bundlepath"="/Applications/Notes.app"') === '/Applications/Notes.app', '');
+  ok('and an app bundle found anywhere in the block as a last resort',
+     parseLsAppInfoPath('junk "/Applications/Some App.app" junk') === '/Applications/Some App.app',
+     parseLsAppInfoPath('junk "/Applications/Some App.app" junk'));
+  ok('nothing that looks like a path gives nothing',
+     parseLsAppInfoPath('"LSDisplayName"="Figma"') === '', parseLsAppInfoPath('"LSDisplayName"="Figma"'));
 
   // the parser on its own
   ok('the parser reads the display name',
