@@ -35,7 +35,7 @@ function freshContext() {
   vm.runInContext(
     [grabConst('TAG_MAX_LEN'), grabConst('TAG_MAX_COUNT'),
      grab('loadPinned'), grab('savePinned'), grab('makeImagePermanent'),
-     grab('normalizeTags'), grab('updatePrompt'), grab('promptItem')].join('\n') +
+     grab('normalizeTags'), grab('updatePrompt'), grab('promptable'), grab('promptItem')].join('\n') +
     `\nthis.api = { loadPinned, savePinned, normalizeTags, updatePrompt, promptItem };`, ctx);
   return ctx;
 }
@@ -126,6 +126,38 @@ app.whenReady().then(async () => {
     document.getElementById('tagFilterBtn').click();
     const menuItems = () => [...document.querySelectorAll('#tagMenu button')].map(b => b.textContent);
     ok('menu opens', document.getElementById('tagMenu').classList.contains('show'), '');
+
+    // The header it belongs to is inside a .card, and a card is overflow:hidden
+    // for its rounded corners — so a menu parented there was cut off at the
+    // card's edge with most of the tags below the cut, whatever its z-index.
+    // The only way out is not to be inside it.
+    const menuEl = document.getElementById('tagMenu');
+    ok('the menu is not inside anything that clips it',
+       !menuEl.closest('.card') && menuEl.parentElement === document.body,
+       menuEl.parentElement.tagName + '.' + menuEl.parentElement.className);
+    ok('and is positioned against the window rather than the button',
+       getComputedStyle(menuEl).position === 'fixed', getComputedStyle(menuEl).position);
+
+    // It opens upwards: the filter sits low in its card with the clips it
+    // filters directly beneath, so opening down covers them.
+    const btnBox = document.getElementById('tagFilterBtn').getBoundingClientRect();
+    const menuBox = menuEl.getBoundingClientRect();
+    // Above by preference, below only when it genuinely will not fit — which
+    // is the case here, where the test window puts the button near the top.
+    const roomAbove = btnBox.top - 6 - menuBox.height >= 8;
+    ok(roomAbove ? 'the menu opens above the button'
+                 : 'the menu drops below when there is no room above',
+       roomAbove ? menuBox.bottom <= btnBox.top : menuBox.top >= btnBox.bottom,
+       'menu ' + Math.round(menuBox.top) + '-' + Math.round(menuBox.bottom)
+       + ', button ' + Math.round(btnBox.top) + '-' + Math.round(btnBox.bottom));
+    // and wherever it went, all of it is on screen — the whole point
+    ok('the whole menu is within the window',
+       menuBox.top >= 0 && menuBox.left >= 0
+       && menuBox.bottom <= innerHeight && menuBox.right <= innerWidth,
+       [menuBox.top, menuBox.left, menuBox.bottom, menuBox.right].map(Math.round).join(' '));
+    ok('right-aligned with the button as before',
+       Math.abs(menuBox.right - btnBox.right) <= 1,
+       Math.round(menuBox.right) + ' vs ' + Math.round(btnBox.right));
     ok('menu lists every tag plus a reset', menuItems().join(',') === 'all tags,image gen,mobile,video gen',
        menuItems().join(','));
 

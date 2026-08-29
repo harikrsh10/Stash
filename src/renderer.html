@@ -211,12 +211,21 @@
       /* Transparent, not the page colour. The window is always wide enough for
          the side panel, and the half the panel is not using has to show the
          desktop through it. What paints the drawer's own background is
-         .shader-bg below, which is only as wide as the drawer. */
+         .shader-bg below, which follows the panel. */
       background: transparent;
       color: var(--text);
       font-family: var(--font-sans);
       font-size: 13px;
-      overflow: hidden;
+      /* clip, not hidden. Both cut off what sticks out, but `hidden` still
+         makes a scroll container -- one that nothing can scroll by hand and
+         the browser scrolls anyway, to bring a focused field into view.
+         The editor and the extracted-text sheet are parked below the panel on
+         a translateY(100%) when they are shut, which is enough to make the
+         page scrollable; focusing the editor's textarea then scrolled the
+         whole drawer up by the height of a sheet and took the top bar off the
+         screen with it. `clip` creates no scroll container, so there is
+         nothing to scroll and the drawer cannot be moved off its own window. */
+      overflow: clip;
       -webkit-user-select: none;
       user-select: none;
     }
@@ -236,7 +245,10 @@
     body {
       display: flex;
       justify-content: flex-end;
-      overflow: hidden;
+      /* clip rather than hidden — see html, body above. This rule is the one
+         that decides it: a later `overflow: hidden` here quietly put the
+         scroll container back. */
+      overflow: clip;
     }
     /* One scrollbar for everything that scrolls.
        Several areas had their own thin bar and the rest fell back to the
@@ -1976,10 +1988,14 @@
     .tag-filter-btn.on { color: var(--on-accent); background: var(--prompt-dim); border-color: var(--prompt-dim); }
     .tag-filter-btn .caret { font-size: 7px; opacity: 0.7; }
 
+    /* Fixed, and parented to the body rather than to the button beside it.
+       The section header lives in a .card, and a card is overflow:hidden for
+       its rounded corners -- so an absolutely positioned menu was cut off at
+       the card's edge with most of the tags below the cut. Nothing inside the
+       card can escape that, whatever its z-index. Its position is set from the
+       button's rect when it opens. */
     .tag-menu {
-      position: absolute;
-      right: 0;
-      top: 130%;
+      position: fixed;
       z-index: 30;
       min-width: 128px;
       max-height: 190px;
@@ -4069,9 +4085,18 @@
     editorBodyEl.addEventListener('blur', flushEditorContent);
     document.getElementById('editorClose').addEventListener('click', closeEditor);
 
-    // clicking anywhere else dismisses the tag dropdown
+    // A fixed menu stays where it was put while the page scrolls out from under
+    // it, leaving it pointing at nothing. Scrolling is a dismissal.
+    document.addEventListener('scroll', () => {
+      document.querySelectorAll('.tag-menu.show').forEach(m => m.classList.remove('show'));
+    }, true);
+
+    // Clicking anywhere else dismisses the tag dropdown. The menu itself has to
+    // count as "inside" — it is a child of the body now, so it is no longer
+    // inside .tag-filter and testing for that alone shut the menu on the way
+    // to picking a tag from it.
     document.addEventListener('click', (e) => {
-      if (!e.target.closest('.tag-filter')) {
+      if (!e.target.closest('.tag-filter') && !e.target.closest('.tag-menu')) {
         document.querySelectorAll('.tag-menu.show').forEach(m => m.classList.remove('show'));
       }
     });
@@ -4090,6 +4115,10 @@
     // the prompts section only — it is not a top-level filter, because a tag
     // is something a prompt has, not a kind of clip.
     function buildTagFilter() {
+      // The menu lives in the body, so it does not go away with the header it
+      // belongs to. Clear it first, including on the path where there are no
+      // tags left and no filter is built at all.
+      document.getElementById('tagMenu')?.remove();
       const tags = allTags();
       if (!tags.length) return null;
 
@@ -4126,9 +4155,31 @@
       menu.appendChild(sep);
       tags.forEach(t => addOption(t, t));
 
-      btn.addEventListener('click', () => menu.classList.toggle('show'));
+      // Above the button by preference: the filter sits low in its card with
+      // the clip list directly beneath it, so opening downwards covers the
+      // thing you are filtering. Below only if there is genuinely no room.
+      const place = () => {
+        const r = btn.getBoundingClientRect();
+        const GAP = 6;
+        menu.style.visibility = 'hidden';
+        menu.classList.add('show');
+        const h = menu.offsetHeight;
+        const fitsAbove = r.top - GAP - h >= 8;
+        menu.style.top = fitsAbove ? (r.top - GAP - h) + 'px' : (r.bottom + GAP) + 'px';
+        // right-aligned with the button, as it was when it was its child
+        menu.style.left = Math.max(8, r.right - menu.offsetWidth) + 'px';
+        menu.style.visibility = '';
+      };
+
+      btn.addEventListener('click', () => {
+        if (menu.classList.contains('show')) { menu.classList.remove('show'); return; }
+        place();
+      });
+
       wrap.appendChild(btn);
-      wrap.appendChild(menu);
+      // The menu is not in the wrap: it is in the body, which is the only way
+      // out of the card's clipping.
+      document.body.appendChild(menu);
       return wrap;
     }
 
@@ -4669,6 +4720,14 @@
       // the format each happens to be encoded in.
       const badgeKind = c.isPrompt ? 'prompt'
         : (c.asset ? 'assets' : (isColour ? 'color' : c.type));
+      // A prompt is text you mean to reuse and edit, so the offer only makes
+      // sense on text. It was on every row, which invited saving a screenshot
+      // or a copied hex as a "prompt" — something the editor cannot open and
+      // the prompt library has no use for. The badge already says what a row
+      // is: anything not badged plain text is not a candidate. An existing
+      // prompt keeps the button whatever it is, or there would be no way to
+      // stop one being a prompt.
+      const promptable = c.isPrompt || badgeKind === 'text';
       const metaHtml = `<div class="item-meta">${metaParts.join('')}</div>`;
       // tags ride under the meta line so the library can be skimmed
       const tagsHtml = (c.tags && c.tags.length)
@@ -4692,7 +4751,7 @@
           <div class="actions">
             <button class="act-btn" data-act="name" title="preview">${ICON.name}</button>
             ${c.isPrompt ? `<button class="act-btn" data-act="edit" title="edit text and tags">${ICON.edit}</button>` : ''}
-            <button class="act-btn ${c.isPrompt ? 'on' : ''}" data-act="prompt" title="${c.isPrompt ? 'stop keeping this as a prompt' : 'save as a prompt — kept forever'}">${ICON.prompt}</button>
+            ${promptable ? `<button class="act-btn ${c.isPrompt ? 'on' : ''}" data-act="prompt" title="${c.isPrompt ? 'stop keeping this as a prompt' : 'save as a prompt — kept forever'}">${ICON.prompt}</button>` : ''}
             ${c.isPrompt ? '' : `<button class="act-btn ${isPinned ? 'pinned' : ''}" data-act="pin" title="${isPinned ? 'unpin' : 'pin'}">${isPinned ? ICON.pinned : ICON.pin}</button>`}
             ${c.type === 'img' ? `<button class="act-btn" data-act="ocr" title="pull the text out of this image">${ICON.text}</button>` : ''}
             ${c.type === 'img' ? `<button class="act-btn" data-act="palette" title="pull the colours out of this image">${ICON.colour}</button>` : ''}
@@ -4820,7 +4879,9 @@
         else openEditor(c.id);
       });
 
-      el.querySelector('[data-act="prompt"]').addEventListener('click', async (e) => {
+      // optional now, like every other conditional action: the offer is only
+      // made on text, so on an image or a link there is no button to wire
+      el.querySelector('[data-act="prompt"]')?.addEventListener('click', async (e) => {
         e.stopPropagation();
         if (c.isPrompt) {
           await window.api.unmarkPrompt(c.id);

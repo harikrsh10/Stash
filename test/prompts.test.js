@@ -40,6 +40,7 @@ function freshContext() {
   vm.createContext(ctx);
   vm.runInContext(
     [grab('loadPinned'), grab('savePinned'), grab('makeImagePermanent'),
+     grab('promptable'),
      grab('promptItem'), grab('unpromptItem'), grab('pinItem'), grab('unpinItem')].join('\n') +
     `\nthis.api = { loadPinned, savePinned, promptItem, unpromptItem, pinItem, unpinItem };`,
     ctx
@@ -56,6 +57,7 @@ ok('prompt left history', s1.history.length === 1 && s1.history[0].id === 'b', s
 ok('prompt entered the persistent store', s1.pinned.length === 1 && s1.pinned[0].isPrompt === true, '');
 ok('marking twice is a no-op', s1.api.promptItem('a') === false, '');
 ok('store file written', fs.existsSync(pinnedStorePath), '');
+
 
 // simulate a full app restart: brand new context, load from disk
 const s2 = freshContext();
@@ -79,6 +81,25 @@ s4.history.push({ id: 'p', type: 'text', content: 'pinned then promoted', ts: Da
 s4.api.pinItem('p');
 ok('pin then prompt keeps a single entry', s4.api.promptItem('p') === true && s4.pinned.length === 1, s4.pinned.length + '');
 ok('promoted entry is flagged', s4.pinned[0].isPrompt === true, '');
+
+
+// A prompt is text you mean to reuse and edit. The drawer stops offering the
+// action on anything else, but the offer and the rule are different things —
+// this is reachable over IPC, and a prompt that is a screenshot is one the
+// editor cannot open.
+const s1b = freshContext();
+s1b.history.push({ id: 'img', type: 'img', filepath: 'x.png', ts: Date.now() });
+s1b.history.push({ id: 'code', type: 'code', content: 'const x = 1', ts: Date.now() });
+s1b.history.push({ id: 'url', type: 'url', content: 'https://example.com', ts: Date.now() });
+s1b.history.push({ id: 'asset', type: 'text', asset: 'svg', content: '<svg/>', ts: Date.now() });
+s1b.history.push({ id: 'txt', type: 'text', content: 'write me a changelog', ts: Date.now() });
+ok('an image cannot be made a prompt', s1b.api.promptItem('img') === false, '');
+ok('nor code', s1b.api.promptItem('code') === false, '');
+ok('nor a link', s1b.api.promptItem('url') === false, '');
+ok('nor a copied design asset', s1b.api.promptItem('asset') === false, '');
+ok('plain text still can', s1b.api.promptItem('txt') === true, '');
+ok('and only that one moved to the store',
+   s1b.pinned.length === 1 && s1b.pinned[0].id === 'txt', s1b.pinned.map(p => p.id).join(','));
 
 fs.rmSync(STORE, { recursive: true, force: true });
 
@@ -136,6 +157,20 @@ app.whenReady().then(async () => {
 
     goTo('all');
     const histRow = rows().find(r => r.dataset.id === 'h1');
+    // The offer only makes sense on text. It used to be on every row, which
+    // invited saving a screenshot or a copied hex as a "prompt" — something
+    // the editor cannot open and the library has no use for.
+    const pinRow = rows().find(r => r.dataset.id === 'pn1');
+    ok('an image row does not offer to make it a prompt',
+       !pinRow.querySelector('[data-act=\"prompt\"]'), '');
+    // and an existing prompt keeps it whatever it is, or there would be no
+    // way to stop one being a prompt
+    goTo('prompts');
+    const codePrompt = rows().find(r => r.dataset.id === 'pr2');
+    ok('a prompt that is code keeps the button, so it can be unmade',
+       !!codePrompt.querySelector('[data-act=\"prompt\"]'), '');
+    goTo('all');
+
     ok('history row has both buttons',
        !!histRow.querySelector('[data-act=\\"pin\\"]') && !!histRow.querySelector('[data-act=\\"prompt\\"]'), '');
     histRow.querySelector('[data-act=\\"prompt\\"]').click();
@@ -166,11 +201,19 @@ app.whenReady().then(async () => {
     return out;
   })()`;
 
+  // executeJavaScript reports a thrown probe as "Script failed to execute",
+  // which says nothing about what went wrong. The renderer's own console does,
+  // so listen to it and print it alongside.
+  const consoleLines = [];
+  win.webContents.on('console-message', (_e, _lvl, text) => consoleLines.push(text));
+
   let rendered;
   try {
     rendered = await win.webContents.executeJavaScript(probe, true);
   } catch (err) {
     console.log('PROBE THREW: ' + err.message);
+    consoleLines.filter(l => /error|not a function|undefined|null/i.test(l))
+      .forEach(l => console.log('  renderer: ' + l));
     app.exit(1);
     return;
   }
