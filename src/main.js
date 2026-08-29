@@ -977,8 +977,16 @@ function unpinItem(id) {
 // file, same save path, already proven) and are told apart by `isPrompt`, so a
 // prompt survives quit, restart and reboot the moment it's marked. The drawer
 // shows them as their own section, so the two never read as the same thing.
+// Text only. The drawer stops offering this on anything else, but the offer
+// and the rule are different things: this is reachable over IPC, and a prompt
+// that is a screenshot is one the editor cannot open.
+function promptable(entry) {
+  return !!entry && entry.type === 'text' && !entry.asset;
+}
+
 function promptItem(id) {
   const existing = pinned.find(p => p.id === id);
+  if (existing && !existing.isPrompt && !promptable(existing)) return false;
   if (existing) {
     if (existing.isPrompt) return false;
     existing.isPrompt = true;
@@ -990,6 +998,7 @@ function promptItem(id) {
   const idx = history.findIndex(h => h.id === id);
   if (idx === -1) return false;
   let entry = history[idx];
+  if (!promptable(entry)) return false;
   const wasAt = entry.filepath;
   entry = makeImagePermanent(entry);
   entry.isPrompt = true;

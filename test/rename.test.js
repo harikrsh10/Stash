@@ -136,7 +136,7 @@ app.whenReady().then(async () => {
     // pull out of a picture. As icons in a full-width strip they cost a little
     // width rather than crowding a floating cluster, which is what the old
     // labelled overlay could not afford.
-    const core = ['name', 'prompt', 'copy', 'del'];
+    const core = ['name', 'copy', 'del'];
     ok('every row carries the same core actions',
        core.every(a => imgActs.includes(a) && txtActs.includes(a)),
        imgActs.join(',') + ' vs ' + txtActs.join(','));
@@ -144,6 +144,12 @@ app.whenReady().then(async () => {
        imgActs.includes('ocr') && imgActs.includes('palette'), imgActs.join(','));
     ok('text offers neither, having nothing to extract',
        !txtActs.includes('ocr') && !txtActs.includes('palette'), txtActs.join(','));
+    // A prompt is text you mean to reuse and edit, so the offer is text's
+    // alone. It was part of the shared core, which invited saving a screenshot
+    // as a "prompt" — something the editor cannot open.
+    ok('only text offers to be kept as a prompt',
+       txtActs.includes('prompt') && !imgActs.includes('prompt'),
+       imgActs.join(',') + ' vs ' + txtActs.join(','));
     ok('and the old inline rename is gone from both',
        !imgActs.includes('rename') && !txtActs.includes('rename'), imgActs.join(','));
 

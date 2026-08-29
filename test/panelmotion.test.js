@@ -201,6 +201,27 @@ app.whenReady().then(async () => {
   ok('and reaches under the panel once it is out',
      bgc.open === 'inset(0px)' || bgc.open === 'inset(0%)', bgc.open);
 
+  // The drawer must not be scrollable as a page. The sheets are parked below
+  // the panel on a translateY(100%) while they are shut, which is enough to
+  // make the body scrollable — and `overflow: hidden` still makes a scroll
+  // container, one nobody can scroll by hand and the browser scrolls anyway to
+  // bring a focused field into view. Focusing the editor's textarea scrolled
+  // the whole drawer up by the height of a sheet and took the top bar off the
+  // window with it.
+  const scrollable = await win.webContents.executeJavaScript(
+    `(() => { const b = getComputedStyle(document.body).overflow;
+       const h = getComputedStyle(document.documentElement).overflow;
+       // prove it, rather than trusting the keyword: ask it to scroll
+       document.body.scrollTop = 500;
+       const moved = document.body.scrollTop;
+       document.body.scrollTop = 0;
+       return JSON.stringify({ b, h, moved }); })()`, true);
+  const sy = JSON.parse(scrollable);
+  ok('neither the page nor the body is a scroll container',
+     sy.b === 'clip' && sy.h === 'clip', sy.b + ' / ' + sy.h);
+  ok('and the drawer cannot be scrolled off its own window',
+     sy.moved === 0, 'scrollTop became ' + sy.moved);
+
   // A scrollbar is wanted while scrolling and not otherwise.
   const scroll = await win.webContents.executeJavaScript(
     `(async () => {
