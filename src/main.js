@@ -1,6 +1,6 @@
 // src/main.js — Stash main process
 // Handles: window lifecycle, global hotkey, tray, clipboard polling, native drag-out
-const { app, BrowserWindow, Tray, Menu, globalShortcut, clipboard, ipcMain, nativeImage, nativeTheme, screen, shell, powerMonitor } = require('electron');
+const { app, BrowserWindow, Tray, Menu, globalShortcut, clipboard, ipcMain, nativeImage, nativeTheme, Notification, screen, shell, powerMonitor } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -294,15 +294,24 @@ function refreshTrayMenu() {
   const promptCount = pinned.filter(p => p.isPrompt).length;
   const pinCount = pinned.length - promptCount;
   const activeSession = sessions.find(s => s.id === settings.activeSessionId);
+  // An accelerator here is a promise that the key works. While another app
+  // holds it, showing it anyway is the app telling you to press something that
+  // does nothing, so the promise is withdrawn along with the key.
+  const trouble = shortcutTrouble(shortcutState);
   const menu = Menu.buildFromTemplate([
+    ...(trouble ? [
+      { label: trouble.label, enabled: false },
+      { label: 'Try to claim it again', click: () => registerShortcuts() },
+      { type: 'separator' },
+    ] : []),
     {
       label: visible ? 'Hide Stash' : 'Show Stash',
-      accelerator: 'CommandOrControl+Shift+V',
+      ...(shortcutState.drawer ? { accelerator: 'CommandOrControl+Shift+V' } : {}),
       click: toggleWindow,
     },
     {
       label: 'Quick dock',
-      accelerator: 'CommandOrControl+Shift+Space',
+      ...(shortcutState.dock ? { accelerator: 'CommandOrControl+Shift+Space' } : {}),
       click: toggleDock,
     },
     { type: 'separator' },
@@ -746,6 +755,11 @@ function diagnosticsReport() {
   const lines = [];
   lines.push(`Stash ${app.getVersion()} · ${process.platform} · electron ${process.versions.electron}`);
   lines.push(`history ${history.length} · pinned ${pinned.length} · collections ${sessions.length}`);
+  // Which build is answering the shortcut is the first thing worth knowing when
+  // "nothing happens" -- a second copy holding the key looks exactly like a
+  // broken app from the outside.
+  lines.push(`shortcuts: drawer ${shortcutState.drawer ? 'held' : 'TAKEN BY ANOTHER APP'}`
+    + ` · dock ${shortcutState.dock ? 'held' : 'TAKEN BY ANOTHER APP'}`);
   lines.push(`source app: ${settings.recordSourceApp !== false ? 'on' : 'off'}`
     + ` · supported ${sourceApp && sourceApp.supported}`
     + ` · helper running ${sourceApp && sourceApp.running}`);
@@ -2971,6 +2985,40 @@ ipcMain.handle('shell:openExternal', (_e, url) => {
 });
 
 // ---------- lifecycle ----------
+// Which of the two shortcuts we actually hold. A shortcut belongs to whichever
+// app asked for it first, so another app -- or a second copy of Stash -- can
+// simply have it, and registering fails with a plain false.
+let shortcutState = { drawer: true, dock: true };
+// Warn on the way into trouble, not on every health check: registerShortcuts
+// runs every 30 seconds, on resume, on unlock and on a display change.
+let warnedAboutShortcuts = false;
+
+const SHORTCUT_KEYS = {
+  drawer: process.platform === 'darwin' ? 'Cmd+Shift+V' : 'Ctrl+Shift+V',
+  dock: process.platform === 'darwin' ? 'Cmd+Shift+Space' : 'Ctrl+Shift+Space',
+};
+
+// What to say about the state, or null when there is nothing wrong. Kept apart
+// from the registering so it can be tested without a running app.
+function shortcutTrouble(state) {
+  const lost = [];
+  if (!state.drawer) lost.push({ what: 'Stash', key: SHORTCUT_KEYS.drawer });
+  if (!state.dock) lost.push({ what: 'the quick dock', key: SHORTCUT_KEYS.dock });
+  if (!lost.length) return null;
+  const keys = lost.map(l => l.key).join(' and ');
+  return {
+    // the tray line, which is where someone looks when the key does nothing
+    label: lost.length === 2
+      ? 'Both shortcuts are taken by another app'
+      : `${lost[0].key} is taken by another app`,
+    title: 'Stash could not claim its shortcut',
+    body: lost.length === 2
+      ? `Another app is using ${keys}. Open Stash from the tray instead.`
+      : `Another app is using ${keys}, so it will not open ${lost[0].what}. `
+        + 'Open Stash from the tray instead.',
+  };
+}
+
 function registerShortcuts() {
   // Always unregister first to be safe — prevents accidental duplicate handlers
   try { globalShortcut.unregisterAll(); } catch (_) {}
@@ -2978,11 +3026,44 @@ function registerShortcuts() {
   const drawerReg = globalShortcut.register('CommandOrControl+Shift+V', toggleWindow);
   const dockReg = globalShortcut.register('CommandOrControl+Shift+Space', toggleDock);
 
+  const before = shortcutState;
+  shortcutState = { drawer: drawerReg, dock: dockReg };
+
   console.log(`[Stash] shortcuts registered — drawer: ${drawerReg}, dock: ${dockReg}`);
   if (!drawerReg) console.warn('[Stash] drawer hotkey registration failed (conflict?)');
   if (!dockReg) console.warn('[Stash] dock hotkey registration failed (conflict?)');
+
+  // A shortcut that does nothing and says nothing is indistinguishable from an
+  // app that has crashed. This cost a whole afternoon: a second copy of Stash
+  // held the key, every press went to it, and the only sign anywhere was a line
+  // in a log nobody reads.
+  const trouble = shortcutTrouble(shortcutState);
+  if (trouble && !warnedAboutShortcuts) {
+    warnedAboutShortcuts = true;
+    // Logged as well as shown: a notification that never appears is otherwise
+    // indistinguishable from one that was never raised, and this is the exact
+    // situation where someone is already trying to work out why nothing works.
+    console.warn(`[Stash] ${trouble.label} — ${trouble.body}`);
+    try {
+      if (Notification.isSupported()) {
+        new Notification({ title: trouble.title, body: trouble.body }).show();
+      } else {
+        console.warn('[Stash] notifications are not available to say so');
+      }
+    } catch (err) {
+      // a missing notification must never take the app with it
+      console.warn('[Stash] could not raise the shortcut notification: ' + err.message);
+    }
+  }
+  // Recovered -- the health check re-registers every 30 seconds, so quitting
+  // whatever held the key is enough. Arm the warning again for next time.
+  if (!trouble) warnedAboutShortcuts = false;
+
+  if (before.drawer !== drawerReg || before.dock !== dockReg) refreshTrayMenu();
   return drawerReg && dockReg;
 }
+
+app.setAppUserModelId('com.harikrish.stash');
 
 app.whenReady().then(() => {
   if (process.platform === 'darwin' && app.dock) app.dock.hide();
