@@ -7,9 +7,31 @@ const RENDERER = path.join(__dirname, '..', 'src', 'renderer.html');
 
 app.disableHardwareAcceleration();
 
+
+// Motion is a media query away from being switched off entirely, and a CI
+// runner has no user session, so it reports prefers-reduced-motion: reduce and
+// the stylesheet dutifully removes every transition these assertions measure.
+// The suite has to say which condition it is testing rather than inherit
+// whatever the machine happens to prefer.
+async function emulateMotion(win, value) {
+  try {
+    if (!win.webContents.debugger.isAttached()) win.webContents.debugger.attach('1.3');
+    await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', {
+      features: [{ name: 'prefers-reduced-motion', value }],
+    });
+    return true;
+  } catch (err) {
+    console.log('could not emulate prefers-reduced-motion: ' + err.message);
+    return false;
+  }
+}
+
 app.whenReady().then(async () => {
   const win = new BrowserWindow({ width: 340, height: 900, show: false });
   await win.loadFile(RENDERER);
+  // the deck settling is an animation; a runner that prefers reduced motion
+  // removes it, and the assertion then measures a thing that is not running
+  await emulateMotion(win, 'no-preference');
 
   const probe = `(async () => {
     const results = [];

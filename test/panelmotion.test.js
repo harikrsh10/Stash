@@ -20,6 +20,25 @@ const INSPECTOR_W = 520;
 const WINDOW_W = DRAWER_W + INSPECTOR_W;
 const SCREEN_RIGHT = 1900;
 
+
+// Motion is a media query away from being switched off entirely, and a CI
+// runner has no user session, so it reports prefers-reduced-motion: reduce and
+// the stylesheet dutifully removes every transition these assertions measure.
+// The suite has to say which condition it is testing rather than inherit
+// whatever the machine happens to prefer.
+async function emulateMotion(win, value) {
+  try {
+    if (!win.webContents.debugger.isAttached()) win.webContents.debugger.attach('1.3');
+    await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', {
+      features: [{ name: 'prefers-reduced-motion', value }],
+    });
+    return true;
+  } catch (err) {
+    console.log('could not emulate prefers-reduced-motion: ' + err.message);
+    return false;
+  }
+}
+
 app.disableHardwareAcceleration();
 app.whenReady().then(async () => {
   const results = [];
@@ -54,6 +73,8 @@ app.whenReady().then(async () => {
     x: SCREEN_RIGHT - WINDOW_W, y: 40, show: false,
   });
   await win.loadFile(path.join(SRCDIR, 'renderer.html'));
+  // everything below measures motion, so ask for motion
+  await emulateMotion(win, 'no-preference');
 
   // Where things sit on screen, which is what a person actually judges.
   const boxes = async () => {
@@ -221,6 +242,27 @@ app.whenReady().then(async () => {
      sy.b === 'clip' && sy.h === 'clip', sy.b + ' / ' + sy.h);
   ok('and the drawer cannot be scrolled off its own window',
      sy.moved === 0, 'scrollTop became ' + sy.moved);
+
+  // And the other way: someone who has asked for less motion gets none of it.
+  // This was found by CI rather than written on purpose — the runner prefers
+  // reduced motion, which switched the whole wipe off and failed five
+  // assertions that had quietly assumed otherwise.
+  await emulateMotion(win, 'reduce');
+  const reduced = await win.webContents.executeJavaScript(
+    `(() => { const el = document.getElementById('inspector');
+       const card = el.querySelector('.insp-card');
+       return JSON.stringify({
+         panel: getComputedStyle(el).transitionProperty,
+         card: getComputedStyle(card).transitionProperty,
+         cardTransform: getComputedStyle(card).transform,
+       }); })()`, true);
+  const rd = JSON.parse(reduced);
+  ok('asking for less motion switches the panel wipe off',
+     rd.panel === 'none', rd.panel);
+  ok('and the card neither travels nor scales',
+     rd.card === 'none' && rd.cardTransform === 'none',
+     rd.card + ' / ' + rd.cardTransform);
+  await emulateMotion(win, 'no-preference');
 
   // A scrollbar is wanted while scrolling and not otherwise.
   const scroll = await win.webContents.executeJavaScript(
