@@ -73,7 +73,12 @@ fs.rmSync(STORE, { recursive: true, force: true });
 
 app.disableHardwareAcceleration();
 app.whenReady().then(async () => {
-  const win = new BrowserWindow({ width: 340, height: 900, show: false });
+  // The real window width. The drawer lays itself out at a fixed 986px
+  // whatever the window is doing, so a 340px window puts the whole page
+  // off to one side — and the tag menu's placement, which is measured from
+  // the button's rect, was being checked against a geometry that cannot
+  // happen. It passed or failed depending on the run.
+  const win = new BrowserWindow({ width: 986, height: 900, show: false });
   await win.loadFile(path.join(SRCDIR, 'renderer.html'));
 
   const probe = `(async () => {
