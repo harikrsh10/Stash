@@ -272,8 +272,11 @@ ok('a swatch copies itself, one for one',
    /addEventListener\('click'[\s\S]{0,220}content: c\.hex/.test(renderer), '');
 ok('and builds no colour selection to act on later',
    !/inspPickedColors\.add/.test(renderer), '');
+// Read out of the function itself rather than from a fixed number of characters
+// after its name, which a comment or two quietly breaks.
+const closeFn = (renderer.match(/function closeInspector\([\s\S]*?\n    \}/) || [''])[0];
 ok('closing resets the mode so text opens as text',
-   /closeInspector[\s\S]{0,800}inspMode = 'text'/.test(renderer), '');
+   /inspMode = 'text'/.test(closeFn), closeFn ? '' : 'could not find closeInspector');
 ok('one job at a time — colour shares the busy guard with text',
    /async function runPalette[\s\S]{0,120}if \(ocrBusyId\) return/.test(renderer), '');
 
@@ -377,7 +380,7 @@ app.whenReady().then(async () => {
 
     // and the panel has to go back to being the text one afterwards
     document.getElementById('inspClose').click();
-    await tick(10);
+    await tick(220);
     ok('closing hides it', !insp.classList.contains('show'), '');
     ok('closing clears the swatches', document.querySelectorAll('.swatch').length === 0, '');
 

@@ -31,6 +31,7 @@ const SUITES = [
   { file: 'theme.test.js', runtime: 'node', what: 'the light and dark palettes staying in step' },
   { file: 'order.test.js', runtime: 'electron', what: 'dragging clips into the order you want' },
   { file: 'filters.test.js', runtime: 'electron', what: 'the type filters, colour included' },
+  { file: 'panelmotion.test.js', runtime: 'electron', what: 'the drawer holding still while the panel opens' },
   { file: 'displays.test.js', runtime: 'node', what: 'which screen the drawer opens on' },
 ];
 

@@ -32,12 +32,13 @@ contextBridge.exposeInMainWorld('api', {
   ocr: (id) => ipcRenderer.invoke('ocr:run', id),
   // colours out of the same image, through the same inspector
   palette: (id) => ipcRenderer.invoke('palette:run', id),
-  expandWindow: (v) => ipcRenderer.invoke('window:expand', v),
   createPrompt: (content) => ipcRenderer.invoke('prompt:create', content),
   onOcrProgress: (cb) => ipcRenderer.on('ocr:progress', (_e, m) => cb(m)),
 
   // drawer-specific
   hide: () => ipcRenderer.invoke('window:hide'),
+  // let clicks fall through the empty half of the window to whatever is behind
+  setClickThrough: (on) => ipcRenderer.invoke('window:clickThrough', on),
   startDrag: (entry) => ipcRenderer.send('ondragstart', entry),
   startDragMulti: (entries, iconDataUrl) => ipcRenderer.send('ondragstart:multi', entries, iconDataUrl),
   drawerDragStart: () => ipcRenderer.send('drawer:dragStart'),

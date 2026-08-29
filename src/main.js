@@ -9,7 +9,8 @@ const { pathToFileURL } = require('url');
 const { createHistoryStore } = require('./history-store');
 const { createOcrIndexer, sanitizeOcrText } = require('./ocr-index');
 const { createSourceApp } = require('./source-app');
-const { sniffAsset, extensionFor, htmlCapFor } = require('./design-assets');
+const { sniffAsset, extensionFor, htmlCapFor, paperScene,
+        isDesignTool } = require('./design-assets');
 
 const isDev = process.argv.includes('--dev');
 // History is written down now, so the cap is about what a person could
@@ -68,11 +69,17 @@ function applyAppearance() {
   const choice = ['system', 'dark', 'light'].includes(settings.appearance) ? settings.appearance : 'system';
   nativeTheme.themeSource = choice;
   const dark = choice === 'system' ? nativeTheme.shouldUseDarkColors : choice === 'dark';
-  // without this the window paints its old ground for a frame when it opens
-  const bg = dark ? '#0a0a0a' : '#fcfcfd';
-  [mainWindow, dockWindow].forEach(w => {
-    if (w && !w.isDestroyed()) w.setBackgroundColor(bg);
-  });
+  // The windows are NOT given a background of their own here, and must not be.
+  //
+  // They used to be, so that neither painted its old ground for a frame when
+  // it opened. Both are transparent now: the drawer is always wide enough for
+  // the side panel and the half the panel is not using has to show the desktop
+  // through it. An opaque colour set here is painted across the whole window
+  // and defeats that -- as a white slab beside the drawer in light mode, which
+  // is exactly what it did.
+  //
+  // Nothing is lost. What each window is transparent to is its own page, which
+  // paints its ground in the theme colour on the first frame it draws.
   // the drawer has its own switch, so it has to hear about changes made from
   // the tray — and about the system flipping underneath a 'system' choice
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -137,9 +144,20 @@ function drawerDisplay(preferCursor) {
 
 // Full height of whatever screen it lands on, welded to that screen edge, so
 // a tall monitor gets a tall drawer rather than a laptop-sized one.
-function drawerBounds(display, expanded) {
+//
+// One width, always: the drawer plus the space the side panel occupies when it
+// is out. The window never changes size while it is on screen.
+//
+// It used to grow leftward when a panel opened, and that is what the jump was.
+// The page is laid out at the full width whatever the window is doing, so the
+// layout was never wrong -- but a window whose left edge moves 520px has its
+// old contents shown at the new origin for the frame or two before the
+// renderer paints, and what that looks like is the whole drawer sliding left
+// and snapping back. No stylesheet can reach that frame. The only fix is for
+// the edge not to move, so it does not.
+function drawerBounds(display) {
   const { workArea } = display;
-  const width = expanded ? DRAWER_W + INSPECTOR_W : DRAWER_W;
+  const width = DRAWER_W + INSPECTOR_W;
   return {
     // grow to the left so the drawer stays welded to the screen edge
     x: workArea.x + workArea.width - width,
@@ -149,27 +167,8 @@ function drawerBounds(display, expanded) {
   };
 }
 
-// Asking whether the inspector is out, from the width alone.
-//
-// It cannot be an exact comparison against DRAWER_W: a display running at a
-// fractional scale hands back a window a pixel or two wider than the one that
-// was asked for -- 466 comes back as 468 -- so "wider than DRAWER_W" reported
-// expanded for a drawer that was not, and the next summon opened it at the
-// full width with nothing in the inspector half. Halfway between the two
-// widths is the only threshold rounding cannot reach.
-function isDrawerExpanded() {
-  if (!mainWindow || mainWindow.isDestroyed()) return false;
-  return mainWindow.getBounds().width > DRAWER_W + INSPECTOR_W / 2;
-}
-
-function setWindowExpanded(expanded) {
-  if (!mainWindow || mainWindow.isDestroyed()) return false;
-  mainWindow.setBounds(drawerBounds(drawerDisplay(false), expanded));
-  return true;
-}
-
 function createWindow() {
-  const first = drawerBounds(drawerDisplay(true), false);
+  const first = drawerBounds(drawerDisplay(true));
 
   mainWindow = new BrowserWindow({
     width: first.width,
@@ -177,12 +176,14 @@ function createWindow() {
     x: first.x,
     y: first.y,
     frame: false,
-    transparent: false,
+    // The window is always wide enough for the side panel, and the half the
+    // panel is not using has to show the desktop rather than a dark slab.
+    transparent: true,
     resizable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
     show: false,
-    backgroundColor: '#0a0a0a',
+    backgroundColor: '#00000000',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -202,10 +203,29 @@ function createWindow() {
     mainWindow.hide();
   });
 
+  // A hidden drawer cannot be told the pointer has left the empty column, so
+  // whatever the click-through was set to when it went away is still set when
+  // it comes back. Coming back catching its own clicks is the harmless way to
+  // be wrong; coming back ignoring them means a drawer nothing can click.
+  mainWindow.on('show', () => mainWindow.setIgnoreMouseEvents(false));
   mainWindow.on('show', refreshTrayMenu);
   mainWindow.on('hide', refreshTrayMenu);
 
   if (isDev) mainWindow.webContents.openDevTools({ mode: 'detach' });
+
+  // The motion dials, injected rather than linked from renderer.html: a
+  // development tool should not have a script tag in the shipped page, and
+  // this way a reload re-injects it without the page knowing it exists.
+  if (isDev) {
+    mainWindow.webContents.on('did-finish-load', async () => {
+      try {
+        const src = fs.readFileSync(path.join(__dirname, 'motion-dials.js'), 'utf8');
+        await mainWindow.webContents.executeJavaScript(src, true);
+      } catch (err) {
+        console.warn('motion dials did not load:', err.message);
+      }
+    });
+  }
 }
 
 function toggleWindow() {
@@ -216,7 +236,7 @@ function toggleWindow() {
     // Summon it to the screen the pointer is on, at that screen's height, and
     // always narrow: hiding closes the inspector, so coming back wide would
     // only show empty space where it used to be.
-    mainWindow.setBounds(drawerBounds(drawerDisplay(true), false));
+    mainWindow.setBounds(drawerBounds(drawerDisplay(true)));
     mainWindow.show();
     mainWindow.focus();
   }
@@ -374,6 +394,18 @@ function refreshTrayMenu() {
         refreshTrayMenu();
       },
     }] : []),
+    {
+      label: 'Copy diagnostics',
+      toolTip: 'puts a short report on the clipboard, for working out why something is not happening',
+      click: () => {
+        const report = diagnosticsReport();
+        // Written straight to the clipboard rather than through writeClip, so
+        // the report does not become a clip in the history it describes.
+        lastSig = 'txt:diagnostics-' + Date.now();
+        clipboard.writeText(report);
+        console.log('[Stash] diagnostics\n' + report);
+      },
+    },
     // Nothing to offer where there is no OS engine to do the reading.
     ...(ocrIndexingAvailable() ? [{
       label: 'Search text inside images',
@@ -689,17 +721,91 @@ async function iconFor(name, appPath) {
   return sourceIcons[name];
 }
 
+// The last few source-app lookups, kept in memory so the app can say what it
+// actually saw. Three fixes to this have now been made from a Windows desk by
+// reasoning about what a Mac probably answers, and two of them were wrong. A
+// report the user can paste back costs a few lines and ends that.
+const sourceLog = [];
+// What the clipboard was offering when a design asset arrived.
+const assetLog = [];
+// Every clipboard change, kept or not.
+const clipboardLog = [];
+let lastFormatsKey = '';
+
+// The last app we managed to identify, so a copy whose own lookup comes back
+// empty is not left anonymous. Short-lived on purpose: half a minute later it
+// is a guess rather than a memory.
+let lastKnownApp = null;
+const LAST_APP_GRACE_MS = 30 * 1000;
+function noteSourceLookup(entry) {
+  sourceLog.unshift({ at: Date.now(), ...entry });
+  sourceLog.length = Math.min(sourceLog.length, 12);
+}
+
+function diagnosticsReport() {
+  const lines = [];
+  lines.push(`Stash ${app.getVersion()} · ${process.platform} · electron ${process.versions.electron}`);
+  lines.push(`history ${history.length} · pinned ${pinned.length} · collections ${sessions.length}`);
+  lines.push(`source app: ${settings.recordSourceApp !== false ? 'on' : 'off'}`
+    + ` · supported ${sourceApp && sourceApp.supported}`
+    + ` · helper running ${sourceApp && sourceApp.running}`);
+  lines.push(`image text: ${settings.indexImageText !== false ? 'on' : 'off'}`
+    + ` · indexer ${ocrIndexer ? 'started' : 'off'}`);
+  const icons = Object.entries(sourceIcons);
+  lines.push(`icons cached: ${icons.length}`
+    + (icons.length ? ` (${icons.filter(([, v]) => v).length} with an icon,`
+      + ` ${icons.filter(([, v]) => !v).length} refused)` : ''));
+  icons.slice(0, 10).forEach(([name, v]) => lines.push(`  icon "${name}": ${v ? 'yes' : 'NO ICON'}`));
+  lines.push('every clipboard change (newest first), kept or not:');
+  if (!clipboardLog.length) lines.push('  nothing seen yet');
+  clipboardLog.forEach(e => {
+    lines.push(`  ${new Date(e.at).toLocaleTimeString()} ${e.formats.join(', ') || '(no formats)'}`);
+  });
+  lines.push('design assets seen (newest first) — what the clipboard offered:');
+  if (!assetLog.length) lines.push('  none yet — copy a frame or an SVG first');
+  assetLog.forEach(e => {
+    lines.push(`  ${new Date(e.at).toLocaleTimeString()} ${e.asset}: ${e.formats.join(', ')}`);
+  });
+  lines.push('recent source lookups (newest first):');
+  if (!sourceLog.length) lines.push('  none yet — copy something from another app first');
+  sourceLog.forEach(e => {
+    lines.push(`  ${new Date(e.at).toLocaleTimeString()} name=${JSON.stringify(e.name || null)}`
+      + ` path=${JSON.stringify(e.path || null)} icon=${e.icon || 'n/a'}`);
+  });
+  return lines.join('\n');
+}
+
 // Where a clip came from. Asked after the clip is already captured, because the
 // answer takes about ten milliseconds and a copy should never wait on it.
 function attachSourceApp(entry) {
   if (!sourceApp || !sourceApp.supported || settings.recordSourceApp === false) return;
   if (!entry || !entry.id) return;
   sourceApp.current().then(async (from) => {
-    if (!from || !from.name) return;
-    if (!updateClipEverywhere(entry.id, { sourceApp: from.name })) return;
+    // The question is asked a moment after the copy, and by then the person may
+    // already have clicked into Stash to look at what they copied -- which
+    // answers "Stash", which is nothing. The app they were in a moment ago is a
+    // far better answer than none, so a recent one stands in.
+    if ((!from || !from.name) && lastKnownApp
+        && Date.now() - lastKnownApp.at < LAST_APP_GRACE_MS) {
+      from = { name: lastKnownApp.name, path: lastKnownApp.path };
+    }
+    if (!from || !from.name) {
+      noteSourceLookup({ name: null, path: null, icon: 'no answer' });
+      return;
+    }
+    lastKnownApp = { name: from.name, path: from.path, at: Date.now() };
+    // A picture copied out of a drawing tool is artwork, not a screenshot, and
+    // belongs on an asset card. Figma offers nothing but image/png for an icon
+    // -- no payload, no marker -- so where it came from is the only thing that
+    // distinguishes the two.
+    const alsoAsset = (entry.type === 'img' && !entry.asset && isDesignTool(from.name))
+      ? { asset: 'artwork' }
+      : {};
+    if (!updateClipEverywhere(entry.id, { sourceApp: from.name, ...alsoAsset })) return;
     // The icon is a second, slower question, and the row is already correct
     // without it -- so the name goes over first and the icon follows.
     const icon = await iconFor(from.name, from.path);
+    noteSourceLookup({ name: from.name, path: from.path, icon: icon ? 'yes' : 'NO ICON' });
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('clip:sourced', entry.id, from.name, icon || null);
     }
@@ -1387,7 +1493,16 @@ function startScreenshotWatcher() {
 // watcher both land here, so a screenshot behaves exactly like a copied image —
 // same de-duplication, same promote-on-recopy, same session collection.
 // Returns the clip's signature, or null if the buffer wasn't an image.
-function ingestImage(png) {
+// What a scene payload knows about itself, read once at capture rather than on
+// every render.
+function sceneFieldsFor(scene) {
+  if (!scene || scene.asset !== 'paper') return {};
+  const parsed = paperScene(scene.html);
+  if (!parsed) return {};
+  return { assetName: parsed.name || '', assetSize: parsed.size || '' };
+}
+
+function ingestImage(png, scene) {
   if (!png || !png.length) return null;
   const img = nativeImage.createFromBuffer(png);
   if (img.isEmpty()) return null;
@@ -1440,11 +1555,53 @@ function ingestImage(png) {
     // picture per copy.
     bytes: png.length,
     ts: Date.now(),
+    // The design tool's own description of what this is a picture of, kept so
+    // the clip can go back where it came from rather than only look like it.
+    ...(scene ? { asset: scene.asset, html: scene.html, ...sceneFieldsFor(scene) } : {}),
   });
   pruneHistoryImages();
   // The picture just copied is the one most likely to be searched for next.
   if (ocrIndexer) ocrIndexer.queueFirst(history.find(h => h.id === sig));
   return sig;
+}
+
+// Some apps do not fill the clipboard in one go. The plain text lands, then the
+// HTML a moment later, and sometimes the RTF after that -- and because the
+// signature covers every flavour, each stage looks like a brand new copy. Figma
+// is one of these, which is how one frame became three rows all stamped the
+// same second.
+//
+// A capture whose plain text matches something captured moments ago is not
+// another copy; it is the same copy arriving more completely. It upgrades the
+// clip that is already there instead of joining it.
+const COALESCE_MS = 2500;
+
+function coalesceRecent(text, styled, asset, sceneFields) {
+  const now = Date.now();
+  const recent = history.find(h => h.content === text
+    && h.type !== 'img'
+    && now - (h.ts || 0) < COALESCE_MS);
+  if (!recent) return null;
+  // Keep the fullest version of each flavour seen, since the later poll is
+  // usually the one that caught everything.
+  if (styled.html && (!recent.html || styled.html.length > recent.html.length)) {
+    recent.html = styled.html;
+  }
+  if (styled.rtf && (!recent.rtf || styled.rtf.length > recent.rtf.length)) {
+    recent.rtf = styled.rtf;
+  }
+  if (asset && !recent.asset) recent.asset = asset;
+  // the later poll is usually the one that caught the whole payload, so the
+  // name and size it yields are the ones worth keeping
+  if (sceneFields && sceneFields.assetName && !recent.assetName) {
+    recent.assetName = sceneFields.assetName;
+  }
+  if (sceneFields && sceneFields.assetSize && !recent.assetSize) {
+    recent.assetSize = sceneFields.assetSize;
+  }
+  recent.ts = now;
+  historyStore.add(recent);
+  return recent;
 }
 
 function pollClipboard() {
@@ -1453,6 +1610,20 @@ function pollClipboard() {
     return;
   }
   if (shouldIgnorePausedClipboard()) return;
+
+  // Every change the clipboard goes through, whether or not Stash keeps it.
+  // A copy that produces no clip at all is invisible in every other log --
+  // there is nothing to attach the record to -- and that is exactly the case
+  // worth seeing: Figma copies that landed nowhere.
+  try {
+    const formats = clipboard.availableFormats();
+    const key = formats.join(',');
+    if (key !== lastFormatsKey) {
+      lastFormatsKey = key;
+      clipboardLog.unshift({ at: Date.now(), formats });
+      clipboardLog.length = Math.min(clipboardLog.length, 10);
+    }
+  } catch (_) { /* a clipboard that will not list itself is not a problem */ }
 
   try {
     const img = clipboard.readImage();
@@ -1468,7 +1639,20 @@ function pollClipboard() {
 
         if (!(text && isTinyIncidental)) {
           lastSig = sig;
-          ingestImage(png);
+          // A design tool puts a picture of the selection on the clipboard AND
+          // its own description of that selection, in different flavours. The
+          // picture used to win outright and the description was thrown away,
+          // so a frame copied out of Figma became an anonymous screenshot that
+          // could not be pasted back as a frame. Both are kept: the picture is
+          // what you see, the payload is what makes it paste.
+          const styled = readStyled();
+          const asset = sniffAsset('', styled.html);
+          try {
+            assetLog.unshift({ at: Date.now(), asset: asset || 'image (no scene payload)',
+                               formats: clipboard.availableFormats() });
+            assetLog.length = Math.min(assetLog.length, 6);
+          } catch (_) { /* a clipboard that will not list itself is not a problem */ }
+          ingestImage(png, asset ? { asset, html: styled.html } : null);
           return;
         }
       }
@@ -1519,6 +1703,31 @@ function pollClipboard() {
     // A design asset is still text underneath -- it drags, searches and stores
     // as text -- so this rides alongside the type rather than replacing it.
     const asset = sniffAsset(text, styled.html);
+    // Read once, here, rather than on every render: the payload runs to tens of
+    // kilobytes of JSON and the list redraws often.
+    const scene = asset === 'paper' ? paperScene(styled.html) : null;
+    const sceneFields = scene
+      ? { assetName: scene.name || '', assetSize: scene.size || '' }
+      : {};
+
+    // What the source app actually offered. A Figma frame cannot be drawn from
+    // the flavour we keep, but if Figma also puts a picture or a PDF on the
+    // pasteboard then a real preview is possible -- and this is the only way to
+    // find out from a machine that has no Figma on it.
+    if (asset) {
+      try {
+        assetLog.unshift({ at: Date.now(), asset, formats: clipboard.availableFormats() });
+        assetLog.length = Math.min(assetLog.length, 6);
+      } catch (_) { /* a clipboard that will not list itself is not a problem */ }
+    }
+
+    // The same copy arriving in pieces, rather than a second copy.
+    const upgraded = coalesceRecent(text, styled, asset, sceneFields);
+    if (upgraded) {
+      broadcastPromote(upgraded, collectIfActive(upgraded));
+      return;
+    }
+
     addEntry({
       id: sig,
       type: sniffType(text),
@@ -1526,6 +1735,7 @@ function pollClipboard() {
       ts: Date.now(),
       ...styled,
       ...(asset ? { asset } : {}),
+      ...sceneFields,
     });
   } catch (err) {
     console.error('poll error:', err);
@@ -1568,7 +1778,16 @@ function readStyled() {
 // forces text only, which is the paste-without-formatting path.
 function writeClip(entry, plain) {
   if (entry.type === 'img' && entry.filepath && fs.existsSync(entry.filepath)) {
-    clipboard.writeImage(nativeImage.createFromPath(entry.filepath));
+    const image = nativeImage.createFromPath(entry.filepath);
+    // A picture of a frame that also carries the frame goes back with both, so
+    // the design tool can take its own description and everything else still
+    // sees a picture. Writing only the image is what made a copied frame paste
+    // into Figma as a flat screenshot.
+    if (!plain && entry.html) {
+      clipboard.write({ image, html: entry.html, text: entry.content || '' });
+      return;
+    }
+    clipboard.writeImage(image);
     return;
   }
   if (!plain && (entry.html || entry.rtf)) {
@@ -1979,6 +2198,17 @@ ipcMain.handle('clip:clear', () => {
   return true;
 });
 
+// The window is wider than the drawer so the side panel has somewhere to go.
+// While the panel is shut that extra width is transparent and empty, and the
+// renderer asks for it to stop catching the mouse as the pointer crosses in.
+// `forward` keeps mouse events coming to the renderer while they are being
+// passed through, which is the only way it can tell the pointer has left again.
+ipcMain.handle('window:clickThrough', (_e, on) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  mainWindow.setIgnoreMouseEvents(!!on, { forward: true });
+  return true;
+});
+
 ipcMain.handle('window:hide', () => {
   if (mainWindow) mainWindow.hide();
 });
@@ -2015,11 +2245,11 @@ ipcMain.on('ondragstart', (event, entry) => {
   // and the refusal was the first anyone heard about it. So the gesture does
   // the thing the user meant instead: puts the frame back on the clipboard, and
   // says which key finishes the job.
-  if (entry && entry.asset === 'figma') {
+  if (entry && (entry.asset === 'figma' || entry.asset === 'paper')) {
     writeClip(entry, false);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('clip:pasteInstead', {
-        reason: 'figma',
+        tool: entry.asset === 'paper' ? 'Paper' : 'Figma',
         key: process.platform === 'darwin' ? '⌘V' : 'Ctrl+V',
       });
     }
@@ -2526,7 +2756,6 @@ function extractPalette(pixels, want) {
   }));
 }
 
-ipcMain.handle('window:expand', (_e, expanded) => setWindowExpanded(!!expanded));
 
 // "Add to prompt" from extracted text — the text was never a clip of its own,
 // so there's nothing to promote; make one directly.
@@ -2830,7 +3059,7 @@ app.whenReady().then(() => {
   function reseatDrawer() {
     registerShortcuts();
     if (!mainWindow || mainWindow.isDestroyed()) return;
-    mainWindow.setBounds(drawerBounds(drawerDisplay(false), isDrawerExpanded()));
+    mainWindow.setBounds(drawerBounds(drawerDisplay(false)));
   }
   screen.on('display-added', reseatDrawer);
   screen.on('display-removed', reseatDrawer);

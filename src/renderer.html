@@ -14,9 +14,27 @@
        decided by the OS, or by the appearance setting, which drives Electron's
        themeSource and therefore prefers-color-scheme. */
     :root {
+      /* The side panel's motion. The panel is the only thing that moves: the
+         window is one fixed size, the rail and the list are laid out at that
+         size at all times, and nothing here touches a property that could
+         relayout them. Opacity and transform only.
+         The exit is shorter than the entrance -- leaving should be quieter
+         than arriving. INSPECTOR_EXIT_MS below must match --panel-out. */
+      --panel-in: 0.26s;
+      --panel-out: 0.16s;
+      --panel-ease: cubic-bezier(0.2, 0, 0, 1);
+      --panel-from-x: 16px;      /* it comes in from the right, travelling left */
+      --panel-from-scale: 0.98;
+
       --bg: #0a0a0a;
       --surface: #111;
       --surface2: #1a1a1a;
+      /* The ground an asset is drawn on. Deliberately the same in both
+         themes: copied vector artwork is overwhelmingly dark strokes on
+         transparency, and on a dark surface it vanishes. */
+      --asset-canvas: #f5f5f6;
+      --asset-canvas-line: rgba(0,0,0,0.045);
+      --asset-canvas-edge: rgba(0,0,0,0.08);
       --surface3: #2a2a2a;
       --border: #222;
       --border2: #2f2f2f;
@@ -108,6 +126,9 @@
         --bg: #fcfcfd;
         --surface: #f4f6f8;
         --surface2: #eef0f4;
+        --asset-canvas: #f5f5f6;
+        --asset-canvas-line: rgba(0,0,0,0.045);
+        --asset-canvas-edge: rgba(0,0,0,0.08);
         --surface3: #e3e7ec;
         --border: #e2e6ea;
         --border2: #cbd2da;
@@ -187,7 +208,11 @@
 
     html, body {
       height: 100vh;
-      background: var(--bg);
+      /* Transparent, not the page colour. The window is always wide enough for
+         the side panel, and the half the panel is not using has to show the
+         desktop through it. What paints the drawer's own background is
+         .shader-bg below, which is only as wide as the drawer. */
+      background: transparent;
       color: var(--text);
       font-family: var(--font-sans);
       font-size: 13px;
@@ -198,7 +223,57 @@
 
     /* The window is a fixed-width drawer that widens to the left when an image
        is being inspected. The shell holds both columns. */
-    .shell { display: flex; height: 100vh; }
+    /* The page is always laid out at its widest, pinned to the right edge, and
+       the window reveals more or less of it.
+
+       This is the fix for the drawer jumping left and back on every open. The
+       window changes size and position in the same instant, but the renderer
+       repaints a frame or two later -- so with a width-dependent layout you saw
+       the *old* layout at the *new* position first: the drawer sitting at the
+       left of a window that had already widened, snapping right once the
+       repaint caught up. Laying out at a fixed width removes the relayout, and
+       with it the frame that was wrong: there is nothing left to catch up to. */
+    body {
+      display: flex;
+      justify-content: flex-end;
+      overflow: hidden;
+    }
+    /* One scrollbar for everything that scrolls.
+       Several areas had their own thin bar and the rest fell back to the
+       platform's, which on Windows is a wide track with stepper arrows — the
+       loudest object on the panel it appears in. This is the same bar
+       everywhere, overlaid rather than taking a column of its own, and out of
+       sight until you are actually using it: the thumb is transparent until the
+       element is scrolled or hovered.
+
+       The scrolling class is put on by a listener further down; there is no CSS
+       way to ask whether something is being scrolled right now. */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-corner { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+      background-color: transparent;
+      border-radius: 999px;
+      /* a transparent border with background-clip is what insets the thumb, so
+         it floats in the gutter rather than filling it */
+      border: 3px solid transparent;
+      background-clip: content-box;
+      transition: background-color 0.25s ease-out;
+    }
+    :hover::-webkit-scrollbar-thumb,
+    .scrolling::-webkit-scrollbar-thumb { background-color: var(--border2); }
+    :hover::-webkit-scrollbar-thumb:hover,
+    .scrolling::-webkit-scrollbar-thumb:hover { background-color: var(--muted2); }
+
+    .shell {
+      display: flex;
+      height: 100vh;
+      /* DRAWER_W + INSPECTOR_W from main.js, which owns the window sizes.
+         Not a custom property: those are the colour palette here, and a width
+         living among them would be the odd one out. */
+      width: 986px;
+      flex-shrink: 0;
+    }
     /* The drawer is the panel plus the rail. The rail is navigation — every
        top-level place lives there, which is why the list has no section
        headers and the filters below only deal in types. */
@@ -209,6 +284,13 @@
       width: 466px;
       flex-shrink: 0;
       order: 2;
+      /* Welded to the right whether or not the inspector is beside it.
+         Without this the drawer is the only flex item while the panel is still
+         hidden, so it sits at the left of the newly widened window and then
+         snaps right the instant the panel appears -- a jump of the entire
+         drawer, every time the panel is opened. The inspector's flex:1 makes
+         this a no-op once it is showing. */
+      margin-left: auto;
     }
     .panel {
       display: flex;
@@ -328,15 +410,70 @@
     .scope-btn.danger:hover { color: var(--danger); border-color: var(--danger-line); }
 
     /* ---------- image inspector ---------- */
+    /* The panel's column is here whether or not the panel is showing. It is
+       520px of the window at all times, the rail and the list are laid out
+       beside it at all times, and opening the panel changes no box on the
+       page — so there is nothing that could move them, in any frame.
+
+       When it is not showing, this column is simply empty, and the window is
+       transparent, so what is behind Stash shows through it. */
     .inspector {
-      display: none;
+      display: flex;
       order: 1;
-      flex: 1;
-      min-width: 0;
+      width: 520px;          /* INSPECTOR_W in main.js */
+      flex-shrink: 0;
       flex-direction: column;
       height: 100vh;
+      /* clips the card's overshoot against the drawer, so it reads as coming
+         out from behind it rather than floating over it */
+      overflow: hidden;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      /* visibility is held back until the fade finishes, so the panel is not
+         cut off mid-exit */
+      transition-property: opacity, visibility;
+      transition-duration: var(--panel-out), 0s;
+      transition-timing-function: var(--panel-ease), linear;
+      transition-delay: 0s, var(--panel-out);
     }
-    .inspector.show { display: flex; }
+    .inspector.show {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transition-duration: var(--panel-in), 0s;
+      transition-delay: 0s, 0s;
+    }
+
+    /* The travel. The card starts to the right of where it belongs and moves
+       left into place as it fades up, so the panel arrives out of the drawer's
+       edge rather than appearing where it lands.
+       Transform and opacity only: both are composited, so none of this can
+       touch the layout of anything beside it. A transition rather than a
+       keyframe animation, so reopening while it is still closing reverses it
+       in place instead of making you wait for the exit to play out. */
+    .insp-card {
+      transform: translateX(var(--panel-from-x)) scale(var(--panel-from-scale));
+      transform-origin: 100% 50%;
+      transition-property: transform;
+      transition-duration: var(--panel-out);
+      transition-timing-function: var(--panel-ease);
+    }
+    .inspector.show .insp-card {
+      transform: none;
+      transition-duration: var(--panel-in);
+    }
+
+    /* Nothing inside the panel animates. The contents used to scale up as the
+       opening reached them, and every version of that read as the panel
+       arriving and then correcting itself — the wipe already says "opening",
+       and a second motion on top of it only competes. The panel opens, and
+       what is in it is simply there. */
+
+    @media (prefers-reduced-motion: reduce) {
+      .inspector, .inspector.show { transition: none; }
+      .insp-card, .inspector.show .insp-card { transition: none; transform: none; }
+    }
 
     .insp-head {
       display: flex;
@@ -411,8 +548,6 @@
     /* the grid is the content in colour mode -- nothing to prompt for */
     .inspector[data-mode="color"] .out-slot { display: none; }
     .inspector[data-mode="color"] .insp-canvas { flex: 0 1 auto; max-height: 34vh; }
-    .insp-swatches::-webkit-scrollbar { width: 3px; }
-    .insp-swatches::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 
 
 
@@ -567,8 +702,6 @@
       word-break: break-word;
     }
     .insp-out.empty { color: var(--muted); font-family: var(--font-mono); font-size: 10px; }
-    .insp-out::-webkit-scrollbar { width: 3px; }
-    .insp-out::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 
 
     /* drag region lets the user move the window by the title bar */
@@ -655,7 +788,7 @@
       background: transparent;
       color: var(--muted);
       cursor: pointer;
-      transition: all 0.15s;
+      transition: color 0.15s, background 0.15s, border-color 0.15s;
     }
     .pill:hover { color: var(--text); }
     .pill.active { background: var(--surface2); border-color: var(--border2); color: var(--text); }
@@ -665,9 +798,6 @@
       overflow-y: auto;
       padding: 4px 0;
     }
-    .list::-webkit-scrollbar { width: 3px; }
-    .list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-    .list::-webkit-scrollbar-track { background: transparent; }
 
     .empty {
       padding: 80px 24px;
@@ -677,6 +807,102 @@
       font-size: 14px;
       line-height: 1.6;
       font-weight: 300;
+    }
+    /* something the person drew, shown as the thing rather than as its source */
+    .type-badge.assets { color: var(--code); background: var(--code-tint); border: 1px solid var(--code-line); }
+    .asset-name {
+      font-family: var(--font-sans);
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--text);
+      margin-bottom: 8px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .asset-stage {
+      /* Deliberately not themed. Vector artwork is overwhelmingly dark strokes
+         on transparency, so on a dark surface it disappears -- which is exactly
+         what happened the first time this was drawn. A constant light ground,
+         faintly gridded so transparency reads as transparency, is what a canvas
+         in a drawing tool does and for the same reason. */
+      background-color: var(--asset-canvas);
+      background-image:
+        linear-gradient(var(--asset-canvas-line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--asset-canvas-line) 1px, transparent 1px);
+      background-size: 14px 14px;
+      border: 1px solid var(--asset-canvas-edge);
+      border-radius: 8px;
+      padding: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 96px;
+      max-height: 190px;
+      overflow: hidden;
+    }
+    .asset-stage.empty {
+      /* nothing to draw, so no canvas either — this one follows the theme */
+      background: var(--surface2);
+      background-image: none;
+      border: 1px dashed var(--border2);
+      color: var(--muted2);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.04em;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 88px;
+    }
+    .asset-glyph {
+      width: 30px;
+      height: 30px;
+      display: block;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.4;
+      stroke-linejoin: round;
+      color: var(--muted2);
+      opacity: 0.8;
+    }
+    .asset-kind { color: var(--muted2); }
+    .asset-preview {
+      max-width: 100%;
+      max-height: 170px;
+      object-fit: contain;
+      display: block;
+    }
+    .asset-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 8px;
+      min-height: 22px;
+    }
+    .asset-when {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.04em;
+      color: var(--muted2);
+    }
+    /* the source sits at full strength here, unlike the small mark on an
+       ordinary row: on a card about something you made, where it came from is
+       part of the point */
+    .asset-from .from-icon { width: 22px; height: 22px; opacity: 1; border-radius: 4px; }
+    .asset-from .from-app { font-family: var(--font-mono); font-size: 10px; }
+    /* a frame cannot be drawn here, so the row says what it is instead */
+    .frame-note {
+      margin-top: 6px;
+      padding: 6px 8px;
+      border: 1px dashed var(--session-line-2);
+      border-radius: 6px;
+      background: var(--session-tint);
+      color: var(--session);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.03em;
     }
     /* why a picture is in the results for a word that is nowhere on its row */
     .in-image { color: var(--session); }
@@ -849,7 +1075,8 @@
     .item.lifting.landing {
       transform: scale(1);
       box-shadow: 0 2px 8px var(--shadow);
-      transition: all 0.19s cubic-bezier(0.2, 0.8, 0.2, 1);
+      transition: transform 0.19s cubic-bezier(0.2, 0.8, 0.2, 1),
+                  box-shadow 0.19s cubic-bezier(0.2, 0.8, 0.2, 1);
     }
 
     /* The row keeps its place in the list while it is being carried, emptied
@@ -1795,9 +2022,6 @@
       flex-direction: column;
       gap: 6px;
     }
-    .ocr-list::-webkit-scrollbar { width: 3px; }
-    .ocr-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-    .ocr-list::-webkit-scrollbar-track { background: transparent; }
     .ocr-empty { padding: 18px 4px; font-size: 11px; color: var(--muted); text-align: center; }
     .ocr-status {
       padding: 14px;
@@ -1915,6 +2139,16 @@
        This used to live inside a light-only media query, with .card set to
        display:contents everywhere else so dark kept a single flat surface.
        --------------------------------------------------------------------- */
+    /* The background covers the whole window, and is clipped to whatever part
+       of it is actually in use.
+       The window is always wide enough for the side panel, so while the panel
+       is shut, the 520px it will occupy has to show the desktop rather than a
+       slab -- and the moment the panel is out, that same 520px needs the
+       background under it, or the panel's card floats on the desktop with
+       nothing behind it. Confining the background to the drawer's width was
+       the first attempt and that is exactly what it did.
+       A clip is composited and costs no layout, and it runs on the panel's own
+       timing, so the background arrives with the panel rather than after it. */
     .shader-bg {
       display: block;
       position: fixed;
@@ -1922,10 +2156,15 @@
       z-index: 0;
       /* the flat fill shows through if WebGL is unavailable */
       background: var(--bg);
+      clip-path: inset(0 0 0 520px);      /* INSPECTOR_W in main.js */
+      transition: clip-path var(--panel-out) var(--panel-ease);
+    }
+    body:has(.inspector.show) .shader-bg {
+      clip-path: inset(0 0 0 0);
+      transition-duration: var(--panel-in);
     }
     .shader-bg canvas { display: block; width: 100%; height: 100%; }
 
-    body { background: transparent; }
     .shell { position: relative; z-index: 1; background: transparent; }
     .app { background: transparent; }
 
@@ -2503,6 +2742,79 @@
       return String(text).trim().match(COLOUR_VALUE) || [];
     }
 
+    // A scrollbar is only wanted while you are scrolling. There is no CSS way
+    // to ask that, so the element wears a class for a moment after each scroll
+    // and the thumb fades back out on its own.
+    //
+    // Captured at the document, because scroll does not bubble and the areas
+    // that scroll come and go as the list is rebuilt — binding to each one
+    // would mean rebinding forever.
+    const scrollFades = new WeakMap();
+    document.addEventListener('scroll', (e) => {
+      const el = e.target;
+      if (!el || !el.classList) return;
+      el.classList.add('scrolling');
+      clearTimeout(scrollFades.get(el));
+      scrollFades.set(el, setTimeout(() => el.classList.remove('scrolling'), 900));
+    }, true);
+
+    // These three mirror src/design-assets.js. The drawer is a plain page with
+    // no module loader, and the test suite loads it on its own, so it cannot
+    // require that file — but a drift test drives both against the same inputs
+    // so the copies cannot quietly disagree.
+    function assetTitle(source) {
+      const m = String(source || '').match(/<title[^>]*>([\s\S]{1,120}?)<\/title>/i);
+      if (!m) return '';
+      return m[1].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    }
+
+    function assetSize(source) {
+      const s = String(source || '');
+      const vb = s.match(/viewBox\s*=\s*["']\s*[-\d.]+[,\s]+[-\d.]+[,\s]+([\d.]+)[,\s]+([\d.]+)/i);
+      if (vb) return `${Math.round(Number(vb[1]))}×${Math.round(Number(vb[2]))}`;
+      const w = s.match(/\bwidth\s*=\s*["']([\d.]+)(px)?["']/i);
+      const h = s.match(/\bheight\s*=\s*["']([\d.]+)(px)?["']/i);
+      if (w && h) return `${Math.round(Number(w[1]))}×${Math.round(Number(h[1]))}`;
+      return '';
+    }
+
+    const PREVIEW_MAX = 512 * 1024;
+    function previewable(source) {
+      const s = String(source || '');
+      return s.length > 0 && s.length <= PREVIEW_MAX;
+    }
+
+    // What to call an asset on its row: the name you gave it, else the name the
+    // drawing tool wrote into the file, else the kind of thing it is. Never a
+    // wall of source, which is what these rows used to show.
+    function assetLabel(c) {
+      if (c.name) return c.name;
+      // Paper says what the layer is called, which beats anything derivable
+      // from the text — that text is "Node IDs: 4QE-0".
+      if (c.assetName) return c.assetName;
+      const inFile = assetTitle(c.content);
+      if (inFile) return inFile;
+      if (c.asset === 'figma') return 'Figma frame';
+      if (c.asset === 'paper') return 'Paper selection';
+      // Artwork carries no name of its own — the tool offered only pixels — so
+      // it is named after where it came from until someone names it.
+      if (c.asset === 'artwork') return c.sourceApp ? `${c.sourceApp} asset` : 'Asset';
+      return 'Vector asset';
+    }
+
+    // The vector, as something an <img> can draw. Base64 rather than a raw
+    // data URL so quotes and hashes in the source cannot break out of the
+    // attribute, and unescape/encodeURIComponent so non-ASCII survives btoa.
+    function svgDataUrl(source) {
+      if (!previewable(source)) return '';
+      try {
+        return 'data:image/svg+xml;base64,'
+          + btoa(unescape(encodeURIComponent(String(source))));
+      } catch (_) {
+        return '';
+      }
+    }
+
     // A picture's text has been read in the background. Patch every copy the
     // drawer holds so a search can reach it, and only re-render if a search is
     // running — otherwise nothing on screen changes and a redraw would fight
@@ -2966,8 +3278,7 @@
           });
         }
       } else {
-        await window.api.expandWindow(true);
-        inspectorEl.classList.add('show');
+        showInspectorShell();
         inspDetailTextEl.textContent = c.content || '';
         inspDetailTextEl.classList.add('show');
       }
@@ -3339,24 +3650,55 @@
       closeInspector();
     }
 
-    function closeInspector() {
+    // Reopening while the last one is still closing simply reverses it: the
+    // wipe is a transition, so it can be interrupted in flight rather than
+    // having to play out first.
+    function showInspectorShell() {
+      clearTimeout(inspectorExitTimer);
+      inspectorEl.classList.add('show');
+    }
+
+    // The exit, from the CSS. The panel is emptied out only once it has
+    // finished leaving, so nothing is seen disappearing before it has gone.
+    // This is --panel-out in milliseconds; changing one means changing the other.
+    const INSPECTOR_EXIT_MS = 160;
+    let inspectorExitTimer = null;
+
+    // `immediate` skips the exit, for the cases where nobody is there to watch
+    // it: the drawer being hidden, or motion turned down.
+    function closeInspector({ immediate = false } = {}) {
       if (!inspectorEl.classList.contains('show')) return;
+      const skip = immediate || reduceMotion;
+      clearTimeout(inspectorExitTimer);
+      // Taking .show off is what runs the wipe shut; there is nothing to add.
+      // What has to wait is emptying the panel out behind it.
       inspectorEl.classList.remove('show');
-      inspStageEl.innerHTML = '';
-      inspSwatchesEl.innerHTML = '';
+      // Anything that could be lost happens now, whatever the animation does.
+      // A name typed but not committed is saved on the way out rather than
+      // silently dropped because the panel was closed instead of blurred.
+      if (detailId) commitDetailName();
+      detailId = null;
       inspBlocks = [];
       inspColors = [];
       inspPicked.clear();
-      // a name typed but not yet committed is saved on the way out, rather
-      // than silently dropped because the panel was closed instead of blurred
-      if (detailId) commitDetailName();
-      detailId = null;
-      setModes(false, null);
-      inspDetailTextEl.classList.remove('show');
       inspMode = 'text';
       inspectorEl.dataset.mode = 'text';
-      syncInspOut();
-      window.api.expandWindow(false);
+
+      // The picture stays up while the panel leaves. Emptying the stage first
+      // animated an empty box out, which is the tell that something has already
+      // gone rather than that it is going.
+      const teardown = () => {
+        inspStageEl.innerHTML = '';
+        inspSwatchesEl.innerHTML = '';
+        setModes(false, null);
+        inspDetailTextEl.classList.remove('show');
+        syncInspOut();
+      };
+      // Held on the same handle showInspectorShell clears, so reopening during
+      // the wipe cancels the emptying rather than gutting the panel that just
+      // came back.
+      if (skip) teardown();
+      else inspectorExitTimer = setTimeout(teardown, INSPECTOR_EXIT_MS);
     }
 
     // Both modes show the same picture at the same size, so opening it is
@@ -3365,8 +3707,7 @@
       inspSrcW = w || 0;
       inspSrcH = h || 0;
       inspStageEl.innerHTML = '';
-      await window.api.expandWindow(true);
-      inspectorEl.classList.add('show');
+      showInspectorShell();
 
       const img = new Image();
       img.alt = '';
@@ -3572,7 +3913,9 @@
     document.getElementById('inspClose').addEventListener('click', closeInspector);
     // hiding the drawer must also shrink the window back, or it reopens wide
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) closeInspector();
+      // The window is on its way out; animating a panel inside it is motion
+      // nobody sees, and the deferred collapse could land after it has gone.
+      if (document.hidden) closeInspector({ immediate: true });
     });
 
     function showOcrStatus(label, pct) {
@@ -4123,6 +4466,12 @@
     // Labels put the toolbar in competition with the clip for the same few
     // words of width. Icons don't, and every button keeps its title for hover.
     const ICON = {
+      // Stands in for artwork we cannot draw: layered shapes, which is what the
+      // payload actually describes. Ours, so it is safe as inline markup.
+      assetGlyph: '<svg class="asset-glyph" viewBox="0 0 24 24" aria-hidden="true">'
+        + '<path d="M12 3.2l8 4.3-8 4.3-8-4.3z"/>'
+        + '<path d="M4 12l8 4.3 8-4.3" opacity="0.55"/>'
+        + '<path d="M4 16.2l8 4.3 8-4.3" opacity="0.3"/></svg>',
       name: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11.2v5"/><path d="M12 7.8v.4"/></svg>',
       edit: '<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>',
       prompt: '<svg viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>',
@@ -4171,7 +4520,53 @@
       const colours = (c.type === 'text' && !c.isPrompt) ? colourValues(c.content) : [];
       const isColour = colours.length > 0;
 
-      if (c.type === 'url') {
+      // An asset is what the clip IS. The type sniffer calls SVG source 'code',
+      // which is true and useless, so this is asked first rather than last.
+      if (c.asset === 'svg') {
+        // A vector is a picture that happens to be written down, so it is shown
+        // as one: the name the designer gave it on top, the thing itself in the
+        // middle, and where it came from underneath.
+        //
+        // Drawn through an <img> with a data URL rather than dropped into the
+        // DOM as markup. An inline <svg> from the clipboard would be live
+        // content -- scripts, external fetches, the lot -- and this is
+        // arbitrary text somebody else's app put on the pasteboard. Inside an
+        // <img> it is inert.
+        headlineHtml = `<div class="asset-name">${esc(assetLabel(c))}</div>`;
+        const url = svgDataUrl(c.content);
+        extraHtml = url
+          ? `<div class="asset-stage"><img class="asset-preview" src="${url}" alt=""/></div>`
+          : '<div class="asset-stage empty">too large to preview</div>';
+        // no meta line: the card's own foot carries the time and the source
+      } else if (c.asset === 'figma' || c.asset === 'paper' || c.asset === 'artwork') {
+        // A frame is not the words inside it. Showing forty lines of its text
+        // says nothing about which frame it is and buries the rest of the list,
+        // so the row shows the first line as a title and then says what it is
+        // and how to use it. Stash cannot draw the frame -- the payload is
+        // Figma's own encoding, not a picture -- and pretending otherwise would
+        // be worse than saying so.
+        headlineHtml = `<div class="asset-name">${esc(assetLabel(c))}</div>`;
+        // The same card as an SVG, with the truth in the middle of it: Stash
+        // holds the selection and can give it back, but what it holds is the
+        // tool's own description of a scene rather than a picture, so there is
+        // nothing to draw. A fake thumbnail would look better and say something
+        // false. Both payloads were checked for an embedded image or SVG and
+        // neither carries one.
+        const tool = c.asset === 'paper' ? 'Paper' : 'Figma';
+        // A design tool usually puts a picture of the selection on the
+        // clipboard as well as its own description of it. Where it did, that
+        // picture is the preview — the thing itself, which is what a card about
+        // an asset should show. Where it did not there is genuinely nothing to
+        // draw, and saying so beats a thumbnail that means nothing.
+        // Where the tool gave us a picture, that picture is the preview. Where
+        // it gave us only a description there is nothing to draw, so the stage
+        // shows a mark meaning "a thing you made" rather than a sentence of
+        // instructions — the instruction belongs on the row, not in the frame
+        // where the artwork should be.
+        extraHtml = c.dataUrl
+          ? `<div class="asset-stage"><img class="asset-preview" src="${c.dataUrl}" alt=""/></div>`
+          : `<div class="asset-stage empty">${ICON.assetGlyph}<span class="asset-kind">${esc(tool)} asset</span></div>`;
+      } else if (c.type === 'url') {
         const dom = domainOf(c.content);
         headlineHtml = `<div class="item-headline">${esc(urlHeadline(c.content))}</div>`;
         if (dom) metaParts.push(`<span class="domain">${esc(dom)}</span>`);
@@ -4220,18 +4615,33 @@
         }
       }
 
-      // Where it came from, on every kind of row. People remember the app long
-      // after they have forgotten the words, so this is the strongest handle on
-      // a history thousands of clips deep.
-      if (c.sourceApp) {
-        const icon = sourceIcons[c.sourceApp];
-        // The logo where there is one, the name where there is not. The name
-        // rides along either way as the title and the alt text: an icon on its
-        // own is unreadable to a screen reader, and unrecognisable for an app
-        // you have not seen the icon of before.
-        metaParts.push('<span class="dot">·</span>' + (icon
-          ? `<img class="from-icon" src="${icon}" alt="${esc(c.sourceApp)}" title="${esc(c.sourceApp)}"/>`
-          : `<span class="from-app" title="${esc(c.sourceApp)}">${esc(c.sourceApp)}</span>`));
+      // Where it came from. People remember the app long after they have
+      // forgotten the words, so this is the strongest handle on a history
+      // thousands of clips deep.
+      //
+      // The logo where there is one, the name where there is not. The name
+      // rides along either way as the title and the alt text: an icon on its
+      // own is unreadable to a screen reader, and unrecognisable for an app you
+      // have not seen the icon of before.
+      const sourceIcon = c.sourceApp ? sourceIcons[c.sourceApp] : null;
+      const sourceMark = !c.sourceApp ? '' : (sourceIcon
+        ? `<img class="from-icon" src="${sourceIcon}" alt="${esc(c.sourceApp)}" title="${esc(c.sourceApp)}"/>`
+        : `<span class="from-app" title="${esc(c.sourceApp)}">${esc(c.sourceApp)}</span>`);
+
+      if (c.asset) {
+        // An asset gives it a line of its own, opposite the time -- the row is
+        // a card about a thing somebody made, and where it came from is part of
+        // what the card is for rather than a footnote in the meta line.
+        // SVG carries its size in the source; a scene payload had it read out
+        // at capture, because re-parsing tens of kilobytes per render is not
+        // worth a line of grey text.
+        const size = c.asset === 'svg' ? assetSize(c.content)
+          : (c.assetSize || c.meta || '');
+        extraHtml += '<div class="asset-foot">'
+          + `<span class="asset-when">${stamp}${size ? ' · ' + esc(size) : ''}</span>`
+          + `<span class="asset-from">${sourceMark}</span></div>`;
+      } else if (sourceMark) {
+        metaParts.push('<span class="dot">·</span>' + sourceMark);
       }
 
       // A name the user set outranks the derived headline. What it displaces
@@ -4254,8 +4664,11 @@
       // A design asset says what it is rather than what it is made of: "svg"
       // and "figma" are more use on a row than "code" and "text", which is all
       // either of them would otherwise read as.
+      // A vector and a frame are the same idea to the person who copied them --
+      // something they made — so they share one badge rather than advertising
+      // the format each happens to be encoded in.
       const badgeKind = c.isPrompt ? 'prompt'
-        : (c.asset ? c.asset : (isColour ? 'color' : c.type));
+        : (c.asset ? 'assets' : (isColour ? 'color' : c.type));
       const metaHtml = `<div class="item-meta">${metaParts.join('')}</div>`;
       // tags ride under the meta line so the library can be skimmed
       const tagsHtml = (c.tags && c.tags.length)
@@ -4595,6 +5008,40 @@
     // close/hide
     document.getElementById('closeBtn').addEventListener('click', () => window.api.hide());
 
+    // The window is always wide enough for the side panel, so while the panel
+    // is shut there is a 520px column of it that is transparent and empty.
+    // It still belongs to us, and the OS will hand it our clicks.
+    //
+    // Dismissing the drawer on those clicks was the first answer and it was a
+    // bad one: you open the drawer, click on what looks like plain desktop,
+    // and the drawer vanishes -- which reads as the shortcut not having
+    // worked, so you press it again. The column should not be there as far as
+    // anyone can tell, so clicks go through it to whatever is behind, exactly
+    // as they did when the window was only as wide as the drawer.
+    //
+    // The window can only pass through clicks as a whole, so it is switched on
+    // and off as the pointer crosses into the column. Mouse events still reach
+    // us while it is on -- that is what `forward` is for -- which is what
+    // makes crossing back out of it detectable.
+    const INSPECTOR_COL = 520;      // INSPECTOR_W in main.js
+    let clickThrough = false;
+    // The safe default is off. Stuck on, the drawer would be unclickable;
+    // stuck off, a click on empty space merely does nothing.
+    function setClickThrough(on) {
+      if (on === clickThrough) return;
+      clickThrough = on;
+      window.api.setClickThrough?.(on);
+    }
+    document.addEventListener('mousemove', (e) => {
+      setClickThrough(!inspectorEl.classList.contains('show') && e.clientX < INSPECTOR_COL);
+    });
+    // The panel fills that column the moment it opens, so nothing there is
+    // empty any more and every click in it is ours.
+    const inspectorObserver = new MutationObserver(() => {
+      if (inspectorEl.classList.contains('show')) setClickThrough(false);
+    });
+    inspectorObserver.observe(inspectorEl, { attributes: true, attributeFilter: ['class'] });
+
     document.getElementById('selClearBtn').addEventListener('click', clearSelection);
 
     // the deck itself is a drag source — gather, then throw, one gesture
@@ -4691,7 +5138,8 @@
     // clipboard instead and this says what finishes the job. Held longer than
     // an ordinary toast because it is an instruction, not an acknowledgement.
     window.api.onPasteInstead((info) => {
-      toast(`frame copied — press ${(info && info.key) || 'Ctrl+V'} in Figma`);
+      const tool = (info && info.tool) || 'Figma';
+      toast(`copied — press ${(info && info.key) || 'Ctrl+V'} in ${tool}`);
       clearTimeout(toastTimer);
       toastTimer = setTimeout(() => toastEl.classList.remove('show'), 4000);
     });
@@ -4739,6 +5187,22 @@
     const THEME_NEXT = { system: 'light', light: 'dark', dark: 'system' };
     let themeChoice = 'system';
 
+    // A theme flip changes colour, background and border on nearly every
+    // element at once, and roughly thirty rules in this file transition one of
+    // those. They all fire together, so the switch smears through an in-between
+    // palette for a fifth of a second instead of snapping. Turning transitions
+    // off for the swap, forcing a reflow so the browser commits it, then
+    // restoring them next frame makes the change instant — which is what a
+    // theme change should be.
+    function withoutTransitions(fn) {
+      const stop = document.createElement('style');
+      stop.textContent = '*,*::before,*::after{transition:none !important}';
+      document.head.appendChild(stop);
+      fn();
+      void document.body.offsetHeight;   // force the reflow before restoring
+      requestAnimationFrame(() => stop.remove());
+    }
+
     function showAppearance({ choice }) {
       themeChoice = THEME_FACE[choice] ? choice : 'system';
       themeBtn.textContent = THEME_FACE[themeChoice].icon;
@@ -4750,7 +5214,9 @@
       showAppearance({ choice: next });
       await window.api?.setAppearance?.(next);
     });
-    window.api?.onAppearanceChanged?.((state) => showAppearance(state));
+    // The palette actually changes here, when main flips the native theme, so
+    // this is the call that has to be shielded rather than the button's.
+    window.api?.onAppearanceChanged?.((state) => withoutTransitions(() => showAppearance(state)));
     window.api?.getAppearance?.().then(showAppearance).catch(() => {});
     showAppearance({ choice: themeChoice });
 

@@ -138,10 +138,20 @@ const after = (ms) => new Promise(r => setTimeout(r, ms));
   // ---------- one way in for pictures ----------
   // A screenshot has to behave like a copied image: same de-duplication, same
   // promote-on-recopy, same session collection. Two code paths would drift.
+  // The second argument is the design tool's own description of the selection,
+  // when the clipboard carried one alongside the picture. A screenshot has no
+  // such thing and passes nothing, which is why this stays one path rather than
+  // becoming two.
   ok('there is a single ingest path for images',
-     /function ingestImage\(png\)/.test(MAIN), '');
+     /function ingestImage\(png(,\s*\w+)?\)/.test(MAIN),
+     (MAIN.match(/function ingestImage\([^)]*\)/) || ['missing'])[0]);
+  // Asked of the poller itself rather than of a fixed number of characters
+  // between two lines, which is a thing that breaks whenever a comment is added
+  // between them.
+  const poller = (MAIN.match(/function pollClipboard\(\)[\s\S]*?\n\}/) || [''])[0];
   ok('the clipboard poller uses it',
-     /lastSig = sig;\s*\n\s*ingestImage\(png\);/.test(MAIN), '');
+     /ingestImage\(png[^)]*\)/.test(poller) && /lastSig = sig;/.test(poller),
+     poller ? 'found the poller' : 'could not find pollClipboard');
   ok('the screenshot watcher uses it too',
      /if \(png && png\.length\) ingestImage\(png\)/.test(MAIN), '');
   ok('ingest still promotes an image that is already pinned',
