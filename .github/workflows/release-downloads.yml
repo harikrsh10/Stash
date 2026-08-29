@@ -12,12 +12,34 @@ permissions:
   contents: write
 
 jobs:
+  # Nothing is built until the suite has passed. A release is the one moment
+  # where "did I break something" stops being answerable later, and both 0.5.0
+  # and 0.5.1 went out without anyone having run it — so it runs here rather
+  # than relying on someone having remembered before tagging.
+  test:
+    name: npm test
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run the suite
+        run: npm test
+
   # Each platform only builds and hands its installer to the next job. Nothing
   # is published here: when these steps uploaded to the release directly, a
   # failure on one platform still left the other's installer published, and
   # v0.1.17 went out as a release with no Mac download at all.
   build:
     name: Build ${{ matrix.platform }}
+    needs: test
     runs-on: ${{ matrix.os }}
 
     strategy:
