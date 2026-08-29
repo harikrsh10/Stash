@@ -212,12 +212,12 @@ app.whenReady().then(async () => {
     ok('the name stays with you into that mode',
        getComputedStyle(document.getElementById('inspName')).display !== 'none', '');
     document.getElementById('inspClose').click();
-    await tick(20);
+    await tick(220);
 
     // Reaching a mode straight from the row skips openDetail, so the name field
     // and the switch have to be bound there too or the panel arrives empty.
     document.getElementById('inspClose').click();
-    await tick(20);
+    await tick(220);
     history[0].name = 'Onboarding flow';
     render();
     imgRow().querySelector('[data-act=\"palette\"]').click();
@@ -227,13 +227,13 @@ app.whenReady().then(async () => {
     ok('and the switch knows where it is',
        document.getElementById('detailColor').classList.contains('is-on'), '');
     document.getElementById('inspClose').click();
-    await tick(20);
+    await tick(220);
 
     // A clip whose picture has been cleaned up opened a blank panel saying
     // nothing, which reads as the button having failed rather than as the file
     // being gone. It falls back to the thumbnail the row already holds.
     document.getElementById('inspClose').click();
-    await tick(20);
+    await tick(220);
     history.push({ id: 'gone1', type: 'img', content: 'x', meta: '10×10',
                    ts: Date.now(), filepath: 'C:/nowhere/missing.png', dataUrl: PNG });
     render();
@@ -250,11 +250,11 @@ app.whenReady().then(async () => {
     ok('and the clip can still be named',
        getComputedStyle(nameInput).display !== 'none', '');
     document.getElementById('inspClose').click();
-    await tick(20);
+    await tick(220);
 
     // ---- reading a long clip in full ----
     document.getElementById('inspClose').click();
-    await tick(20);
+    await tick(220);
     txtRow().querySelector('[data-act=\"name\"]').click();
     await tick(60);
     const full = document.getElementById('inspDetailText');
@@ -268,7 +268,7 @@ app.whenReady().then(async () => {
     renamed = [];
     nameInput.value = 'named on the way out';
     document.getElementById('inspClose').click();
-    await tick(30);
+    await tick(220);
     ok('a name typed but not committed is saved when the panel closes',
        renamed.length === 1 && renamed[0][1] === 'named on the way out', JSON.stringify(renamed));
     ok('closing hides the panel', !insp.classList.contains('show'), '');

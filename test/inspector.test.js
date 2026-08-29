@@ -162,10 +162,13 @@ app.whenReady().then(async () => {
     await tick(120);
     ok('ocr called with the clip id', ocrCalledWith === 'img1', String(ocrCalledWith));
 
-    // the panel opens beside the drawer and the window is widened for it
+    // The panel opens beside the drawer. The window is not touched: it is
+    // already the width the panel needs, which is what stops the drawer
+    // moving when the panel arrives.
     ok('inspector opens on success', insp.classList.contains('show'), '');
     ok('progress sheet steps aside', !sheet.classList.contains('show'), '');
-    ok('window was expanded', expandCalls[0] === true, JSON.stringify(expandCalls));
+    ok('opening the panel does not resize the window',
+       expandCalls.length === 0, JSON.stringify(expandCalls));
     ok('the image is shown', !!document.querySelector('#inspStage img'), '');
 
     // one clickable region per block, positioned from its bbox
@@ -222,8 +225,13 @@ app.whenReady().then(async () => {
     // escape closes the inspector and shrinks the window back
     let hidden = false; window.api.hide = () => { hidden = true; };
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    // The panel animates out now, so what it leaves behind is a moment later.
+    // Esc must still be swallowed immediately, though — the drawer must not
+    // also hide just because closing takes time.
+    ok('esc does not fall through to hiding the drawer while it closes', !hidden, 'hidden=' + hidden);
+    await tick(220);
     ok('esc closes the inspector first', !insp.classList.contains('show') && !hidden, 'hidden=' + hidden);
-    ok('window collapsed again', expandCalls[expandCalls.length - 1] === false, JSON.stringify(expandCalls));
+    ok('nor does closing it', expandCalls.length === 0, JSON.stringify(expandCalls));
     ok('regions cleared out', document.querySelectorAll('.region').length === 0, '');
 
     // hiding the drawer must also collapse it
@@ -233,8 +241,8 @@ app.whenReady().then(async () => {
     ok('inspector open again', insp.classList.contains('show'), '');
     Object.defineProperty(document, 'hidden', { value: true, configurable: true });
     document.dispatchEvent(new Event('visibilitychange'));
-    ok('hiding the drawer collapses the window', !insp.classList.contains('show')
-       && expandCalls[expandCalls.length - 1] === false, JSON.stringify(expandCalls));
+    ok('hiding the drawer closes the panel', !insp.classList.contains('show')
+       && expandCalls.length === 0, JSON.stringify(expandCalls));
     Object.defineProperty(document, 'hidden', { value: false, configurable: true });
 
     // empty result

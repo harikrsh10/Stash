@@ -6,7 +6,8 @@ const path = require('path');
 const os = require('os');
 const vm = require('vm');
 
-const { sniffAsset, looksLikeFigma, looksLikeSvg, extensionFor, htmlCapFor,
+const { sniffAsset, looksLikeFigma, looksLikePaper, looksLikeScene, paperScene,
+        looksLikeSvg, extensionFor, htmlCapFor,
         DESIGN_HTML_MAX } = require('../src/design-assets');
 
 const checks = [];
@@ -26,6 +27,38 @@ ok('ordinary styled text is not a figma frame',
 ok('and neither is nothing', !looksLikeFigma(''), '');
 ok('a page that merely says the word figma is not a frame',
    !looksLikeFigma('<p>I use Figma every day</p>'), '');
+
+// ---------- Paper ----------
+// The shape below is what Paper actually put on a clipboard, trimmed. It is
+// here because the first version of this file knew only about Figma: copying
+// out of Paper produced a row headlined "Node IDs: 4QE-0" and nothing else,
+// and no amount of reasoning about Figma would have found that.
+const PAPER_HTML = '<meta charset="utf-8"><!--<paper-paste-start data-embed="'
+  + JSON.stringify({
+      id: '01M129KCDSX16K5FKB86X1B4BT',
+      fileId: '01M08FJ7WP16MN9H7ZCCD65NNH',
+      topLevelNodeIds: ['temp_0'],
+      nodes: { temp_0: { id: 'temp_0', label: 'Rectangle', component: 'Rectangle',
+                         styles: { width: 512, height: 512, left: 5929, top: 7114 } } },
+    })
+  + '"></paper-paste-start>--><span style="white-space:pre-wrap;">Node IDs: 4QA-0</span>';
+
+ok('a paper payload is recognised', looksLikePaper(PAPER_HTML), '');
+ok('and counts as a scene, so it gets the bigger ceiling',
+   looksLikeScene(PAPER_HTML) && htmlCapFor(PAPER_HTML, 256 * 1024) === DESIGN_HTML_MAX, '');
+ok('it is not mistaken for figma', !looksLikeFigma(PAPER_HTML), '');
+ok('and sniffs as paper', sniffAsset('Node IDs: 4QA-0', PAPER_HTML) === 'paper',
+   String(sniffAsset('Node IDs: 4QA-0', PAPER_HTML)));
+
+const scene = paperScene(PAPER_HTML);
+ok('the layer name is read out of the payload', scene && scene.name === 'Rectangle',
+   JSON.stringify(scene));
+ok('and its size', scene && scene.size === '512×512', JSON.stringify(scene));
+ok('which is what the row shows instead of "Node IDs: 4QA-0"',
+   scene && scene.name !== 'Node IDs: 4QA-0', '');
+ok('a payload that will not parse gives nothing rather than throwing',
+   paperScene('<!--<paper-paste-start data-embed="{not json}"></paper-paste-start>-->') === null, '');
+ok('and so does html that is not paper at all', paperScene('<p>hello</p>') === null, '');
 
 // ---------- the cap, which is the whole point ----------
 // Word puts hundreds of kilobytes of scaffolding around a paragraph, so styled
@@ -133,6 +166,15 @@ if (dragHandler) {
   ok('naming the key that finishes the job',
      sent[0] && sent[0][1] && sent[0][1].key === '⌘V', JSON.stringify(sent[0] && sent[0][1]));
 
+  // a Paper selection is the same story with a different tool named
+  sent.length = 0; wrote.length = 0;
+  dctx.handler(event, { id: 'p1', type: 'text', content: 'Node IDs: 4QA-0', asset: 'paper' });
+  ok('dragging a paper selection does not write a file either', dragged.length === 0,
+     JSON.stringify(dragged.length));
+  ok('and the toast names Paper rather than Figma',
+     sent[0] && sent[0][1] && sent[0][1].tool === 'Paper',
+     JSON.stringify(sent[0] && sent[0][1]));
+
   // everything else still drags as a file
   dctx.materializeForDrag = (e) => path.join(TMP_DIR, 'x.txt');
   dctx.handler(event, { id: 'plain1', type: 'text', content: 'just words' });
@@ -141,6 +183,49 @@ if (dragHandler) {
 }
 
 fs.rmSync(TMP_DIR, { recursive: true, force: true });
+
+// ---------- one copy arriving in pieces ----------
+// Reported from a real desk: one Figma frame became three rows, all stamped the
+// same second, and the same prompt became two. Apps do not always fill the
+// clipboard in one go -- the text lands, the HTML follows -- and because the
+// signature covers every flavour, each stage looked like a fresh copy.
+const coalesceFn = MAIN.match(/function coalesceRecent[\s\S]*?\n\}/);
+ok('the coalescing step is findable', !!coalesceFn, '');
+if (coalesceFn) {
+  const cctx = { console, history: [], historyStore: { add() {} } };
+  vm.createContext(cctx);
+  vm.runInContext(MAIN.match(/const COALESCE_MS = \d+;/)[0] + '\n' + coalesceFn[0]
+    + '\nthis.coalesceRecent = coalesceRecent;', cctx);
+
+  const now = Date.now();
+  cctx.history = [{ id: 'a', type: 'text', content: 'Frame 12', ts: now - 200 }];
+  const up = cctx.coalesceRecent('Frame 12', { html: '<span data-buffer="x"></span>' }, 'figma');
+  ok('the same text moments later upgrades the clip', up === cctx.history[0], String(!!up));
+  ok('rather than making a second one', cctx.history.length === 1, cctx.history.length + '');
+  ok('and the richer flavour is the one kept',
+     cctx.history[0].html === '<span data-buffer="x"></span>', String(cctx.history[0].html));
+  ok('and it is now known to be a frame', cctx.history[0].asset === 'figma', String(cctx.history[0].asset));
+
+  // the fuller version wins, not merely the latest
+  cctx.history = [{ id: 'a', type: 'text', content: 'x', html: '<b>a fuller one</b>', ts: Date.now() }];
+  cctx.coalesceRecent('x', { html: '<b>t</b>' }, null);
+  ok('a thinner later flavour does not overwrite a fuller one',
+     cctx.history[0].html === '<b>a fuller one</b>', cctx.history[0].html);
+
+  // a genuinely separate copy, later, is its own clip
+  cctx.history = [{ id: 'a', type: 'text', content: 'Frame 12', ts: Date.now() - 60000 }];
+  ok('the same text a minute later is a new copy, not an upgrade',
+     cctx.coalesceRecent('Frame 12', {}, null) === null, '');
+
+  // different text is never coalesced
+  cctx.history = [{ id: 'a', type: 'text', content: 'Frame 12', ts: Date.now() }];
+  ok('different text is left alone', cctx.coalesceRecent('Frame 13', {}, null) === null, '');
+
+  // an image clip is never absorbed into a text one
+  cctx.history = [{ id: 'i', type: 'img', content: 'shot.png', ts: Date.now() }];
+  ok('a picture is not upgraded by text that happens to match',
+     cctx.coalesceRecent('shot.png', {}, null) === null, '');
+}
 
 let failed = 0;
 for (const [name, pass, detail] of checks) {

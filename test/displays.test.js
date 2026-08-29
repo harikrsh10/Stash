@@ -38,17 +38,17 @@ const ctx = {
   },
 };
 vm.createContext(ctx);
-vm.runInContext([grab('drawerDisplay'), grab('drawerBounds'), grab('isDrawerExpanded')].join(String.fromCharCode(10))
-  + String.fromCharCode(10) + 'this.api = { drawerDisplay, drawerBounds, isDrawerExpanded };', ctx);
-const { drawerDisplay, drawerBounds, isDrawerExpanded } = ctx.api;
+vm.runInContext([grab('drawerDisplay'), grab('drawerBounds')].join(String.fromCharCode(10))
+  + String.fromCharCode(10) + 'this.api = { drawerDisplay, drawerBounds };', ctx);
+const { drawerDisplay, drawerBounds } = ctx.api;
 
 // ---------- sizing to a screen ----------
-const onLaptop = drawerBounds(LAPTOP, false);
+const onLaptop = drawerBounds(LAPTOP);
 ok('the drawer is as tall as the screen it is on', onLaptop.height === 900, String(onLaptop.height));
 ok('and welded to that screen right edge', onLaptop.x + onLaptop.width === 1440,
    String(onLaptop.x + onLaptop.width));
 
-const onMonitor = drawerBounds(MONITOR, false);
+const onMonitor = drawerBounds(MONITOR);
 ok('a taller screen gets a taller drawer', onMonitor.height === 1440, String(onMonitor.height));
 ok('welded to that screen right edge too', onMonitor.x + onMonitor.width === 4000,
    String(onMonitor.x + onMonitor.width));
@@ -56,12 +56,14 @@ ok('and starts at that screen top, not at zero', onMonitor.y === -300, String(on
 ok('width is the same on either screen', onLaptop.width === onMonitor.width,
    onLaptop.width + ' vs ' + onMonitor.width);
 
-// ---------- expanding ----------
-const wide = drawerBounds(MONITOR, true);
-ok('expanding grows left, keeping the right edge', wide.x + wide.width === 4000,
-   String(wide.x + wide.width));
-ok('and grows by exactly the inspector', wide.width - onMonitor.width === 520,
-   String(wide.width - onMonitor.width));
+// ---------- room for the panel, always ----------
+// The window is wide enough for the side panel whether or not it is showing,
+// so opening one never changes the window. It is welded to the right edge,
+// which is the half the drawer occupies; the other half is transparent.
+ok('there is room for the panel without resizing',
+   onMonitor.width === 466 + 520, String(onMonitor.width));
+ok('and the drawer half still lands on the screen edge',
+   onMonitor.x + onMonitor.width === 4000, String(onMonitor.x + onMonitor.width));
 
 // ---------- which screen ----------
 ctx.cursor = { x: 200, y: 200 };
@@ -74,7 +76,7 @@ ok('and to the monitor', drawerDisplay(true).id === 2, String(drawerDisplay(true
 ctx.mainWindow = {
   isDestroyed: () => false,
   isVisible: () => true,
-  getBounds: () => drawerBounds(MONITOR, false),
+  getBounds: () => drawerBounds(MONITOR),
 };
 ctx.cursor = { x: 200, y: 200 };
 ok('an open drawer stays on its own screen, wherever the pointer is',
@@ -87,30 +89,18 @@ ctx.mainWindow.isVisible = () => false;
 ok('a hidden drawer is summoned to the pointer instead',
    drawerDisplay(false).id === 1, String(drawerDisplay(false).id));
 
-// ---------- expanded or not ----------
-ctx.mainWindow.getBounds = () => drawerBounds(MONITOR, false);
-ok('a narrow drawer reads as collapsed', isDrawerExpanded() === false, '');
-ctx.mainWindow.getBounds = () => drawerBounds(MONITOR, true);
-ok('a wide one reads as expanded', isDrawerExpanded() === true, '');
-
-// A display at a fractional scale hands back a window a pixel or two wider
-// than the one that was asked for. Comparing against DRAWER_W exactly made a
-// collapsed drawer report expanded, and the next summon opened it at the full
-// width with nothing in the inspector half.
-const rounded = (n) => {
-  const b = drawerBounds(MONITOR, false);
-  return { ...b, width: b.width + n };
-};
-[1, 2, 3, 8].forEach(n => {
-  ctx.mainWindow.getBounds = () => rounded(n);
-  ok('a drawer rounded up by ' + n + 'px still reads as collapsed',
-     isDrawerExpanded() === false, String(rounded(n).width));
-});
-
-// and the real thing is still unambiguous from the other side
-ctx.mainWindow.getBounds = () => ({ ...drawerBounds(MONITOR, true), width: 466 + 520 - 3 });
-ok('an expanded drawer rounded down still reads as expanded',
-   isDrawerExpanded() === true, '');
+// One width, always. The window used to grow leftward when a panel opened,
+// and reading back whether it had was where a fractional display scale bit:
+// 466 came back as 468 and a collapsed drawer reported itself expanded. None
+// of that exists to get wrong now — asking for the bounds twice gets the same
+// answer whatever the panel is doing.
+const a = drawerBounds(MONITOR);
+const b = drawerBounds(MONITOR);
+ok('the drawer has one width', a.width === 466 + 520, String(a.width));
+ok('and asking again gives the same window',
+   a.x === b.x && a.width === b.width, JSON.stringify(a));
+ok('welded to the right edge of its screen',
+   a.x + a.width === MONITOR.workArea.x + MONITOR.workArea.width, String(a.x));
 
 let failed = 0;
 for (const r of results) {

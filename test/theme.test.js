@@ -40,7 +40,14 @@ for (const file of ['renderer.html', 'dock.html']) {
   const light = tokensIn(lightMedia);
 
   // fonts and other non-colour tokens only need defining once
-  const colourish = (name, value) => !/font|family/.test(name) && !/'|"/.test(value);
+  // What has to exist in both palettes is the colours. A duration, a bare
+  // number or an easing curve is the same in either theme and has no light
+  // counterpart to be missing — the check is "every dark COLOUR token", and
+  // treating every non-font token as a colour made it ask for more than that.
+  const motionish = (v) => /^-?[\d.]+(m?s|px|r?em|%)?$/.test(v.trim())
+    || /^(cubic-bezier|steps|linear|ease)/.test(v.trim());
+  const colourish = (name, value) =>
+    !/font|family/.test(name) && !/'|"/.test(value) && !motionish(value);
   const darkColours = [...dark].filter(([k, v]) => colourish(k, v)).map(([k]) => k);
 
   const missing = darkColours.filter(t => !light.has(t));
