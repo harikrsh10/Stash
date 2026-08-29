@@ -56,6 +56,11 @@ contextBridge.exposeInMainWorld('api', {
   getPaused: () => ipcRenderer.invoke('paused:get'),
   setPaused: (v) => ipcRenderer.invoke('paused:set', v),
   getSettings: () => ipcRenderer.invoke('settings:get'),
+  // the keys in force, what to print on a key cap, and whether we hold them
+  getShortcuts: () => ipcRenderer.invoke('shortcuts:get'),
+  // returns { ok, reason? } — a key another app already has is refused and the
+  // previous one put back, rather than leaving no shortcut at all
+  setShortcuts: (patch) => ipcRenderer.invoke('shortcuts:set', patch),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
   getAppearance: () => ipcRenderer.invoke('appearance:get'),
   setAppearance: (choice) => ipcRenderer.invoke('appearance:set', choice),

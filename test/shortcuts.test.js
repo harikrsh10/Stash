@@ -23,13 +23,21 @@ function lift(opening) {
   return MAIN.slice(at, end + 2);
 }
 
-const ctx = { process: { platform: 'win32' } };
-vm.createContext(ctx);
-vm.runInContext(
-  lift('const SHORTCUT_KEYS = {') + ';\n'
-  + lift('function shortcutTrouble(')
-  + '\nthis.shortcutTrouble = shortcutTrouble;', ctx);
-const trouble = ctx.shortcutTrouble;
+// The keys are configurable now, so the message is built from whatever is
+// actually in force rather than read off a constant.
+const KEYS = { drawer: 'CommandOrControl+Shift+V', dock: 'CommandOrControl+Shift+Space' };
+function contextFor(platform) {
+  const ctx = { process: { platform } };
+  vm.createContext(ctx);
+  vm.runInContext(
+    lift('const DEFAULT_SHORTCUTS = ') + '\n'
+    + lift('function humanAccelerator(') + '\n'
+    + lift('function shortcutTrouble(')
+    + '\nthis.shortcutTrouble = shortcutTrouble;', ctx);
+  return ctx;
+}
+const ctx = contextFor('win32');
+const trouble = (state) => ctx.shortcutTrouble({ ...state, keys: KEYS });
 
 // nothing to say when both are held
 ok('holding both shortcuts is not worth reporting',
@@ -61,16 +69,19 @@ ok('and still names both keys',
    bothLost.body.includes('Ctrl+Shift+V') && bothLost.body.includes('Ctrl+Shift+Space'),
    bothLost.body);
 
-// the Mac says Cmd, because Ctrl+Shift+V is not the key anyone there pressed
-const mac = { process: { platform: 'darwin' } };
-vm.createContext(mac);
-vm.runInContext(
-  lift('const SHORTCUT_KEYS = {') + ';\n'
-  + lift('function shortcutTrouble(')
-  + '\nthis.shortcutTrouble = shortcutTrouble;', mac);
+// CommandOrControl is the right thing to register and the wrong thing to show:
+// nobody has that key on their keyboard.
+const mac = contextFor('darwin');
+const macLost = mac.shortcutTrouble({ drawer: false, dock: true, keys: KEYS });
 ok('a Mac is told about the key a Mac actually has',
-   mac.shortcutTrouble({ drawer: false, dock: true }).label.includes('Cmd+Shift+V'),
-   mac.shortcutTrouble({ drawer: false, dock: true }).label);
+   macLost.label.includes('Cmd+Shift+V'), macLost.label);
+
+// A key someone chose themselves has to come back out the same way, or the
+// warning names a shortcut they never set.
+const chosen = { drawer: 'CommandOrControl+Alt+K', dock: KEYS.dock };
+const chosenLost = ctx.shortcutTrouble({ drawer: false, dock: true, keys: chosen });
+ok('a chosen key is what gets reported, not the shipped one',
+   chosenLost.label.includes('Ctrl+Alt+K'), chosenLost.label);
 
 // The tray is the only way in once the key is gone, so it must not go on
 // advertising a key it does not hold — that is the app telling you to press

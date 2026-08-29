@@ -34,6 +34,7 @@ const SUITES = [
   { file: 'panelmotion.test.js', runtime: 'electron', what: 'the drawer holding still while the panel opens' },
   { file: 'displays.test.js', runtime: 'node', what: 'which screen the drawer opens on' },
   { file: 'shortcuts.test.js', runtime: 'node', what: 'saying so when the hotkey is taken' },
+  { file: 'settings.test.js', runtime: 'electron', what: 'the settings panel and changing a shortcut' },
 ];
 
 const verbose = process.argv.includes('--verbose');
