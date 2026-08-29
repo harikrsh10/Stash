@@ -7,9 +7,37 @@ const RENDERER = path.join(__dirname, '..', 'src', 'renderer.html');
 
 app.disableHardwareAcceleration();
 
+
+// Motion is a media query away from being switched off entirely, and a CI
+// runner has no user session, so it reports prefers-reduced-motion: reduce and
+// the stylesheet dutifully removes every transition these assertions measure.
+// The suite has to say which condition it is testing rather than inherit
+// whatever the machine happens to prefer.
+async function emulateMotion(win, value) {
+  try {
+    if (!win.webContents.debugger.isAttached()) win.webContents.debugger.attach('1.3');
+    await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', {
+      features: [{ name: 'prefers-reduced-motion', value }],
+    });
+    return true;
+  } catch (err) {
+    console.log('could not emulate prefers-reduced-motion: ' + err.message);
+    return false;
+  }
+}
+
 app.whenReady().then(async () => {
   const win = new BrowserWindow({ width: 340, height: 900, show: false });
   await win.loadFile(RENDERER);
+  // The page reads prefers-reduced-motion into a variable of its own as it
+  // boots, and some motion is gated on that rather than on the media query,
+  // so emulating is not enough on its own — the page has to boot again
+  // afterwards to believe it. (Emulating before the first load instead just
+  // hangs: there is no document yet for the debugger to attach to.)
+  if (await emulateMotion(win, 'no-preference')) {
+    await win.webContents.reload();
+    await new Promise(r => win.webContents.once('did-finish-load', r));
+  }
 
   const probe = `(async () => {
     const results = [];

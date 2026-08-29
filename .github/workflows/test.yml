@@ -1,0 +1,44 @@
+name: Tests
+
+# The suite is 880-odd assertions across 22 suites and, until this file, it ran
+# only when someone remembered to run it. Two releases went out in one afternoon
+# carrying bugs it would not have caught — but bugs are not the point: the point
+# is that "did I break something" was a question only answerable by hand.
+on:
+  push:
+    branches: ["**"]
+    # a tag push already runs the suite through the release workflow
+    tags-ignore: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: npm test
+    # Windows, because that is where the app is developed and where these
+    # suites are known green. Most of them open a real BrowserWindow, and the
+    # ones that read the foreground app shell out to PowerShell, so this is not
+    # a suite that can be moved to a Linux runner by adding xvfb. macOS is worth
+    # adding once someone has watched it go green there.
+    runs-on: windows-latest
+    # The suite takes a few minutes. A hang is its known failure mode — a
+    # function lifted into a vm context that references a global the context
+    # does not have leaves the app never quitting — so cap it rather than
+    # letting a stuck run burn the job's full hour.
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run the suite
+        run: npm test
