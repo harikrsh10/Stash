@@ -73,8 +73,15 @@ app.whenReady().then(async () => {
     x: SCREEN_RIGHT - WINDOW_W, y: 40, show: false,
   });
   await win.loadFile(path.join(SRCDIR, 'renderer.html'));
-  // everything below measures motion, so ask for motion
-  await emulateMotion(win, 'no-preference');
+  // The page reads prefers-reduced-motion into a variable of its own as it
+  // boots, and some motion is gated on that rather than on the media query,
+  // so emulating is not enough on its own — the page has to boot again
+  // afterwards to believe it. (Emulating before the first load instead just
+  // hangs: there is no document yet for the debugger to attach to.)
+  if (await emulateMotion(win, 'no-preference')) {
+    await win.webContents.reload();
+    await new Promise(r => win.webContents.once('did-finish-load', r));
+  }
 
   // Where things sit on screen, which is what a person actually judges.
   const boxes = async () => {
