@@ -36,10 +36,13 @@ function freshContext() {
     // pinning and prompting take a clip out of history, which now means out of
     // the log too. The log itself has its own suite; here it only has to exist.
     historyStore: { add() {}, remove() {}, clear() {} },
+    // the stores refuse to write over a file they could not read
+    unreadableStores: new Set(), Notification: { isSupported: () => false },
   };
   vm.createContext(ctx);
   vm.runInContext(
-    [grab('loadPinned'), grab('savePinned'), grab('makeImagePermanent'),
+    [grab('writeStoreAtomically'), grab('preserveUnreadableStore'),
+     grab('loadPinned'), grab('savePinned'), grab('makeImagePermanent'),
      grab('promptable'),
      grab('promptItem'), grab('unpromptItem'), grab('pinItem'), grab('unpinItem')].join('\n') +
     `\nthis.api = { loadPinned, savePinned, promptItem, unpromptItem, pinItem, unpinItem };`,
