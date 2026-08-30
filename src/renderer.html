@@ -1874,6 +1874,84 @@
     }
     .editor.show { transform: translateY(0); }
 
+    /* Settings are a list to read down, so this one is taller than the editor
+       and scrolls its own body rather than the page. */
+    .settings-sheet { max-height: 78%; }
+    .settings-body { overflow-y: auto; padding: 0 14px 12px; }
+    .settings-group {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 12px 2px 6px;
+    }
+    .set-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 2px;
+      border-top: 1px solid var(--border);
+    }
+    .set-row:first-of-type { border-top: 0; }
+    .set-row-quiet { border-top: 0; padding-top: 6px; }
+    .set-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .set-name { color: var(--text); font-size: 12px; }
+    .set-note { color: var(--muted); font-size: 10px; font-family: var(--font-mono); }
+    .set-row input[type="checkbox"] { accent-color: var(--prompt); width: 14px; height: 14px; flex: none; }
+
+    /* A key cap, because that is what it is: press it and press the keys. */
+    .key-cap {
+      flex: none;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-2);
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 5px;
+      padding: 4px 8px;
+      cursor: pointer;
+      transition-property: background-color, color, border-color, scale;
+      transition-duration: 0.14s;
+      transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+    }
+    .key-cap:hover { color: var(--text); border-color: var(--muted2); }
+    .key-cap:active { scale: 0.96; }
+    /* Listening. The label says so too — colour is never the only cue. */
+    .key-cap.recording {
+      color: var(--prompt);
+      border-color: var(--prompt-strong);
+      background: var(--prompt-tint);
+    }
+    .key-cap.rejected { color: var(--danger); border-color: var(--danger); }
+    /* a key we asked for and did not get */
+    .key-cap.taken { color: var(--danger); border-style: dashed; }
+    .set-reset {
+      background: none; border: 0; padding: 2px 4px;
+      color: var(--muted); font-family: var(--font-mono); font-size: 10px;
+      cursor: pointer; border-radius: 4px;
+      transition: color 0.14s;
+    }
+    .set-reset:hover { color: var(--text-2); }
+
+    .gear-btn {
+      -webkit-app-region: no-drag;
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 3px 5px;
+      border-radius: 3px;
+      display: inline-flex;
+      align-items: center;
+      transition-property: color, background-color, scale;
+      transition-duration: 0.15s;
+    }
+    .gear-btn:hover { color: var(--text-2); background: var(--surface2); }
+    .gear-btn:active { scale: 0.96; }
+    .gear-btn.on { color: var(--prompt); }
+
     .editor-head {
       display: flex;
       align-items: center;
@@ -2486,6 +2564,17 @@
           <span id="pauseLabel">live</span>
         </button>
         <button class="theme-btn" id="themeBtn" title="appearance"></button>
+        <button class="gear-btn" id="settingsBtn" title="settings">
+          <!-- currentColor throughout, so hover and both themes are the same
+               one asset rather than three. Drawn at 2.2 rather than the 2 it
+               arrived with: on a 32 viewBox that is the weight the rest of the
+               icons carry on their 24, and a hairline gear beside them reads
+               as a mistake. -->
+          <svg viewBox="0 0 32 32" aria-hidden="true" width="14" height="14" fill="none">
+            <path d="M16.0001 22.0002C19.3138 22.0002 22.0001 19.314 22.0001 16.0002C22.0001 12.6865 19.3138 10.0002 16.0001 10.0002C12.6864 10.0002 10.0001 12.6865 10.0001 16.0002C10.0001 19.314 12.6864 22.0002 16.0001 22.0002Z" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M24.6758 10.0813C24.9715 10.5156 25.2343 10.9714 25.4617 11.445L28.705 13.2455C29.1 15.0598 29.1014 16.9378 28.709 18.7527L25.4639 20.5541C25.2357 21.0274 24.9722 21.4828 24.6758 21.9166L24.7382 25.6256C23.3645 26.8749 21.7388 27.815 19.9708 28.3826L16.7882 26.473C16.2643 26.512 15.7381 26.5116 15.2142 26.4718L12.0334 28.3803C10.2646 27.8153 8.63753 26.8775 7.26198 25.6302L7.32445 21.9191C7.02868 21.4849 6.76597 21.029 6.53852 20.5554L3.29524 18.755C2.90021 16.9406 2.89885 15.0627 3.29127 13.2478L6.53635 11.4463C6.76454 10.9731 7.02798 10.5176 7.32443 10.0838L7.262 6.37485C8.63575 5.12557 10.2614 4.18541 12.0294 3.6178L15.212 5.52741C15.736 5.48841 16.2621 5.48882 16.786 5.52866L19.9669 3.6201C21.7357 4.18515 23.3627 5.12296 24.7382 6.37026L24.6758 10.0813Z" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
         <button class="close-btn" id="closeBtn" title="hide (⌘⇧V)">×</button>
       </div>
     </div>
@@ -2549,6 +2638,74 @@
       </div>
     </div>
     </div><!-- /card-list -->
+
+    <!-- Settings live in a sheet rather than in the tray, because the tray is
+         not where anyone looks for them -- and the one setting people most
+         want, the shortcut, is the one they cannot reach when it is broken. -->
+    <div class="editor settings-sheet" id="settingsSheet">
+      <div class="editor-head">
+        <span class="editor-title">settings</span>
+        <button class="close-btn" id="settingsClose" title="close (Esc)">×</button>
+      </div>
+      <div class="settings-body">
+        <div class="settings-group">shortcuts</div>
+        <div class="set-row">
+          <div class="set-text">
+            <span class="set-name">open Stash</span>
+            <span class="set-note" id="drawerKeyNote"></span>
+          </div>
+          <button class="key-cap" id="drawerKey" data-which="drawer"></button>
+        </div>
+        <div class="set-row">
+          <div class="set-text">
+            <span class="set-name">quick dock</span>
+            <span class="set-note" id="dockKeyNote"></span>
+          </div>
+          <button class="key-cap" id="dockKey" data-which="dock"></button>
+        </div>
+        <div class="set-row set-row-quiet">
+          <span class="set-note" id="keyHint">click a key to change it</span>
+          <button class="set-reset" id="resetKeys">reset to defaults</button>
+        </div>
+
+        <div class="settings-group">capture</div>
+        <label class="set-row">
+          <div class="set-text">
+            <span class="set-name">keep history on disk</span>
+            <span class="set-note">off keeps it in memory until Stash quits</span>
+          </div>
+          <input type="checkbox" data-setting="rememberHistory">
+        </label>
+        <label class="set-row">
+          <div class="set-text">
+            <span class="set-name">read text in pictures</span>
+            <span class="set-note">so a screenshot can be found by what it says</span>
+          </div>
+          <input type="checkbox" data-setting="indexImageText">
+        </label>
+        <label class="set-row">
+          <div class="set-text">
+            <span class="set-name">remember the app a clip came from</span>
+            <span class="set-note">shows its icon on the row</span>
+          </div>
+          <input type="checkbox" data-setting="recordSourceApp">
+        </label>
+        <label class="set-row" id="screenshotRow">
+          <div class="set-text">
+            <span class="set-name">catch screenshots</span>
+            <span class="set-note">macOS only</span>
+          </div>
+          <input type="checkbox" data-setting="watchScreenshots">
+        </label>
+        <label class="set-row">
+          <div class="set-text">
+            <span class="set-name">paste straight from the dock</span>
+            <span class="set-note">needs accessibility permission</span>
+          </div>
+          <input type="checkbox" data-setting="autoPasteFromDock">
+        </label>
+      </div>
+    </div>
 
     <div class="editor" id="editor">
       <div class="editor-head">
@@ -4091,6 +4248,158 @@
       document.querySelectorAll('.tag-menu.show').forEach(m => m.classList.remove('show'));
     }, true);
 
+    // ---------- settings ----------
+    // The tray had these, which is nowhere anyone looks. And the setting people
+    // most need — the shortcut — is exactly the one they cannot reach through a
+    // shortcut when another app has taken it, so it lives here where the tray
+    // can still get them to it.
+    const settingsSheetEl = document.getElementById('settingsSheet');
+    const settingsBtnEl = document.getElementById('settingsBtn');
+    const keyHintEl = document.getElementById('keyHint');
+    let recording = null;      // which key cap is listening, if any
+
+    function keyCapEls() {
+      return { drawer: document.getElementById('drawerKey'), dock: document.getElementById('dockKey') };
+    }
+
+    // Paint whatever main says is in force. Held is not the same as set: a key
+    // can be configured and still be in another app's hands.
+    let onMac = false;
+    async function paintShortcuts() {
+      const r = await window.api.getShortcuts?.();
+      if (!r) return;
+      // Cmd appears in a label only on a Mac — main builds these, and it is the
+      // one place that already knows which platform this is.
+      onMac = /Cmd/.test(r.labels.drawer + r.labels.dock);
+      const caps = keyCapEls();
+      for (const which of ['drawer', 'dock']) {
+        const cap = caps[which];
+        if (!cap) continue;
+        cap.textContent = r.labels[which];
+        cap.classList.toggle('taken', !r.held[which]);
+        const note = document.getElementById(which + 'KeyNote');
+        if (note) {
+          note.textContent = r.held[which] ? '' : 'another app is using this';
+          note.classList.toggle('is-warning', !r.held[which]);
+        }
+      }
+    }
+
+    async function openSettings() {
+      settingsSheetEl.classList.add('show');
+      settingsBtnEl.classList.add('on');
+      const s = await window.api.getSettings?.() || {};
+      document.querySelectorAll('[data-setting]').forEach(el => {
+        el.checked = s[el.dataset.setting] !== false;
+      });
+      // macOS-only, and offering it on Windows is offering something that
+      // cannot do anything. The key labels come back platform-correct from
+      // main, so that is what we read the platform off rather than sniffing
+      // the user agent here.
+      await paintShortcuts();
+      const shot = document.getElementById('screenshotRow');
+      if (shot) shot.hidden = !onMac;
+    }
+
+    function closeSettings() {
+      stopRecording();
+      settingsSheetEl.classList.remove('show');
+      settingsBtnEl.classList.remove('on');
+    }
+
+    settingsBtnEl.addEventListener('click', () => {
+      if (settingsSheetEl.classList.contains('show')) closeSettings();
+      else openSettings();
+    });
+    document.getElementById('settingsClose').addEventListener('click', closeSettings);
+
+    document.querySelectorAll('[data-setting]').forEach(el => {
+      el.addEventListener('change', () => {
+        window.api.setSettings?.({ [el.dataset.setting]: el.checked });
+      });
+    });
+
+    // --- recording a shortcut ---
+    // A modifier on its own is not a shortcut, and neither is a bare letter:
+    // registering one would swallow that key everywhere on the machine. So we
+    // wait for a real combination and ignore everything on the way to it.
+    const MOD_ONLY = new Set(['Control', 'Shift', 'Alt', 'Meta', 'CapsLock']);
+
+    function accelFrom(e) {
+      if (MOD_ONLY.has(e.key)) return null;
+      const mods = [];
+      if (e.ctrlKey || e.metaKey) mods.push('CommandOrControl');
+      if (e.altKey) mods.push('Alt');
+      if (e.shiftKey) mods.push('Shift');
+      if (!mods.length) return null;
+      let key = e.key;
+      if (key === ' ') key = 'Space';
+      else if (key === 'ArrowUp') key = 'Up';
+      else if (key === 'ArrowDown') key = 'Down';
+      else if (key === 'ArrowLeft') key = 'Left';
+      else if (key === 'ArrowRight') key = 'Right';
+      else if (key === 'Escape') return null;             // that is how you cancel
+      else if (key.length === 1) key = key.toUpperCase();
+      return mods.join('+') + '+' + key;
+    }
+
+    function stopRecording() {
+      if (!recording) return;
+      recording.cap.classList.remove('recording');
+      recording = null;
+      keyHintEl.textContent = 'click a key to change it';
+      paintShortcuts();
+    }
+
+    function startRecording(cap) {
+      stopRecording();
+      recording = { cap, which: cap.dataset.which };
+      cap.classList.add('recording');
+      cap.textContent = 'press keys…';
+      keyHintEl.textContent = 'press a combination, or Esc to cancel';
+    }
+
+    Object.values(keyCapEls()).forEach(cap => {
+      if (cap) cap.addEventListener('click', () => {
+        if (recording && recording.cap === cap) stopRecording();
+        else startRecording(cap);
+      });
+    });
+
+    document.getElementById('resetKeys').addEventListener('click', async () => {
+      const r = await window.api.getShortcuts?.();
+      if (!r) return;
+      await window.api.setShortcuts?.(r.defaults);
+      paintShortcuts();
+    });
+
+    // Capture, and before anything else in the drawer sees it: while a key cap
+    // is listening, every combination belongs to it — including the ones the
+    // drawer itself uses.
+    document.addEventListener('keydown', async (e) => {
+      if (!recording) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === 'Escape') { stopRecording(); return; }
+      const accel = accelFrom(e);
+      if (!accel) return;                       // still on the way to a combination
+      const { cap, which } = recording;
+      const res = await window.api.setShortcuts?.({ [which]: accel });
+      if (res && res.ok) {
+        stopRecording();
+        toast('shortcut saved');
+      } else {
+        // Say why, on the thing they just pressed. Refusing silently and
+        // putting the old key back looks like the click did nothing.
+        cap.classList.add('rejected');
+        cap.textContent = (res && res.reason) || 'could not use that';
+        keyHintEl.textContent = 'try another combination';
+        setTimeout(() => { cap.classList.remove('rejected'); stopRecording(); }, 1400);
+        recording = null;
+        cap.classList.remove('recording');
+      }
+    }, true);
+
     // Clicking anywhere else dismisses the tag dropdown. The menu itself has to
     // count as "inside" — it is a child of the body now, so it is no longer
     // inside .tag-filter and testing for that alone shut the menu on the way
@@ -5133,6 +5442,8 @@
         if (openMenu) openMenu.classList.remove('show');
         else if (sesMenuEl.classList.contains('show')) closeSessionMenu();
         else if (tagPickerEl.classList.contains('show')) closeTagPicker();
+        // the sheet you opened last is the one Esc should take away first
+        else if (settingsSheetEl.classList.contains('show')) closeSettings();
         else if (inspectorEl.classList.contains('show')) closeInspector();
         else if (ocrSheetEl.classList.contains('show')) closeOcr();
         else if (editingId) closeEditor();

@@ -1,6 +1,6 @@
 // src/main.js — Stash main process
 // Handles: window lifecycle, global hotkey, tray, clipboard polling, native drag-out
-const { app, BrowserWindow, Tray, Menu, globalShortcut, clipboard, ipcMain, nativeImage, nativeTheme, screen, shell, powerMonitor } = require('electron');
+const { app, BrowserWindow, Tray, Menu, globalShortcut, clipboard, ipcMain, nativeImage, nativeTheme, Notification, screen, shell, powerMonitor } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -60,7 +60,47 @@ let settings = {
   rememberHistory: true,    // write history to disk; off returns it to memory-only
   indexImageText: true,     // read the text in pictures so it can be searched for
   recordSourceApp: true,    // remember which app a clip was copied out of
+  // The keys themselves, so a conflict with another app is something a person
+  // can settle rather than live with.
+  shortcuts: {
+    drawer: 'CommandOrControl+Shift+V',
+    dock: 'CommandOrControl+Shift+Space',
+  },
 };
+
+// An accelerator Electron will accept, and that is worth accepting: a bare key
+// with no modifier would swallow that key everywhere on the machine.
+const ACCEL_MODIFIERS = ['CommandOrControl', 'Command', 'Cmd', 'Control', 'Ctrl', 'Alt', 'Option', 'AltGr', 'Shift', 'Super', 'Meta'];
+const ACCEL_KEYS = [
+  ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split(''),
+  ...Array.from({ length: 24 }, (_, i) => 'F' + (i + 1)),
+  'Space', 'Tab', 'Backspace', 'Delete', 'Insert', 'Return', 'Enter', 'Up', 'Down',
+  'Left', 'Right', 'Home', 'End', 'PageUp', 'PageDown', 'Escape', 'Plus',
+  ',', '.', '/', '\\', '`', '-', '=', '[', ']', ';', "'",
+];
+
+function validAccelerator(accel) {
+  if (typeof accel !== 'string' || !accel.trim()) return false;
+  const parts = accel.split('+').map(p => p.trim()).filter(Boolean);
+  if (parts.length < 2) return false;                    // a key on its own is a trap
+  const key = parts[parts.length - 1];
+  const mods = parts.slice(0, -1);
+  if (!mods.length || !mods.every(m => ACCEL_MODIFIERS.includes(m))) return false;
+  if (new Set(mods).size !== mods.length) return false;
+  return ACCEL_KEYS.some(k => k.toLowerCase() === key.toLowerCase());
+}
+
+function currentAccelerators() {
+  const s = settings.shortcuts || {};
+  return {
+    drawer: validAccelerator(s.drawer) ? s.drawer : DEFAULT_SHORTCUTS.drawer,
+    dock: validAccelerator(s.dock) ? s.dock : DEFAULT_SHORTCUTS.dock,
+  };
+}
+
+// The keys as shipped. Kept apart from `settings` so "reset to default" has
+// something to reset to after settings has been written over.
+const DEFAULT_SHORTCUTS = { drawer: 'CommandOrControl+Shift+V', dock: 'CommandOrControl+Shift+Space' };
 
 // Setting themeSource is what flips prefers-color-scheme inside the windows, so
 // the stylesheets need no theme class of their own — and native bits like
@@ -294,15 +334,24 @@ function refreshTrayMenu() {
   const promptCount = pinned.filter(p => p.isPrompt).length;
   const pinCount = pinned.length - promptCount;
   const activeSession = sessions.find(s => s.id === settings.activeSessionId);
+  // An accelerator here is a promise that the key works. While another app
+  // holds it, showing it anyway is the app telling you to press something that
+  // does nothing, so the promise is withdrawn along with the key.
+  const trouble = shortcutTrouble(shortcutState);
   const menu = Menu.buildFromTemplate([
+    ...(trouble ? [
+      { label: trouble.label, enabled: false },
+      { label: 'Try to claim it again', click: () => registerShortcuts() },
+      { type: 'separator' },
+    ] : []),
     {
       label: visible ? 'Hide Stash' : 'Show Stash',
-      accelerator: 'CommandOrControl+Shift+V',
+      ...(shortcutState.drawer ? { accelerator: currentAccelerators().drawer } : {}),
       click: toggleWindow,
     },
     {
       label: 'Quick dock',
-      accelerator: 'CommandOrControl+Shift+Space',
+      ...(shortcutState.dock ? { accelerator: currentAccelerators().dock } : {}),
       click: toggleDock,
     },
     { type: 'separator' },
@@ -746,6 +795,11 @@ function diagnosticsReport() {
   const lines = [];
   lines.push(`Stash ${app.getVersion()} · ${process.platform} · electron ${process.versions.electron}`);
   lines.push(`history ${history.length} · pinned ${pinned.length} · collections ${sessions.length}`);
+  // Which build is answering the shortcut is the first thing worth knowing when
+  // "nothing happens" -- a second copy holding the key looks exactly like a
+  // broken app from the outside.
+  lines.push(`shortcuts: drawer ${shortcutState.drawer ? 'held' : 'TAKEN BY ANOTHER APP'}`
+    + ` · dock ${shortcutState.dock ? 'held' : 'TAKEN BY ANOTHER APP'}`);
   lines.push(`source app: ${settings.recordSourceApp !== false ? 'on' : 'off'}`
     + ` · supported ${sourceApp && sourceApp.supported}`
     + ` · helper running ${sourceApp && sourceApp.running}`);
@@ -2129,6 +2183,46 @@ ipcMain.handle('settings:set', (_e, patch) => {
   return settings;
 });
 
+// Changing a key can fail -- the whole point of letting someone change it is
+// that another app may already have the one they had. So it is tried, and put
+// back if it does not take: a settings panel that silently leaves you with no
+// shortcut at all is worse than the conflict it was meant to solve.
+ipcMain.handle('shortcuts:set', (_e, patch) => {
+  const wanted = { ...currentAccelerators(), ...(patch || {}) };
+  for (const which of ['drawer', 'dock']) {
+    if (!validAccelerator(wanted[which])) {
+      return { ok: false, reason: 'that is not a shortcut Stash can use', ...shortcutsReport() };
+    }
+  }
+  if (wanted.drawer === wanted.dock) {
+    return { ok: false, reason: 'both would be the same key', ...shortcutsReport() };
+  }
+  const before = settings.shortcuts;
+  settings.shortcuts = wanted;
+  registerShortcuts();
+  if (!shortcutState.drawer || !shortcutState.dock) {
+    // hand back whatever worked before rather than leaving them with nothing
+    settings.shortcuts = before;
+    registerShortcuts();
+    return { ok: false, reason: 'another app is already using that', ...shortcutsReport() };
+  }
+  saveSettings();
+  return { ok: true, ...shortcutsReport() };
+});
+
+ipcMain.handle('shortcuts:get', () => shortcutsReport());
+
+function shortcutsReport() {
+  const keys = currentAccelerators();
+  return {
+    keys,
+    // what to print on a key cap, which is not what gets registered
+    labels: { drawer: humanAccelerator(keys.drawer), dock: humanAccelerator(keys.dock) },
+    held: { drawer: shortcutState.drawer, dock: shortcutState.dock },
+    defaults: DEFAULT_SHORTCUTS,
+  };
+}
+
 ipcMain.handle('clip:write', (_e, entry, plain) => {
   lastSig = entry.id;
   writeClip(entry, plain);
@@ -2971,18 +3065,95 @@ ipcMain.handle('shell:openExternal', (_e, url) => {
 });
 
 // ---------- lifecycle ----------
+// Which of the two shortcuts we actually hold. A shortcut belongs to whichever
+// app asked for it first, so another app -- or a second copy of Stash -- can
+// simply have it, and registering fails with a plain false.
+let shortcutState = { drawer: true, dock: true, keys: null };
+// Warn on the way into trouble, not on every health check: registerShortcuts
+// runs every 30 seconds, on resume, on unlock and on a display change.
+let warnedAboutShortcuts = false;
+
+// An accelerator as a person would read it. CommandOrControl is the right thing
+// to register and the wrong thing to show: nobody has that key.
+function humanAccelerator(accel) {
+  const mac = process.platform === 'darwin';
+  return String(accel || '')
+    .replace(/CommandOrControl|Command|Cmd/g, mac ? 'Cmd' : 'Ctrl')
+    .replace(/Control|Ctrl/g, mac ? 'Ctrl' : 'Ctrl')
+    .replace(/Option|Alt/g, mac ? 'Option' : 'Alt')
+    .replace(/Super|Meta/g, mac ? 'Cmd' : 'Win');
+}
+
+// What to say about the state, or null when there is nothing wrong. Kept apart
+// from the registering so it can be tested without a running app.
+function shortcutTrouble(state) {
+  const keys = state.keys || { drawer: DEFAULT_SHORTCUTS.drawer, dock: DEFAULT_SHORTCUTS.dock };
+  const lost = [];
+  if (!state.drawer) lost.push({ what: 'Stash', key: humanAccelerator(keys.drawer) });
+  if (!state.dock) lost.push({ what: 'the quick dock', key: humanAccelerator(keys.dock) });
+  if (!lost.length) return null;
+  const lostKeys = lost.map(l => l.key).join(' and ');
+  return {
+    // the tray line, which is where someone looks when the key does nothing
+    label: lost.length === 2
+      ? 'Both shortcuts are taken by another app'
+      : `${lost[0].key} is taken by another app`,
+    title: 'Stash could not claim its shortcut',
+    body: lost.length === 2
+      ? `Another app is using ${lostKeys}. Open Stash from the tray instead.`
+      : `Another app is using ${lostKeys}, so it will not open ${lost[0].what}. `
+        + 'Open Stash from the tray instead.',
+  };
+}
+
 function registerShortcuts() {
   // Always unregister first to be safe — prevents accidental duplicate handlers
   try { globalShortcut.unregisterAll(); } catch (_) {}
 
-  const drawerReg = globalShortcut.register('CommandOrControl+Shift+V', toggleWindow);
-  const dockReg = globalShortcut.register('CommandOrControl+Shift+Space', toggleDock);
+  const keys = currentAccelerators();
+  // A key the OS rejects outright throws rather than returning false.
+  const claim = (accel, fn) => { try { return globalShortcut.register(accel, fn); } catch (_) { return false; } };
+  const drawerReg = claim(keys.drawer, toggleWindow);
+  const dockReg = claim(keys.dock, toggleDock);
+
+  const before = shortcutState;
+  shortcutState = { drawer: drawerReg, dock: dockReg, keys };
 
   console.log(`[Stash] shortcuts registered — drawer: ${drawerReg}, dock: ${dockReg}`);
   if (!drawerReg) console.warn('[Stash] drawer hotkey registration failed (conflict?)');
   if (!dockReg) console.warn('[Stash] dock hotkey registration failed (conflict?)');
+
+  // A shortcut that does nothing and says nothing is indistinguishable from an
+  // app that has crashed. This cost a whole afternoon: a second copy of Stash
+  // held the key, every press went to it, and the only sign anywhere was a line
+  // in a log nobody reads.
+  const trouble = shortcutTrouble(shortcutState);
+  if (trouble && !warnedAboutShortcuts) {
+    warnedAboutShortcuts = true;
+    // Logged as well as shown: a notification that never appears is otherwise
+    // indistinguishable from one that was never raised, and this is the exact
+    // situation where someone is already trying to work out why nothing works.
+    console.warn(`[Stash] ${trouble.label} — ${trouble.body}`);
+    try {
+      if (Notification.isSupported()) {
+        new Notification({ title: trouble.title, body: trouble.body }).show();
+      } else {
+        console.warn('[Stash] notifications are not available to say so');
+      }
+    } catch (err) {
+      // a missing notification must never take the app with it
+      console.warn('[Stash] could not raise the shortcut notification: ' + err.message);
+    }
+  }
+  // Recovered -- the health check re-registers every 30 seconds, so quitting
+  // whatever held the key is enough. Arm the warning again for next time.
+  if (!trouble) warnedAboutShortcuts = false;
+
+  if (before.drawer !== drawerReg || before.dock !== dockReg) refreshTrayMenu();
   return drawerReg && dockReg;
 }
+
+app.setAppUserModelId('com.harikrish.stash');
 
 app.whenReady().then(() => {
   if (process.platform === 'darwin' && app.dock) app.dock.hide();
@@ -3045,8 +3216,8 @@ app.whenReady().then(() => {
   // (screen lock, display sleep, user switching). Re-register when the app
   // regains focus, as a belt-and-suspenders safety.
   app.on('browser-window-focus', () => {
-    if (!globalShortcut.isRegistered('CommandOrControl+Shift+V') ||
-        !globalShortcut.isRegistered('CommandOrControl+Shift+Space')) {
+    const k = currentAccelerators();
+    if (!globalShortcut.isRegistered(k.drawer) || !globalShortcut.isRegistered(k.dock)) {
       console.log('[Stash] a shortcut was dropped — re-registering');
       registerShortcuts();
     }
@@ -3078,8 +3249,9 @@ app.whenReady().then(() => {
   // edge case the above handlers miss. Runs every 30 seconds.
   setInterval(() => {
     try {
-      const drawerOk = globalShortcut.isRegistered('CommandOrControl+Shift+V');
-      const dockOk = globalShortcut.isRegistered('CommandOrControl+Shift+Space');
+      const k = currentAccelerators();
+      const drawerOk = globalShortcut.isRegistered(k.drawer);
+      const dockOk = globalShortcut.isRegistered(k.dock);
       if (!drawerOk || !dockOk) {
         console.log('[Stash] health check found dropped shortcut — re-registering');
         registerShortcuts();
