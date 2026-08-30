@@ -14,16 +14,14 @@
     "dist": "npm run build:ocr && electron-builder",
     "dist:mac": "npm run build:ocr && electron-builder --mac --x64 --arm64 --publish never",
     "dist:win": "npm run build:ocr && electron-builder --win --x64 --publish never",
-    "build:shaders": "esbuild scripts/shader-entry.js --bundle --format=iife --global-name=PaperShaders --minify --target=chrome120 --outfile=src/vendor/paper-shaders.js",
-    "build:motion": "esbuild scripts/motion-entry.js --bundle --format=iife --global-name=Motion --minify --target=chrome120 --outfile=src/vendor/motion.js"
+    "build:shaders": "esbuild scripts/shader-entry.js --bundle --format=iife --global-name=PaperShaders --minify --target=chrome120 --outfile=src/vendor/paper-shaders.js"
   },
   "devDependencies": {
     "@paper-design/shaders": "^0.0.80",
     "dialkit": "^1.4.3",
     "electron": "^31.0.0",
     "electron-builder": "^26.15.3",
-    "esbuild": "^0.28.2",
-    "motion": "^13.1.1"
+    "esbuild": "^0.28.2"
   },
   "build": {
     "appId": "com.harikrish.stash",
