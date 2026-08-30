@@ -31,9 +31,15 @@ function freshContext() {
     settings: { activeSessionId: null },
     // capturing writes to the history log as well; it has its own suite
     historyStore: { add() {}, remove() {}, clear() {} },
+    // Stores are written through a helper now, and refuse to write over a file
+    // they could not read. A lifted copy without these throws, and the suite
+    // hangs rather than failing.
+    unreadableStores: new Set(),
+    Notification: { isSupported: () => false },
   };
   vm.createContext(ctx);
   vm.runInContext([
+    grab('writeStoreAtomically'), grab('preserveUnreadableStore'),
     grab('loadSessions'), grab('saveSessions'), grab('sessionState'), grab('inSession'),
     grab('addToSession'), grab('removeFromSession'), grab('dropSessionImage'),
     grab('dropImageFile'), grab('makeImagePermanent'),

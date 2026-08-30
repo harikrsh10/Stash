@@ -30,10 +30,13 @@ const grabConst = (name) => {
 
 function freshContext() {
   const ctx = { fs, path, console, pinnedStorePath, pinned: [], history: [], refreshTrayMenu: () => {},
-                historyStore: { add() {}, remove() {}, clear() {} } };
+                historyStore: { add() {}, remove() {}, clear() {} },
+    // the stores refuse to write over a file they could not read
+    unreadableStores: new Set(), Notification: { isSupported: () => false } };
   vm.createContext(ctx);
   vm.runInContext(
     [grabConst('TAG_MAX_LEN'), grabConst('TAG_MAX_COUNT'),
+     grab('writeStoreAtomically'), grab('preserveUnreadableStore'),
      grab('loadPinned'), grab('savePinned'), grab('makeImagePermanent'),
      grab('normalizeTags'), grab('updatePrompt'), grab('promptable'), grab('promptItem')].join('\n') +
     `\nthis.api = { loadPinned, savePinned, normalizeTags, updatePrompt, promptItem };`, ctx);

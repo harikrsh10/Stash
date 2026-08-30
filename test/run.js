@@ -14,6 +14,7 @@ const SUITES = [
   { file: 'drag.test.js', runtime: 'node', what: 'drag-out file materialization' },
   { file: 'design.test.js', runtime: 'node', what: 'figma frames, svg and what keeps them intact' },
   { file: 'history.test.js', runtime: 'node', what: 'the history log and what survives a restart' },
+  { file: 'durability.test.js', runtime: 'node', what: 'the stores surviving a crash mid-write' },
   { file: 'ocr-index.test.js', runtime: 'node', what: 'reading the text in pictures, in the background' },
   { file: 'sourceapp.test.js', runtime: 'node', what: 'which app a clip was copied out of' },
   { file: 'imagesearch.test.js', runtime: 'electron', what: 'finding a picture by the words inside it' },

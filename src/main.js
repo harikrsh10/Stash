@@ -647,12 +647,72 @@ function loadPinned() {
     console.log(`[Stash] loaded ${pinned.length} pinned items`);
   } catch (err) {
     console.error('[Stash] failed to load pinned:', err);
+    preserveUnreadableStore(pinnedStorePath, 'library');
     pinned = [];
+  }
+}
+
+// ---------- writing to disk without being able to lose it ----------
+//
+// Every store used to be written with a single writeFileSync straight over the
+// live file. If the process died part-way through -- a crash, a force quit, a
+// power cut, a full disk -- what was left on disk was a truncated file, and
+// there was nothing to fall back to. That is not a rare shape for this app:
+// pinned.json is rewritten on every pin, prompt, rename and reorder.
+//
+// A rename is atomic on both platforms, so a reader sees either the whole old
+// file or the whole new one and never half of either. The fsync matters as
+// much as the rename: without it the rename can land before the bytes do, and
+// a power cut then leaves a name pointing at nothing.
+function writeStoreAtomically(filePath, text) {
+  const tmp = filePath + '.tmp';
+  const fd = fs.openSync(tmp, 'w');
+  try {
+    fs.writeFileSync(fd, text, 'utf8');
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  fs.renameSync(tmp, filePath);
+}
+
+// A store whose file would not parse. Set on the way in, read on the way out.
+const unreadableStores = new Set();
+
+// What a failed load used to do: log, empty the array, carry on. The next
+// ordinary save -- pinning anything at all -- then wrote that emptiness over
+// the file, turning a corrupt file into a deleted one. So the file is moved
+// aside instead, under a name that says what it is, and the person is told.
+// Losing the library is survivable if the bytes are still somewhere.
+function preserveUnreadableStore(filePath, which) {
+  unreadableStores.add(which);
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const kept = filePath + '.unreadable-' + new Date().toISOString().replace(/[:.]/g, '-');
+    fs.renameSync(filePath, kept);
+    console.error(`[Stash] ${which} could not be read; kept it at ${kept}`);
+    // Silence is what made this bad. Say it where someone will see it.
+    try {
+      if (Notification.isSupported()) {
+        new Notification({
+          title: 'Stash could not read its ' + which,
+          body: 'The file was kept at ' + path.basename(kept) + ' rather than overwritten. '
+            + 'Stash has started with an empty ' + which + '.',
+        }).show();
+      }
+    } catch (_) { /* a missing notification must not take the app with it */ }
+    return kept;
+  } catch (err) {
+    console.error('[Stash] could not set the unreadable ' + which + ' aside:', err);
+    return null;
   }
 }
 
 function savePinned() {
   if (!pinnedStorePath) return;
+  // The file could not be read at boot and has been kept aside. Writing an
+  // empty library over its replacement is how the loss became permanent.
+  if (unreadableStores.has('library')) return;
   try {
     // Strip dataUrl from saved entries — it's huge and we can regenerate on demand
     const serializable = pinned.map(p => {
@@ -662,7 +722,7 @@ function savePinned() {
       // keep dataUrl for images so they render without re-reading the file
       return copy;
     });
-    fs.writeFileSync(pinnedStorePath, JSON.stringify(serializable, null, 2), 'utf8');
+    writeStoreAtomically(pinnedStorePath, JSON.stringify(serializable, null, 2));
   } catch (err) {
     console.error('[Stash] failed to save pinned:', err);
   }
@@ -738,14 +798,18 @@ function loadSourceIcons() {
     console.log(`[Stash] ${Object.keys(sourceIcons).length} app icon(s) remembered`);
   } catch (err) {
     console.error('[Stash] failed to load app icons:', err);
+    // These are a cache and can be rebuilt, so they are kept aside without a
+    // notification -- there is nothing here a person would miss.
+    unreadableStores.add('app icons');
     sourceIcons = {};
   }
 }
 
 function saveSourceIcons() {
   if (!sourceIconStorePath) return;
+  if (unreadableStores.has('app icons')) return;
   try {
-    fs.writeFileSync(sourceIconStorePath, JSON.stringify(sourceIcons), 'utf8');
+    writeStoreAtomically(sourceIconStorePath, JSON.stringify(sourceIcons));
   } catch (err) {
     console.error('[Stash] failed to save app icons:', err);
   }
@@ -1145,6 +1209,8 @@ function loadSessions() {
     console.log(`[Stash] loaded ${sessions.length} sessions, ${sessionClips.length} session clips`);
   } catch (err) {
     console.error('[Stash] failed to load sessions:', err);
+    // Collections are hand-made too, so the same rule: keep the bytes.
+    preserveUnreadableStore(sessionStorePath, 'collections');
     sessions = [];
     sessionClips = [];
   }
@@ -1152,6 +1218,7 @@ function loadSessions() {
 
 function saveSessions() {
   if (!sessionStorePath) return;
+  if (unreadableStores.has('collections')) return;
   try {
     const clips = sessionClips.map(c => {
       const copy = { ...c };
@@ -1159,7 +1226,7 @@ function saveSessions() {
       delete copy._promoted;
       return copy;
     });
-    fs.writeFileSync(sessionStorePath, JSON.stringify({ sessions, clips }, null, 2), 'utf8');
+    writeStoreAtomically(sessionStorePath, JSON.stringify({ sessions, clips }, null, 2));
   } catch (err) {
     console.error('[Stash] failed to save sessions:', err);
   }
@@ -1278,7 +1345,7 @@ function loadSettings() {
 function saveSettings() {
   if (!settingsStorePath) return;
   try {
-    fs.writeFileSync(settingsStorePath, JSON.stringify(settings, null, 2), 'utf8');
+    writeStoreAtomically(settingsStorePath, JSON.stringify(settings, null, 2));
   } catch (err) {
     console.error('[Stash] failed to save settings:', err);
   }
