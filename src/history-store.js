@@ -145,16 +145,34 @@ function createHistoryStore({ filePath, limit = 10000, enabled = true } = {}) {
 
     // Rewrite the log as one line per live clip, dropping every superseded and
     // tombstoned record.
+    // Appending is safe on its own: an interrupted append costs the record
+    // being written and nothing else, and replay skips the partial line. This
+    // is the one operation that touches the whole file, so it is the one that
+    // can lose all of it -- written in place, a crash part-way through takes
+    // the entire history rather than one clip. Temp file, fsync, rename, the
+    // same as the stores. The fsync matters as much as the rename: without it
+    // the rename can land before the bytes do.
     compact() {
       if (!enabled || !filePath) return;
+      const tmp = filePath + '.tmp';
       try {
         const body = [...entries.values()]
           .map(e => JSON.stringify({ op: 'add', e: serialize(e) }))
           .join('\n');
-        fs.writeFileSync(filePath, body ? body + '\n' : '', 'utf8');
+        const fd = fs.openSync(tmp, 'w');
+        try {
+          fs.writeFileSync(fd, body ? body + '\n' : '', 'utf8');
+          fs.fsyncSync(fd);
+        } finally {
+          fs.closeSync(fd);
+        }
+        fs.renameSync(tmp, filePath);
         lines = entries.size;
       } catch (err) {
         console.error('[Stash] failed to compact history log:', err);
+        // A half-written temp file is not the log and must not be mistaken for
+        // one later. The log itself is untouched either way.
+        try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch (_) {}
       }
     },
 
