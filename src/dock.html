@@ -2,6 +2,22 @@
 <html>
 <head>
   <meta charset="UTF-8">
+  <!-- What this page is allowed to do. Electron warned about the absence of
+       this on every launch, and the pages handle content that arrives from
+       other applications.
+
+       'unsafe-inline' for script is not what anyone wants and is honest about
+       where this stands: the drawer is built as one inline script, so a strict
+       script-src means moving it to a file of its own. That is a mechanical
+       change and a large one, and it belongs in its own commit rather than
+       hidden inside a security header.
+
+       What this does buy, today: no remote script, no plugins, no frames, no
+       network of any kind, no form posts, no <base> rewriting where relative
+       URLs point, and images limited to our own files and data URLs. The font
+       hosts are named because the stylesheets @import from Google Fonts.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: file:; media-src 'none'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Stash Dock</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');

@@ -2,6 +2,22 @@
 <html>
 <head>
   <meta charset="UTF-8">
+  <!-- What this page is allowed to do. Electron warned about the absence of
+       this on every launch, and the pages handle content that arrives from
+       other applications.
+
+       'unsafe-inline' for script is not what anyone wants and is honest about
+       where this stands: the drawer is built as one inline script, so a strict
+       script-src means moving it to a file of its own. That is a mechanical
+       change and a large one, and it belongs in its own commit rather than
+       hidden inside a security header.
+
+       What this does buy, today: no remote script, no plugins, no frames, no
+       network of any kind, no form posts, no <base> rewriting where relative
+       URLs point, and images limited to our own files and data URLs. The font
+       hosts are named because the stylesheets @import from Google Fonts.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: file:; media-src 'none'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Stash</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
@@ -23,6 +39,17 @@
       --panel-in: 0.26s;
       --panel-out: 0.16s;
       --panel-ease: cubic-bezier(0.2, 0, 0, 1);
+
+      /* The rest of the app's motion, which had grown twelve durations and
+         eight curves doing the work of about four. Values within 30ms of each
+         other are the same movement to anyone watching, so they are one token
+         now -- the inconsistency was never visible, but tuning it meant finding
+         sixty declarations. */
+      --t-quick: 0.14s;    /* hover, colour, the small stuff you trigger often */
+      --t-mid: 0.2s;       /* something appearing or moving a short way */
+      --t-slow: 0.28s;     /* a sheet or a panel arriving */
+      --e-out: cubic-bezier(0.2, 0, 0, 1);            /* the default */
+      --e-overshoot: cubic-bezier(0.22, 1.2, 0.36, 1); /* settles past and back */
       --panel-from-x: 16px;      /* it comes in from the right, travelling left */
       --panel-from-scale: 0.98;
 
@@ -270,7 +297,7 @@
          it floats in the gutter rather than filling it */
       border: 3px solid transparent;
       background-clip: content-box;
-      transition: background-color 0.25s ease-out;
+      transition: background-color var(--t-slow) ease-out;
     }
     :hover::-webkit-scrollbar-thumb,
     .scrolling::-webkit-scrollbar-thumb { background-color: var(--border2); }
@@ -528,7 +555,7 @@
       background: var(--ocr-wash);
       border-radius: 2px;
       cursor: pointer;
-      transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+      transition: background var(--t-quick), border-color var(--t-quick), box-shadow var(--t-quick);
     }
     .region:hover { background: var(--ocr-wash-2); border-color: var(--ocr); }
     .region.picked {
@@ -627,7 +654,7 @@
       letter-spacing: 0.06em;
       text-transform: uppercase;
       cursor: pointer;
-      transition: color 0.12s, background 0.12s, border-color 0.12s;
+      transition: color var(--t-quick), background var(--t-quick), border-color var(--t-quick);
     }
     .mode-btn:hover { color: var(--text-2); }
     .mode-btn.is-on {
@@ -744,7 +771,7 @@
       cursor: pointer;
       padding: 2px 6px;
       border-radius: 3px;
-      transition: color 0.15s, background 0.15s;
+      transition: color var(--t-quick), background var(--t-quick);
     }
     .close-btn:hover { color: var(--text); background: var(--surface2); }
 
@@ -760,7 +787,7 @@
       cursor: pointer;
       padding: 3px 6px;
       border-radius: 3px;
-      transition: color 0.15s, background 0.15s;
+      transition: color var(--t-quick), background var(--t-quick);
     }
     .theme-btn:hover { color: var(--text); background: var(--surface2); }
 
@@ -779,7 +806,7 @@
       font-size: 11px;
       padding: 7px 10px;
       outline: none;
-      transition: border-color 0.15s;
+      transition: border-color var(--t-quick);
     }
     .search-input::placeholder { color: var(--muted2); }
     .search-input:focus { border-color: var(--border2); }
@@ -800,7 +827,7 @@
       background: transparent;
       color: var(--muted);
       cursor: pointer;
-      transition: color 0.15s, background 0.15s, border-color 0.15s;
+      transition: color var(--t-quick), background var(--t-quick), border-color var(--t-quick);
     }
     .pill:hover { color: var(--text); }
     .pill.active { background: var(--surface2); border-color: var(--border2); color: var(--text); }
@@ -929,7 +956,7 @@
       /* an app's own colours are louder than anything else on the row, so they
          sit back until the row is under the cursor */
       opacity: 0.75;
-      transition: opacity 0.12s;
+      transition: opacity var(--t-quick);
     }
     .item:hover .from-icon { opacity: 1; }
     .ocr-hit {
@@ -959,7 +986,7 @@
       font-size: 10px;
       letter-spacing: 0.06em;
       cursor: pointer;
-      transition: color 0.12s, border-color 0.12s;
+      transition: color var(--t-quick), border-color var(--t-quick);
     }
     .list-more:hover { color: var(--text-2); border-color: var(--border); }
     .empty .empty-sub {
@@ -986,7 +1013,7 @@
       padding: 12px 18px 12px 14px;
       border-bottom: 1px solid var(--border);
       cursor: grab;
-      transition: background 0.14s, transform 0.14s, border-color 0.14s;
+      transition: background var(--t-quick), transform var(--t-quick), border-color var(--t-quick);
       position: relative;
       display: flex;
       gap: 11px;
@@ -1018,7 +1045,7 @@
       justify-content: center;
       gap: 3px;
       opacity: 0;
-      transition: opacity 0.14s;
+      transition: opacity var(--t-quick);
       flex-shrink: 0;
       align-self: center;
       width: 4px;
@@ -1052,7 +1079,7 @@
       bottom: 0;
       width: 26px;
       border-radius: 6px 0 0 6px;
-      transition: background 0.12s;
+      transition: background var(--t-quick);
     }
     .item.orderable:hover .drag-handle { opacity: 0.45; }
     /* and it shows when the pointer is on it, so the moment it arms stops being
@@ -1087,7 +1114,7 @@
     .item.lifting.landing {
       transform: scale(1);
       box-shadow: 0 2px 8px var(--shadow);
-      transition: transform 0.19s cubic-bezier(0.2, 0.8, 0.2, 1),
+      transition: transform var(--t-mid) cubic-bezier(0.2, 0.8, 0.2, 1),
                   box-shadow 0.19s cubic-bezier(0.2, 0.8, 0.2, 1);
     }
 
@@ -1104,7 +1131,7 @@
       border-radius: 6px;
     }
     /* rows sliding out of the way to open the gap */
-    .item.shifting { transition: transform 0.19s cubic-bezier(0.2, 0.8, 0.2, 1); }
+    .item.shifting { transition: transform var(--t-mid) cubic-bezier(0.2, 0.8, 0.2, 1); }
 
     .item-icon-col {
       flex-shrink: 0;
@@ -1159,7 +1186,7 @@
       background: none;
       color: var(--muted);
       cursor: pointer;
-      transition: color 0.12s, background 0.12s;
+      transition: color var(--t-quick), background var(--t-quick);
     }
     .out-act:hover { color: var(--text); background: var(--surface3); }
     .out-act svg {
@@ -1205,7 +1232,7 @@
       border-radius: 5px;
       background: var(--sheet-bg);
       color: var(--text);
-      transition: opacity 0.12s;
+      transition: opacity var(--t-quick);
     }
     .swatch-cue svg {
       width: 13px;
@@ -1368,7 +1395,7 @@
       border-radius: 5px;
       display: block;
       border: 1px solid var(--border);
-      transition: max-height 0.2s;
+      transition: max-height var(--t-mid);
     }
     .item:hover .item-image { max-height: 180px; }
 
@@ -1391,7 +1418,7 @@
       border: 1px solid var(--border);
       opacity: 0;
       pointer-events: none;
-      transition: opacity 0.12s;
+      transition: opacity var(--t-quick);
     }
     .item:hover .actions,
     .actions:focus-within { opacity: 1; pointer-events: auto; }
@@ -1407,7 +1434,7 @@
       color: var(--muted);
       cursor: pointer;
       padding: 0;
-      transition: color 0.12s, background 0.12s;
+      transition: color var(--t-quick), background var(--t-quick);
     }
     .act-btn svg {
       width: 15px;
@@ -1433,7 +1460,7 @@
       font-family: var(--font-mono);
       padding: 4px 8px;
       cursor: pointer;
-      transition: color 0.12s, background 0.12s;
+      transition: color var(--t-quick), background var(--t-quick);
       letter-spacing: 0.04em;
     }
     .act-btn:hover { color: var(--text); background: var(--surface3, var(--surface3)); }
@@ -1468,7 +1495,7 @@
       cursor: grab;
     }
     .stack-deck:active { cursor: grabbing; }
-    .stack-deck.delivered { animation: settle 0.5s cubic-bezier(0.22, 1.4, 0.36, 1); }
+    .stack-deck.delivered { animation: settle 0.5s var(--e-overshoot); }
     @keyframes settle {
       0%   { transform: scale(0.86) rotate(-3deg); }
       55%  { transform: scale(1.06) rotate(1.5deg); }
@@ -1494,7 +1521,7 @@
       font-size: 12px;
       color: var(--muted);
       transform: translateX(var(--x, 0px)) rotate(var(--r, 0deg));
-      transition: transform 0.28s cubic-bezier(0.22, 1.2, 0.36, 1), opacity 0.18s;
+      transition: transform 0.28s var(--e-overshoot), opacity var(--t-mid);
       cursor: pointer;
     }
     .stack-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -1523,7 +1550,7 @@
       box-shadow: 0 2px 5px var(--shadow);
       z-index: 5;
     }
-    .stack-count.bump { animation: bump 0.34s cubic-bezier(0.22, 1.4, 0.36, 1); }
+    .stack-count.bump { animation: bump 0.34s var(--e-overshoot); }
     @keyframes bump {
       0% { transform: scale(1); } 45% { transform: scale(1.38); } 100% { transform: scale(1); }
     }
@@ -1567,7 +1594,7 @@
       border: none;
       cursor: pointer;
       padding: 0;
-      transition: color 0.12s;
+      transition: color var(--t-quick);
     }
     .clear-btn:hover { color: var(--danger); }
 
@@ -1585,7 +1612,7 @@
       border-radius: 3px;
       letter-spacing: 0.06em;
       opacity: 0;
-      transition: opacity 0.2s;
+      transition: opacity var(--t-mid);
       pointer-events: none;
     }
     .toast.show { opacity: 1; }
@@ -1616,7 +1643,7 @@
       padding: 3px 8px;
       border-radius: 3px;
       margin-right: 4px;
-      transition: color 0.15s, background 0.15s;
+      transition: color var(--t-quick), background var(--t-quick);
       display: flex;
       align-items: center;
       gap: 5px;
@@ -1625,7 +1652,7 @@
     .pause-btn .dot {
       width: 5px; height: 5px; border-radius: 50%;
       background: var(--live-dim);
-      transition: background 0.2s;
+      transition: background var(--t-mid);
     }
     .pause-btn.paused .dot { background: var(--pinned-2); }
 
@@ -1644,7 +1671,7 @@
       padding: 3px 7px;
       border-radius: 3px;
       margin-right: 6px;
-      transition: color 0.15s, background 0.15s, border-color 0.15s;
+      transition: color var(--t-quick), background var(--t-quick), border-color var(--t-quick);
       display: flex;
       align-items: center;
       gap: 4px;
@@ -1799,7 +1826,7 @@
       padding: 0;
       border-radius: 3px;
       cursor: pointer;
-      transition: color 0.12s, background 0.12s;
+      transition: color var(--t-quick), background var(--t-quick);
     }
     .collection-stop svg {
       width: 16px;
@@ -1870,7 +1897,7 @@
       border-top: 1px solid var(--prompt-line);
       box-shadow: 0 -12px 32px var(--shadow);
       transform: translateY(100%);
-      transition: transform 0.26s cubic-bezier(0.22, 1.1, 0.36, 1);
+      transition: transform var(--t-slow) var(--e-overshoot);
     }
     .editor.show { transform: translateY(0); }
 
@@ -1913,7 +1940,7 @@
       padding: 4px 8px;
       cursor: pointer;
       transition-property: background-color, color, border-color, scale;
-      transition-duration: 0.14s;
+      transition-duration: var(--t-quick);
       transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
     }
     .key-cap:hover { color: var(--text); border-color: var(--muted2); }
@@ -1931,7 +1958,7 @@
       background: none; border: 0; padding: 2px 4px;
       color: var(--muted); font-family: var(--font-mono); font-size: 10px;
       cursor: pointer; border-radius: 4px;
-      transition: color 0.14s;
+      transition: color var(--t-quick);
     }
     .set-reset:hover { color: var(--text-2); }
 
@@ -1946,10 +1973,66 @@
       display: inline-flex;
       align-items: center;
       transition-property: color, background-color, scale;
-      transition-duration: 0.15s;
+      transition-duration: var(--t-quick);
     }
     .gear-btn:hover { color: var(--text-2); background: var(--surface2); }
     .gear-btn:active { scale: 0.96; }
+
+    /* Press feedback on everything you can press.
+       Three controls had this and the rest had nothing, so half the drawer
+       answered a click and half of it did not -- and the half that did not is
+       mostly the half you use constantly: the row actions, the filter pills,
+       the rail. scale is composited, so it costs a click nothing.
+       Motion is never the only cue here; every one of these also changes
+       colour or state, which is what someone with motion turned down sees. */
+    .act-btn:active,
+    .pill:active,
+    .rail-item:active,
+    .close-btn:active,
+    .clear-btn:active,
+    .theme-btn:active,
+    .pause-btn:active,
+    .scope-btn:active,
+    .tag-filter-btn:active,
+    .set-reset:active,
+    .tag-chip:active {
+      scale: 0.96;
+    }
+    /* A row is a big target and scaling the whole thing reads as a wobble
+       rather than a press, so it dips instead. */
+    .item:active { scale: 0.995; }
+
+    /* The keyboard's place in the list. Distinct from selection, which is what
+       the stack collects, and from hover, which follows the mouse: three
+       different ideas that were sharing one visual language before this. */
+    .item.cursor {
+      outline: 2px solid var(--select);
+      outline-offset: -2px;
+      background: var(--surface2);
+    }
+    /* A visible focus ring everywhere, not only on the row actions. Tabbing
+       through the drawer used to be a silent walk. */
+    .pill:focus-visible,
+    .rail-item:focus-visible,
+    .close-btn:focus-visible,
+    .theme-btn:focus-visible,
+    .gear-btn:focus-visible,
+    .pause-btn:focus-visible,
+    .clear-btn:focus-visible,
+    .scope-btn:focus-visible,
+    .tag-filter-btn:focus-visible,
+    .key-cap:focus-visible,
+    .item:focus-visible {
+      outline: 2px solid var(--select);
+      outline-offset: 1px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .act-btn:active, .pill:active, .rail-item:active, .close-btn:active,
+      .clear-btn:active, .theme-btn:active, .pause-btn:active, .scope-btn:active,
+      .tag-filter-btn:active, .set-reset:active, .tag-chip:active,
+      .item:active, .gear-btn:active, .key-cap:active { scale: 1; }
+    }
     .gear-btn.on { color: var(--prompt); }
 
     .editor-head {
@@ -1972,7 +2055,7 @@
       font-size: 9px;
       color: var(--muted2);
       opacity: 0;
-      transition: opacity 0.18s;
+      transition: opacity var(--t-mid);
     }
     .editor-saved.show { opacity: 1; }
 
@@ -2130,7 +2213,7 @@
       border-radius: 1px;
       overflow: hidden;
     }
-    .ocr-bar span { display: block; height: 100%; width: 0; background: var(--ocr-strong); transition: width 0.2s; }
+    .ocr-bar span { display: block; height: 100%; width: 0; background: var(--ocr-strong); transition: width var(--t-mid); }
 
     /* picker that opens from "+ tag" — existing tags to choose, or type a new one */
     .tag-picker {
@@ -2869,8 +2952,18 @@
     let stackIconUrl = null;
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+    // Quotes included, and that is the point of it. This escaped three
+    // characters and was used inside title="..." for the name of whatever app
+    // a clip was copied from — a name that comes from arbitrary third-party
+    // software. A name carrying a double quote closed the attribute and
+    // planted markup of its own choosing; that was reproduced, not imagined.
     function esc(s) {
-      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
 
     function timeAgo(ts) {
@@ -5293,6 +5386,7 @@
       if (visible.length === 0) {
         listEl.appendChild(emptyStateFor(activeScope, inScope.length));
         syncSelection();
+        syncCursor();
         markEditingRow();
         return;
       }
@@ -5305,6 +5399,9 @@
 
       listEl.scrollTop = restoreScroll;
       syncSelection();
+      // the keyboard's place in the list survives a redraw, or lets go if the
+      // row it was on has been filtered away or deleted
+      syncCursor();
       markEditingRow();
     }
 
@@ -5431,6 +5528,71 @@
         void stackDeckEl.offsetWidth;
         stackDeckEl.classList.add('delivered');
       }
+    });
+
+    // ---------- the list, from the keyboard ----------
+    // The drawer is a keyboard tool that could only be driven by mouse once the
+    // shortcut had opened it: no way to walk the list, no way to copy without
+    // pointing at something. Arrows move a cursor, Enter copies the row it is
+    // on -- the same thing its copy button does.
+    let cursorId = null;
+
+    function cursorRows() {
+      return [...listEl.querySelectorAll('.item')];
+    }
+
+    function paintCursor() {
+      cursorRows().forEach(r => r.classList.toggle('cursor', r.dataset.id === cursorId));
+    }
+
+    function moveCursor(step) {
+      const rows = cursorRows();
+      if (!rows.length) return;
+      const at = rows.findIndex(r => r.dataset.id === cursorId);
+      // No cursor yet: down starts at the top, up starts at the bottom, which
+      // is what the key you pressed was asking for.
+      const next = at === -1
+        ? (step > 0 ? 0 : rows.length - 1)
+        : Math.min(rows.length - 1, Math.max(0, at + step));
+      cursorId = rows[next].dataset.id;
+      paintCursor();
+      // `nearest` so a cursor already on screen does not jerk the list about
+      rows[next].scrollIntoView({ block: 'nearest' });
+    }
+
+    function cursorRow() {
+      return cursorId ? listEl.querySelector(`.item[data-id="${CSS.escape(cursorId)}"]`) : null;
+    }
+
+    // The cursor survives a re-render if its row is still there, and lets go
+    // quietly if the row has been filtered away or deleted.
+    function syncCursor() {
+      if (cursorId && !cursorRow()) cursorId = null;
+      paintCursor();
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Enter') return;
+      // Anything with its own idea of what arrows and Enter mean gets them
+      // first: the editor, a tag field, the shortcut recorder, a menu.
+      if (recording) return;
+      if (settingsSheetEl.classList.contains('show')) return;
+      if (editingId) return;
+      if (document.querySelector('.tag-menu.show')) return;
+      const el = document.activeElement;
+      if (el && (el.tagName === 'TEXTAREA'
+                 || (el.tagName === 'INPUT' && el !== searchEl)
+                 || el.isContentEditable)) return;
+
+      if (e.key === 'Enter') {
+        const row = cursorRow();
+        if (!row) return;
+        e.preventDefault();
+        row.querySelector('[data-act="copy"]')?.click();
+        return;
+      }
+      e.preventDefault();
+      moveCursor(e.key === 'ArrowDown' ? 1 : -1);
     });
 
     // escape to hide — but a live selection swallows the first Esc, so the

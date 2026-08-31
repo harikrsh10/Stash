@@ -251,6 +251,8 @@ function createWindow() {
   mainWindow.on('show', refreshTrayMenu);
   mainWindow.on('hide', refreshTrayMenu);
 
+  watchForCrashes(mainWindow, 'drawer');
+
   if (isDev) mainWindow.webContents.openDevTools({ mode: 'detach' });
 
   // The motion dials, injected rather than linked from renderer.html: a
@@ -627,9 +629,25 @@ function luhnCheck(num) {
 }
 
 // ---------- pin persistence ----------
-// Pinned items are the ONLY thing Stash writes to disk. Everything else is
-// memory-only. This keeps the privacy story clean: if you didn't explicitly
-// pin it, it's gone on quit.
+// What Stash writes to disk. This comment claimed for a long time that pinned
+// items were the only thing, which stopped being true several features ago -- a
+// stale sentence about privacy is worse than none, because the next person
+// makes a decision on it.
+//
+//   pinned.json         pins and prompts, and the tags on them
+//   sessions.json       collections, and which clips are in them
+//   settings.json       including the chosen shortcuts
+//   source-icons.json   one icon per app a clip has been copied from
+//   history.ndjson      the running history        -- off with rememberHistory
+//   pinned-images/      the picture behind a pinned or prompted image clip
+//   history-images/     the picture behind an ordinary image clip
+//   ocrText on a clip   text read out of a picture -- off with indexImageText
+//
+// Two switches genuinely turn things off: rememberHistory returns history to
+// memory-only, and indexImageText stops pictures being read at all. Secrets
+// reach none of it -- looksSecret refuses them before capture, so an API key
+// never enters memory, let alone a file.
+
 function loadPinned() {
   if (!pinnedStorePath) return;
   try {
@@ -637,11 +655,27 @@ function loadPinned() {
     const raw = fs.readFileSync(pinnedStorePath, 'utf8');
     const data = JSON.parse(raw);
     if (!Array.isArray(data)) return;
-    // Filter out any img entries whose temp file no longer exists
+    // Drop img entries whose file is genuinely gone -- but only once we are
+    // sure we can see the folder it lived in.
+    //
+    // This used to trust existsSync on its own, and existsSync says false for
+    // "not there" and for "could not look": a locked folder, a permissions
+    // blip, an antivirus scan, a drive not mounted yet at login. Any of those
+    // pruned every pinned picture, and the next ordinary save wrote the
+    // pruning to disk. Same shape as the corrupt-store bug -- a transient
+    // problem made permanent by the app's own tidying.
+    const folderReadable = (dir) => {
+      try { fs.readdirSync(dir); return true; } catch (_) { return false; }
+    };
+    const checkedFolders = new Map();
     pinned = data.filter(entry => {
-      if (entry.type === 'img' && entry.filepath) {
-        return fs.existsSync(entry.filepath);
-      }
+      if (entry.type !== 'img' || !entry.filepath) return true;
+      if (fs.existsSync(entry.filepath)) return true;
+      const dir = path.dirname(entry.filepath);
+      if (!checkedFolders.has(dir)) checkedFolders.set(dir, folderReadable(dir));
+      if (checkedFolders.get(dir)) return false;      // folder is fine, file is not
+      // Cannot see the folder, so cannot conclude the file is gone. Keep it.
+      console.warn(`[Stash] keeping ${entry.id}: cannot read ${dir} to check it`);
       return true;
     });
     console.log(`[Stash] loaded ${pinned.length} pinned items`);
@@ -862,6 +896,14 @@ function diagnosticsReport() {
   // Which build is answering the shortcut is the first thing worth knowing when
   // "nothing happens" -- a second copy holding the key looks exactly like a
   // broken app from the outside.
+  // Anything that died since launch. Empty is the answer people should see.
+  if (crashLog.length) {
+    lines.push(`crashes: ${crashLog.length} since launch`);
+    crashLog.slice(0, 4).forEach(c =>
+      lines.push(`  ${new Date(c.at).toLocaleTimeString()} — ${c.what}: ${c.detail}`));
+  } else {
+    lines.push('crashes: none since launch');
+  }
   lines.push(`shortcuts: drawer ${shortcutState.drawer ? 'held' : 'TAKEN BY ANOTHER APP'}`
     + ` · dock ${shortcutState.dock ? 'held' : 'TAKEN BY ANOTHER APP'}`);
   lines.push(`source app: ${settings.recordSourceApp !== false ? 'on' : 'off'}`
@@ -1411,6 +1453,7 @@ function createDockWindow() {
   });
 
   dockWindow.loadFile(path.join(__dirname, 'dock.html'));
+  watchForCrashes(dockWindow, 'quick dock');
 
   // Hide on blur — UNLESS a drag is in progress (otherwise drag gets cancelled)
   dockWindow.on('blur', () => {
@@ -3173,6 +3216,56 @@ function shortcutTrouble(state) {
   };
 }
 
+// ---------- surviving a crash ----------
+//
+// A renderer can die on its own -- a GPU fault, an out-of-memory kill, a bug --
+// and until this existed nothing noticed. Killing every renderer of a healthy
+// instance left the main process running, the tray sitting there and the
+// shortcut still registered, with not one line logged: the drawer would open as
+// a window with nothing in it while clipboard polling carried on behind it.
+// That is the worst shape for a clipboard manager, because the person keeps
+// copying and only finds out later.
+//
+// Kept for the diagnostics report, which is what gets pasted back when someone
+// says it stopped working.
+const crashLog = [];
+function noteCrash(what, detail) {
+  crashLog.unshift({ at: Date.now(), what, detail });
+  crashLog.length = Math.min(crashLog.length, 10);
+  console.error(`[Stash] ${what}: ${detail}`);
+}
+
+// A window whose renderer keeps dying is a window that will keep dying, and
+// reloading it forever burns CPU and hides the problem. After this many in a
+// short window, leave it and say so.
+const RELOAD_LIMIT = 3;
+const RELOAD_WINDOW_MS = 60 * 1000;
+const reloadTimes = new Map();
+
+function watchForCrashes(win, which) {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.on('render-process-gone', (_e, details) => {
+    noteCrash(`the ${which} stopped`, details.reason + (details.exitCode ? ' (' + details.exitCode + ')' : ''));
+    // A clean exit is the window being closed on purpose; nothing to recover.
+    if (details.reason === 'clean-exit') return;
+    if (win.isDestroyed()) return;
+
+    const now = Date.now();
+    const recent = (reloadTimes.get(which) || []).filter(t => now - t < RELOAD_WINDOW_MS);
+    if (recent.length >= RELOAD_LIMIT) {
+      noteCrash(`the ${which} keeps crashing`, `gave up after ${RELOAD_LIMIT} reloads in a minute`);
+      return;
+    }
+    recent.push(now);
+    reloadTimes.set(which, recent);
+    console.log(`[Stash] reloading the ${which} (attempt ${recent.length})`);
+    try { win.webContents.reload(); } catch (err) { noteCrash('reload failed', err.message); }
+  });
+
+  win.webContents.on('unresponsive', () => noteCrash(`the ${which} stopped responding`, 'still waiting'));
+  win.webContents.on('responsive', () => console.log(`[Stash] the ${which} is responding again`));
+}
+
 function registerShortcuts() {
   // Always unregister first to be safe — prevents accidental duplicate handlers
   try { globalShortcut.unregisterAll(); } catch (_) {}
@@ -3219,6 +3312,27 @@ function registerShortcuts() {
   if (before.drawer !== drawerReg || before.dock !== dockReg) refreshTrayMenu();
   return drawerReg && dockReg;
 }
+
+// The GPU process dying is usually survivable -- Chromium starts another and
+// the window repaints -- but it is worth saying so, because it is the loudest
+// thing in the log when something goes wrong and it needs to be attributable.
+app.on('child-process-gone', (_e, details) => {
+  if (details.reason === 'clean-exit') return;
+  noteCrash(`the ${details.type} process stopped`, details.reason);
+});
+
+// Without these, one unhandled error in the main process takes the tray, the
+// clipboard poller and the shortcuts with it -- and a clipboard manager that
+// has quietly stopped capturing is worse than one that has visibly crashed.
+// Staying up on an unknown error is a deliberate trade: the alternative is
+// silently capturing nothing.
+process.on('uncaughtException', (err) => {
+  const where = (err && err.stack) || String(err);
+  noteCrash('an error escaped', where.split('\n').slice(0, 3).join(' | '));
+});
+process.on('unhandledRejection', (reason) => {
+  noteCrash('a promise was rejected with nobody listening', String(reason && reason.message || reason));
+});
 
 app.setAppUserModelId('com.harikrish.stash');
 
