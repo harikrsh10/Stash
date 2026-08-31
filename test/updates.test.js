@@ -72,8 +72,25 @@ for (const ev of ['update-available', 'download-progress', 'update-downloaded', 
 // the updater run there produces errors that look like real failures.
 ok('a dev run does not check for updates',
    /isDev \|\| !app\.isPackaged[\s\S]{0,140}return/.test(MAIN), '');
-ok('a failed check is swallowed rather than shown',
-   /autoUpdater\.on\('error'[\s\S]{0,220}console\.log/.test(MAIN), '');
+// The check that runs on its own stays quiet when it fails: there is nothing
+// to act on, and a dialog about a release feed nobody asked about is noise.
+// The badge is driven by sendUpdateState, and the error path must not touch it.
+const errorHandler = MAIN.slice(MAIN.indexOf("autoUpdater.on('error'"));
+const errorBody = errorHandler.slice(0, errorHandler.indexOf('\n});'));
+ok('a background failure does not raise anything at the user',
+   !/sendUpdateState/.test(errorBody) && /console\.log/.test(errorBody), '');
+
+// But somebody who pressed a button is owed an answer, including when the
+// answer is that it did not work -- a check that silently does nothing looks
+// like a broken button.
+ok('a check somebody asked for is answered even when it fails',
+   /settleCheck\(\{ status: 'failed'/.test(errorBody), '');
+ok('and there is a check somebody can ask for',
+   /ipcMain\.handle\('update:check'/.test(MAIN), '');
+ok('which gives up rather than leaving the button spinning',
+   /setTimeout\(\(\) => settleCheck\(\{ status: 'failed'/.test(MAIN), '');
+ok('and says so plainly on a dev build, which has nothing to fetch',
+   /return \{ status: 'dev'/.test(MAIN), '');
 
 ok('restarting into the new version is exposed over ipc',
    /ipcMain\.handle\('update:install'/.test(MAIN), '');

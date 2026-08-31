@@ -36,6 +36,10 @@ function freshContext() {
     // pinning and prompting take a clip out of history, which now means out of
     // the log too. The log itself has its own suite; here it only has to exist.
     historyStore: { add() {}, remove() {}, clear() {} },
+    // Store functions reach for these; a lifted copy without them throws, and
+    // this suite then hangs rather than failing. See thumbnails.test.js for
+    // what they actually do.
+    recallThumb() {}, rememberThumb() {}, forgetThumb() {}, thumbDir: null,
     // the stores refuse to write over a file they could not read
     unreadableStores: new Set(), Notification: { isSupported: () => false },
   };

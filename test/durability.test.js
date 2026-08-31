@@ -37,6 +37,9 @@ function freshContext() {
     unreadableStores: new Set(),
     // notifications are the app's business, not this suite's
     Notification: { isSupported: () => false },
+    // loadPinned rehydrates previews from the thumbnail cache; that cache has
+    // its own suite, and a lifted copy without these throws
+    recallThumb() {}, rememberThumb() {}, forgetThumb() {}, thumbDir: null,
   };
   vm.createContext(ctx);
   vm.runInContext([

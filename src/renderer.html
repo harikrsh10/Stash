@@ -1954,6 +1954,24 @@
     .key-cap.rejected { color: var(--danger); border-color: var(--danger); }
     /* a key we asked for and did not get */
     .key-cap.taken { color: var(--danger); border-style: dashed; }
+    .set-action {
+      flex: none;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-2);
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 5px;
+      padding: 4px 9px;
+      cursor: pointer;
+      transition-property: background-color, color, border-color, scale;
+      transition-duration: var(--t-quick);
+      transition-timing-function: var(--e-out);
+    }
+    .set-action:hover { color: var(--text); border-color: var(--muted2); }
+    .set-action:active { scale: 0.96; }
+    .set-action[disabled] { opacity: 0.55; cursor: default; }
+    .set-action.ready { color: var(--on-accent); background: var(--session); border-color: var(--session); }
     .set-reset {
       background: none; border: 0; padding: 2px 4px;
       color: var(--muted); font-family: var(--font-mono); font-size: 10px;
@@ -2765,6 +2783,15 @@
         <div class="set-row set-row-quiet">
           <span class="set-note" id="keyHint">click a key to change it</span>
           <button class="set-reset" id="resetKeys">reset to defaults</button>
+        </div>
+
+        <div class="settings-group">updates</div>
+        <div class="set-row">
+          <div class="set-text">
+            <span class="set-name">Stash <span id="appVersion">—</span></span>
+            <span class="set-note" id="updateNote">checks on its own now and then</span>
+          </div>
+          <button class="set-action" id="checkUpdates">check now</button>
         </div>
 
         <div class="settings-group">capture</div>
@@ -4457,6 +4484,8 @@
       // main, so that is what we read the platform off rather than sniffing
       // the user agent here.
       await paintShortcuts();
+      const v = await window.api.version?.().catch(() => null);
+      document.getElementById('appVersion').textContent = v ? v : '';
       const shot = document.getElementById('screenshotRow');
       if (shot) shot.hidden = !onMac;
     }
@@ -4528,6 +4557,45 @@
         if (recording && recording.cap === cap) stopRecording();
         else startRecording(cap);
       });
+    });
+
+    // ---------- updates, when somebody asks ----------
+    // The check that runs on its own stays quiet about failure, because there
+    // is nothing to act on. A person who pressed a button is owed an answer
+    // either way, so this says what happened even when what happened is that
+    // it could not reach anything.
+    const checkBtn = document.getElementById('checkUpdates');
+    const updateNoteEl = document.getElementById('updateNote');
+
+    function describeUpdate(r) {
+      if (!r) return 'could not check just now';
+      if (r.status === 'dev') return 'development build — no updates to fetch';
+      if (r.status === 'ready') return `version ${r.version} is ready — restart to use it`;
+      if (r.status === 'downloading') return `downloading version ${r.version}…`;
+      if (r.status === 'current') return 'this is the newest version';
+      if (r.status === 'failed') return 'could not check — ' + (r.detail || 'no connection?');
+      return 'could not check just now';
+    }
+
+    checkBtn?.addEventListener('click', async () => {
+      checkBtn.disabled = true;
+      checkBtn.textContent = 'checking…';
+      updateNoteEl.textContent = 'looking for a newer version…';
+      let result = null;
+      try {
+        result = await window.api.checkForUpdates?.();
+      } catch (err) {
+        result = { status: 'failed', detail: err && err.message };
+      }
+      updateNoteEl.textContent = describeUpdate(result);
+      checkBtn.disabled = false;
+      // Ready to install is a different offer from checking again.
+      const ready = result && result.status === 'ready';
+      checkBtn.textContent = ready ? 'restart to update' : 'check now';
+      checkBtn.classList.toggle('ready', !!ready);
+      if (ready) {
+        checkBtn.onclick = () => window.api.installUpdate?.();
+      }
     });
 
     document.getElementById('resetKeys').addEventListener('click', async () => {

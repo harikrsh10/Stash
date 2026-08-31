@@ -31,6 +31,10 @@ const grabConst = (name) => {
 function freshContext() {
   const ctx = { fs, path, console, pinnedStorePath, pinned: [], history: [], refreshTrayMenu: () => {},
                 historyStore: { add() {}, remove() {}, clear() {} },
+    // Store functions reach for these; a lifted copy without them throws, and
+    // this suite then hangs rather than failing. See thumbnails.test.js for
+    // what they actually do.
+    recallThumb() {}, rememberThumb() {}, forgetThumb() {}, thumbDir: null,
     // the stores refuse to write over a file they could not read
     unreadableStores: new Set(), Notification: { isSupported: () => false } };
   vm.createContext(ctx);
