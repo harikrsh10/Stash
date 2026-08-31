@@ -86,6 +86,8 @@ app.whenReady().then(async () => {
     const tick = (ms) => new Promise(r => setTimeout(r, ms || 20));
 
     let savedSettings = null, savedShortcuts = null;
+    let updateAnswer = { status: 'current', version: '9.9.9' };
+    let installed = false;
     let shortcuts = {
       keys: { drawer: 'CommandOrControl+Shift+V', dock: 'CommandOrControl+Shift+Space' },
       labels: { drawer: 'Ctrl+Shift+V', dock: 'Ctrl+Shift+Space' },
@@ -101,6 +103,9 @@ app.whenReady().then(async () => {
                                   autoPasteFromDock: false }),
       setSettings: async (patch) => { savedSettings = patch; },
       getShortcuts: async () => shortcuts,
+      version: async () => '9.9.9',
+      checkForUpdates: async () => updateAnswer,
+      installUpdate: async () => { installed = true; },
       setShortcuts: async (patch) => {
         savedShortcuts = patch;
         // the drawer must cope with a refusal, so refuse this one
@@ -134,6 +139,47 @@ app.whenReady().then(async () => {
     await tick();
     ok('turning one off saves it',
        savedSettings && savedSettings.rememberHistory === false, JSON.stringify(savedSettings));
+
+    // --- updates ---
+    ok('the panel says which version is running',
+       document.getElementById('appVersion').textContent === '9.9.9',
+       document.getElementById('appVersion').textContent);
+
+    const checkBtn = document.getElementById('checkUpdates');
+    checkBtn.click();
+    await tick(80);
+    ok('being up to date is said plainly',
+       /newest version/.test(document.getElementById('updateNote').textContent),
+       document.getElementById('updateNote').textContent);
+    ok('and the button comes back rather than staying disabled',
+       !checkBtn.disabled && checkBtn.textContent === 'check now', checkBtn.textContent);
+
+    // A check somebody asked for has to answer even when it fails. The one
+    // that runs on its own stays quiet, which is right for the badge and
+    // wrong for a button.
+    updateAnswer = { status: 'failed', detail: 'no connection?' };
+    checkBtn.click();
+    await tick(80);
+    ok('a failed check says so instead of going quiet',
+       /could not check/.test(document.getElementById('updateNote').textContent),
+       document.getElementById('updateNote').textContent);
+
+    // and a dev build has nothing to fetch, which is not a failure
+    updateAnswer = { status: 'dev', version: '9.9.9' };
+    checkBtn.click();
+    await tick(80);
+    ok('a development build says why there is nothing to fetch',
+       /development build/.test(document.getElementById('updateNote').textContent),
+       document.getElementById('updateNote').textContent);
+
+    updateAnswer = { status: 'ready', version: '9.9.10' };
+    checkBtn.click();
+    await tick(80);
+    ok('a downloaded update offers the restart that installs it',
+       /restart/.test(checkBtn.textContent), checkBtn.textContent);
+    checkBtn.click();
+    await tick(60);
+    ok('and pressing that installs it', installed === true, String(installed));
 
     // --- the key cap ---
     const cap = document.getElementById('drawerKey');

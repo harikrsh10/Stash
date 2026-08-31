@@ -31,6 +31,10 @@ function freshContext() {
     settings: { activeSessionId: null },
     // capturing writes to the history log as well; it has its own suite
     historyStore: { add() {}, remove() {}, clear() {} },
+    // Store functions reach for these; a lifted copy without them throws, and
+    // this suite then hangs rather than failing. See thumbnails.test.js for
+    // what they actually do.
+    recallThumb() {}, rememberThumb() {}, forgetThumb() {}, thumbDir: null,
     // Stores are written through a helper now, and refuse to write over a file
     // they could not read. A lifted copy without these throws, and the suite
     // hangs rather than failing.

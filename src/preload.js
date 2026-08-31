@@ -90,4 +90,7 @@ contextBridge.exposeInMainWorld('api', {
   // restart into the version already downloaded in the background
   installUpdate: () => ipcRenderer.invoke('update:install'),
   getUpdateState: () => ipcRenderer.invoke('update:get'),
+  // a check somebody asked for, which answers even when it fails
+  checkForUpdates: () => ipcRenderer.invoke('update:check'),
+  version: () => ipcRenderer.invoke('app:version'),
 });
