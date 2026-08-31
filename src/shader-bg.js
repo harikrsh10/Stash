@@ -56,6 +56,28 @@
     // The drawer is ~466px wide. Rendering it at 2x device pixels is wasted
     // fill rate on soft noise with no hard edges to alias.
     minPixelRatio: 1,
+
+    // The ceiling on how many pixels get shaded, whatever the screen. The
+    // library's own default is 1920*1080*4 -- eight megapixels -- which clamps
+    // nothing in practice: a Retina Mac renders this window at about 5.5Mpx
+    // and pays for every one of them, sixty times a second. Measured here at
+    // 2.2Mpx it cost 46% of a core.
+    //
+    // This is soft noise with no hard edges. Shading it at roughly a megapixel
+    // and letting the GPU scale that up is not a difference anyone can point
+    // to, and it is the difference between a background and a fan coming on.
+    maxPixelCount: 1100 * 1000,
+
+    // How long it keeps moving with nobody touching anything. A clipboard
+    // drawer's background is seen for the second or two it takes to find a
+    // clip; after that it is a still gradient behind a list, and a still
+    // gradient costs nothing at all. Any input starts it again.
+    settleAfterMs: 1500,
+
+    // Whether it is allowed to move at all. Off unless the setting says
+    // otherwise -- see animateBackground in main.js for why that is the
+    // default. A still gradient is one draw and then nothing.
+    allowMotion: false,
   };
 
   let mount = null;
@@ -116,7 +138,8 @@
         undefined,
         CONFIG.speed,
         CONFIG.frame,
-        CONFIG.minPixelRatio
+        CONFIG.minPixelRatio,
+        CONFIG.maxPixelCount
       );
     } catch (err) {
       // A WebGL failure must never take the drawer down with it. Falling back
@@ -133,6 +156,32 @@
     return mount;
   }
 
+  // Animation is a thing you spend, not a thing you leave on.
+  //
+  // The drawer hides rather than closing, so it can sit there for hours; and
+  // even while it is open, the background has done its job within a second or
+  // two of being looked at. So it runs after something happens and settles
+  // when nothing has for a while. Settled costs nothing -- ShaderMount cancels
+  // its rAF outright at speed 0, rather than drawing the same frame forever.
+  let settleTimer = null;
+  let settled = false;
+
+  function stopMoving() {
+    settleTimer = null;
+    if (!mount || settled) return;
+    settled = true;
+    mount.setSpeed(0);
+  }
+
+  function keepMoving() {
+    if (!CONFIG.allowMotion) return;      // a still gradient stays still
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(stopMoving, CONFIG.settleAfterMs);
+    if (!mount || !settled) return;
+    settled = false;
+    mount.setSpeed(CONFIG.speed);
+  }
+
   const api = {
     init(host) {
       if (mount) return Promise.resolve(mount);
@@ -142,13 +191,20 @@
     pause() {
       if (!mount) return;
       stats.pauses++;
+      clearTimeout(settleTimer);
+      settleTimer = null;
+      settled = true;
       mount.setSpeed(0);
     },
     resume() {
       if (!mount) return;
       stats.resumes++;
-      mount.setSpeed(CONFIG.speed);
+      keepMoving();
     },
+    // Something happened: a key, a pointer, a clip arriving. Move again, and
+    // start the clock over.
+    stir() { if (mount) keepMoving(); },
+    get settled() { return settled; },
     // Swapping colours beats tearing the context down and building another:
     // the shape, the noise texture and the compiled program all stay put, so
     // a theme change costs one uniform upload.
@@ -164,6 +220,14 @@
         u_colorsCount: colors.length,
       });
     },
+    // Turning it on mid-session should look like turning it on, so it starts
+    // moving immediately rather than waiting for the next thing to happen.
+    setMotionAllowed(on) {
+      CONFIG.allowMotion = !!on;
+      if (!mount) return;
+      if (CONFIG.allowMotion) keepMoving();
+      else { clearTimeout(settleTimer); settleTimer = null; settled = true; mount.setSpeed(0); }
+    },
     palettes: PALETTES,
     config: CONFIG,
     stats,
@@ -171,8 +235,17 @@
 
   // The drawer hides on blur. Nobody is looking at the gradient then, and a
   // frozen one during a drag is imperceptible, so this is free to be blunt.
+  //
+  // Blur is not enough on its own: it depends on the OS delivering it, and a
+  // window that was never focused never gets one. The main process says so
+  // directly as well -- see window:shown / window:hidden in the drawer.
   window.addEventListener('blur', () => api.pause());
   window.addEventListener('focus', () => api.resume());
+
+  // Anything a person does is a reason to move; nothing they do is a reason to
+  // stop. Passive listeners so this can never hold up a scroll.
+  ['pointermove', 'pointerdown', 'keydown', 'wheel'].forEach(ev =>
+    window.addEventListener(ev, () => api.stir(), { passive: true }));
 
   window.StashShader = api;
 })();

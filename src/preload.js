@@ -77,6 +77,9 @@ contextBridge.exposeInMainWorld('api', {
   // this clip pastes rather than drags, and has been put on the clipboard
   onPasteInstead: (cb) => ipcRenderer.on('clip:pasteInstead', (_e, info) => cb(info)),
   onPauseChanged: (cb) => ipcRenderer.on('paused:changed', (_e, v) => cb(v)),
+  // whether anyone can actually see the drawer, which blur alone does not say
+  onWindowShown: (cb) => ipcRenderer.on('window:shown', () => cb()),
+  onWindowHidden: (cb) => ipcRenderer.on('window:hidden', () => cb()),
   onHistoryCleared: (cb) => ipcRenderer.on('history:cleared', () => cb()),
   onStateUpdated: (cb) => ipcRenderer.on('state:updated', (_e, state) => cb(state)),
   onUpdateAvailable: (cb) => ipcRenderer.on('update:available', (_e, info) => cb(info)),

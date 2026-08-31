@@ -2002,6 +2002,22 @@
        rather than a press, so it dips instead. */
     .item:active { scale: 0.995; }
 
+    /* Ambient motion, and when it is allowed to run.
+       Three animations looped for ever: the recording dot, and the two halves
+       of the collecting pot. Opacity and transform are composited and normally
+       free -- but this window is transparent, so every frame they produce has
+       to be blended with whatever is behind it, and that costs about sixty
+       times what the same frame costs in an opaque window. A pot breathing
+       quietly in the corner was measured at 70% of a core, for ever, while
+       nobody was looking at it.
+       So it runs when something has just happened and stops when nothing has.
+       Paused, not cancelled: it holds its shape rather than snapping back. */
+    body.still .rail-item .rec,
+    body.still .collection-pot-body,
+    body.still .collection-pot-lid {
+      animation-play-state: paused;
+    }
+
     /* The keyboard's place in the list. Distinct from selection, which is what
        the stack collects, and from hover, which follows the mouse: three
        different ideas that were sharing one visual language before this. */
@@ -2782,6 +2798,13 @@
         </label>
         <label class="set-row">
           <div class="set-text">
+            <span class="set-name">animate the background</span>
+            <span class="set-note">costs noticeably more battery — off by default</span>
+          </div>
+          <input type="checkbox" data-setting="animateBackground">
+        </label>
+        <label class="set-row">
+          <div class="set-text">
             <span class="set-name">paste straight from the dock</span>
             <span class="set-note">needs accessibility permission</span>
           </div>
@@ -2862,13 +2885,53 @@
         if (!window.StashShader) return;
         window.StashShader.setTheme(light.matches);
         // mounting waits on the shader's noise texture, so this is async
-        Promise.resolve(window.StashShader.init(host)).then(() => {
+        Promise.resolve(window.StashShader.init(host)).then(async () => {
           window.StashShader.setTheme(light.matches);
-          window.StashShader.resume();
+          // Still unless the setting says otherwise, and unless the person has
+          // asked the system for less motion — an ambient animation is exactly
+          // what that setting is about.
+          const s = await window.api?.getSettings?.().catch(() => null);
+          const wants = !!(s && s.animateBackground)
+            && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          window.StashShader.setMotionAllowed(wants);
+          if (wants) window.StashShader.resume();
         });
       }
       light.addEventListener('change', sync);
       sync();
+
+      // The main process is the only thing that knows for certain whether the
+      // drawer is on screen. Blur is a hint and an unreliable one -- a window
+      // that was never focused never sends one, and a background animating
+      // into a hidden window is pure heat.
+      // Ambient CSS animation costs what the shader costs, for the same
+      // reason, so it answers to the same signal rather than to a rule of its
+      // own. One place decides whether anything in here is allowed to move.
+      let stillTimer = null;
+      const STILL_AFTER_MS = 1500;
+      function goStill() { stillTimer = null; document.body.classList.add('still'); }
+      function comeAlive() {
+        document.body.classList.remove('still');
+        clearTimeout(stillTimer);
+        stillTimer = setTimeout(goStill, STILL_AFTER_MS);
+      }
+      function sleepNow() {
+        clearTimeout(stillTimer);
+        stillTimer = null;
+        document.body.classList.add('still');
+      }
+      ['pointermove', 'pointerdown', 'keydown', 'wheel'].forEach(ev =>
+        window.addEventListener(ev, comeAlive, { passive: true }));
+      window.addEventListener('blur', sleepNow);
+      window.addEventListener('focus', comeAlive);
+      comeAlive();
+
+      window.api?.onWindowHidden?.(() => { window.StashShader?.pause(); sleepNow(); });
+      window.api?.onWindowShown?.(() => { window.StashShader?.resume(); comeAlive(); });
+
+      // A clip arriving is something happening, even with nobody at the
+      // keyboard. Worth a stir; it is what the drawer is for.
+      window.api?.onNewClip?.(() => { window.StashShader?.stir(); comeAlive(); });
     })();
   </script>
 
@@ -4382,8 +4445,12 @@
       settingsSheetEl.classList.add('show');
       settingsBtnEl.classList.add('on');
       const s = await window.api.getSettings?.() || {};
+      // Most of these are on unless turned off; animateBackground is the other
+      // way round, and reading it the same way would show it as on.
+      const offByDefault = new Set(['animateBackground', 'autoPasteFromDock']);
       document.querySelectorAll('[data-setting]').forEach(el => {
-        el.checked = s[el.dataset.setting] !== false;
+        const name = el.dataset.setting;
+        el.checked = offByDefault.has(name) ? s[name] === true : s[name] !== false;
       });
       // macOS-only, and offering it on Windows is offering something that
       // cannot do anything. The key labels come back platform-correct from
@@ -4409,6 +4476,10 @@
     document.querySelectorAll('[data-setting]').forEach(el => {
       el.addEventListener('change', () => {
         window.api.setSettings?.({ [el.dataset.setting]: el.checked });
+        // this one changes something you can see, right now
+        if (el.dataset.setting === 'animateBackground') {
+          window.StashShader?.setMotionAllowed(el.checked);
+        }
       });
     });
 
