@@ -20,6 +20,7 @@ const SUITES = [
   { file: 'pollcost.test.js', runtime: 'node', what: 'what watching the clipboard costs when idle' },
   { file: 'ocr-index.test.js', runtime: 'node', what: 'reading the text in pictures, in the background' },
   { file: 'sourceapp.test.js', runtime: 'node', what: 'which app a clip was copied out of' },
+  { file: 'sourceicons.test.js', runtime: 'node', what: 'an app logo that is a picture of nothing' },
   { file: 'imagesearch.test.js', runtime: 'electron', what: 'finding a picture by the words inside it' },
   { file: 'sourcerow.test.js', runtime: 'electron', what: 'the app a clip came from, on the row' },
   { file: 'stack.test.js', runtime: 'electron', what: 'multi-select and the drag stack' },

@@ -3114,6 +3114,27 @@
       scrollFades.set(el, setTimeout(() => el.classList.remove('scrolling'), 900));
     }, true);
 
+    // A source icon that will not load must not leave a broken square where a
+    // logo should be. The name is what a row showed before icons existed at
+    // all, and it is the better answer any time the picture is not one.
+    //
+    // Captured at the document for the same reason the scroll above is: error
+    // does not bubble, and these images come and go with every redraw.
+    document.addEventListener('error', (e) => {
+      const el = e.target;
+      if (!el || el.tagName !== 'IMG' || !el.classList.contains('from-icon')) return;
+      const name = el.getAttribute('alt') || '';
+      const span = document.createElement('span');
+      span.className = 'from-app';
+      span.title = name;
+      span.textContent = name;
+      el.replaceWith(span);
+      // Only this copy of the answer: the main process keeps its own, and is
+      // where a bad icon is actually forgotten. Dropping it here stops the
+      // broken picture being asked for again on every redraw until then.
+      if (name && sourceIcons[name]) delete sourceIcons[name];
+    }, true);
+
     // These three mirror src/design-assets.js. The drawer is a plain page with
     // no module loader, and the test suite loads it on its own, so it cannot
     // require that file — but a drift test drives both against the same inputs
@@ -5232,7 +5253,7 @@
       // have not seen the icon of before.
       const sourceIcon = c.sourceApp ? sourceIcons[c.sourceApp] : null;
       const sourceMark = !c.sourceApp ? '' : (sourceIcon
-        ? `<img class="from-icon" src="${sourceIcon}" alt="${esc(c.sourceApp)}" title="${esc(c.sourceApp)}" loading="lazy" decoding="async"/>`
+        ? `<img class="from-icon" src="${sourceIcon}" alt="${esc(c.sourceApp)}" title="${esc(c.sourceApp)}" decoding="async"/>`
         : `<span class="from-app" title="${esc(c.sourceApp)}">${esc(c.sourceApp)}</span>`);
 
       if (c.asset) {

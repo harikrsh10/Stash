@@ -1018,18 +1018,129 @@ function saveSourceIcons() {
 // forgotten at quit so a restart is all it takes to try again.
 const iconMisses = new Set();
 
+// What "I have no icon for this" looks like.
+//
+// getFileIcon does not fail for a path macOS cannot place. It answers with a
+// generic icon -- the blank document, or the blank application for anything
+// ending in .app -- and that answer is a real, non-empty image. isEmpty() is
+// false, so it was remembered as though it were the app's own logo, and every
+// row from that app then showed a grey placeholder square instead of a name.
+// That is the state in the screenshot: not a missing icon falling back to
+// text, but a present icon that is not the app's.
+//
+// So the generic icons are asked for once, against paths that certainly are
+// not apps, and anything matching them is treated as a miss.
+let genericIcons = null;
+async function genericIconSet() {
+  if (genericIcons) return genericIcons;
+  genericIcons = new Set();
+  const stem = path.join(app.getPath('temp'), `stash-icon-probe-${Date.now()}`);
+  // A bare name, an unknown extension, and a bundle that is not there -- macOS
+  // hands back a different generic for each shape, and the third is the one an
+  // app path that has gone stale would produce.
+  for (const probe of [stem, `${stem}.stash-nothing`, `${stem}.app`]) {
+    try {
+      const img = await app.getFileIcon(probe, { size: 'small' });
+      if (img && !img.isEmpty()) genericIcons.add(img.toDataURL());
+    } catch (_) {
+      // Refusing outright is the better answer; there is nothing to learn here.
+    }
+  }
+  return genericIcons;
+}
+
+// Icons already remembered from before the check above existed are still
+// generic, and nothing would ever ask for them again -- the store says the
+// answer is known. Swept once, on the first lookup after launch.
+let sweptGenericIcons = false;
+async function dropRememberedGenericIcons() {
+  if (sweptGenericIcons) return;
+  sweptGenericIcons = true;
+  const generic = await genericIconSet();
+  if (!generic.size) return;
+  const bad = Object.keys(sourceIcons).filter(n => generic.has(sourceIcons[n]));
+  if (!bad.length) return;
+  bad.forEach(n => { delete sourceIcons[n]; });
+  console.log(`[Stash] forgetting ${bad.length} app(s) remembered with a generic icon`);
+  saveSourceIcons();
+  broadcastState();
+}
+
+// A path is only worth asking about if something is actually there. An app
+// bundle that has moved, or a path that never parsed properly in the first
+// place, is precisely what produces a generic icon.
+function usableAppPath(p) {
+  if (!p) return null;
+  try {
+    if (!fs.existsSync(p)) return null;
+    if (process.platform === 'darwin' && !p.endsWith('.app')) return null;
+    return p;
+  } catch (_) {
+    return null;
+  }
+}
+
+// Where the standard Mac keeps its applications, plus one level down, which is
+// where /Applications/Utilities and the vendor folders (Adobe, Microsoft) live.
+const MAC_APP_DIRS = [
+  '/Applications',
+  '/System/Applications',
+  '/System/Applications/Utilities',
+  '/Applications/Utilities',
+];
+
+// The second route to an app bundle: its name.
+//
+// The first route asks lsappinfo, which needs two shells per copy and, on the
+// Mac this was reported from, came back with something that did not lead to an
+// icon. Mac apps are named after themselves and live in a handful of places, so
+// this is half a dozen stats rather than a search -- and it needs no shell at
+// all, which is why it is worth having even when the first route works.
+function findAppBundle(name) {
+  if (process.platform !== 'darwin' || !name) return null;
+  const candidates = [];
+  const dirs = MAC_APP_DIRS.slice();
+  try { dirs.push(path.join(app.getPath('home'), 'Applications')); } catch (_) {}
+  for (const dir of dirs) candidates.push(path.join(dir, `${name}.app`));
+  for (const p of candidates) {
+    try { if (fs.existsSync(p)) return p; } catch (_) {}
+  }
+  // One level in, for the apps that ship inside a folder of their own.
+  for (const dir of dirs) {
+    let sub;
+    try { sub = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { continue; }
+    for (const d of sub) {
+      if (!d.isDirectory() || d.name.endsWith('.app')) continue;
+      const p = path.join(dir, d.name, `${name}.app`);
+      try { if (fs.existsSync(p)) return p; } catch (_) {}
+    }
+  }
+  return null;
+}
+
 async function iconFor(name, appPath) {
   if (!name) return null;
+  await dropRememberedGenericIcons();
   if (Object.prototype.hasOwnProperty.call(sourceIcons, name)) return sourceIcons[name];
   if (iconMisses.has(name)) return null;
-  if (!appPath) return null;
+  const where = usableAppPath(appPath) || findAppBundle(name);
+  if (!where) {
+    iconMisses.add(name);
+    console.warn(`[Stash] no usable path for ${name} (asked about ${appPath || 'nothing'})`);
+    return null;
+  }
   try {
-    const img = await app.getFileIcon(appPath, { size: 'small' });
+    const img = await app.getFileIcon(where, { size: 'small' });
     if (!img || img.isEmpty()) throw new Error('no icon');
-    sourceIcons[name] = img.toDataURL();
+    const url = img.toDataURL();
+    // A data URL with nothing after the comma is a valid string and a broken
+    // picture, which is the other way a placeholder reaches a row.
+    if (url.length < 256) throw new Error(`icon is empty (${url.length} chars)`);
+    if ((await genericIconSet()).has(url)) throw new Error('generic icon, not the app');
+    sourceIcons[name] = url;
   } catch (err) {
     iconMisses.add(name);
-    console.warn(`[Stash] no icon for ${name} at ${appPath}: ${err.message}`);
+    console.warn(`[Stash] no icon for ${name} at ${where}: ${err.message}`);
     return null;
   }
   saveSourceIcons();
@@ -1091,7 +1202,17 @@ function diagnosticsReport() {
   lines.push(`icons cached: ${icons.length}`
     + (icons.length ? ` (${icons.filter(([, v]) => v).length} with an icon,`
       + ` ${icons.filter(([, v]) => !v).length} refused)` : ''));
-  icons.slice(0, 10).forEach(([name, v]) => lines.push(`  icon "${name}": ${v ? 'yes' : 'NO ICON'}`));
+  // The size is the tell. A real logo is a few kilobytes; a generic icon is a
+  // valid picture of nothing, and reads as a broken square on a row -- so it is
+  // named here rather than counted as a success.
+  icons.slice(0, 12).forEach(([name, v]) => lines.push(`  icon "${name}": `
+    + (!v ? 'NO ICON'
+      : (genericIcons && genericIcons.has(v)) ? `GENERIC (${v.length} chars)`
+      : `${v.length} chars`)));
+  if (iconMisses.size) {
+    lines.push(`icons refused this session: ${[...iconMisses].join(', ')}`);
+  }
+  lines.push(`generic icons learned: ${genericIcons ? genericIcons.size : 'not asked yet'}`);
   lines.push('every clipboard change (newest first), kept or not:');
   if (!clipboardLog.length) lines.push('  nothing seen yet');
   clipboardLog.forEach(e => {

@@ -197,6 +197,32 @@ app.whenReady().then(async () => {
        row('evil').querySelector('.from-app').textContent === '"><img src=x onerror=alert(1)>',
        row('evil').querySelector('.from-app').textContent);
 
+    // ---------- an icon that will not load ----------
+    // The Mac case. The icon is present and is not a picture of the app, so
+    // nothing falls back on its own: the row shows the broken square an <img>
+    // leaves behind. The name is what a row showed before icons existed at all,
+    // and it is the better answer any time the picture is not one.
+    history = [{ id: 'broken', type: 'text', content: 'x', sourceApp: 'Busted', ts: 1 }];
+    sourceIcons = { 'Busted': 'data:image/png;base64,AAAAAAAA' };
+    render();
+    await tick(150);
+    ok('an icon that will not load leaves no broken picture behind',
+       !row('broken').querySelector('.from-icon'), 'the image is still there');
+    ok('and the row says where it came from instead',
+       row('broken').querySelector('.from-app')
+       && row('broken').querySelector('.from-app').textContent === 'Busted',
+       row('broken').querySelector('.from-app')
+         ? row('broken').querySelector('.from-app').textContent : 'nothing at all');
+    // Otherwise every redraw asks for the same broken picture again, and the
+    // square comes back for as long as the row is on screen.
+    ok('and it is not asked for again', !sourceIcons['Busted'],
+       String(sourceIcons['Busted']).slice(0, 24));
+    render();
+    await tick(30);
+    ok('so a redraw shows the name too',
+       !row('broken').querySelector('.from-icon')
+       && !!row('broken').querySelector('.from-app'), '');
+
     return out;
   })()`;
 
