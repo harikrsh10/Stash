@@ -73,6 +73,10 @@ function makeWorld(opts = {}) {
     console: { log() {}, warn() {}, error() {} },
     process: { platform: 'darwin' },
     sourceIcons: opts.sourceIcons || {},
+    // The bundle route has a suite of its own (icns.test.js); what is under test
+    // here is what happens when it comes back with nothing, which on a Mac that
+    // ships only pre-10.7 icons is the case that falls through to the OS.
+    iconFromBundle: opts.iconFromBundle || (async () => null),
     saveSourceIcons: () => { saves.count++; },
     broadcastState: () => {},
     app: {
@@ -155,6 +159,28 @@ function makeWorld(opts = {}) {
        JSON.stringify(Object.keys(w.ctx.sourceIcons)));
     ok('the sweep happens once, not per lookup',
        vm.runInContext('sweptGenericIcons', w.ctx) === true, '');
+  }
+
+  // ---------- the bundle answers first ----------
+  {
+    const OWN = 'data:image/png;base64,' + 'B'.repeat(1400);
+    const w = makeWorld({ iconFromBundle: async () => OWN });
+    const icon = await w.ctx.api.iconFor('Figma', FIGMA);
+    ok('an icon read out of the bundle is the one used', icon === OWN, String(icon).slice(0, 24));
+    ok('and the icon service is not asked at all',
+       !w.asked.some(p => p === FIGMA), w.asked.join(' '));
+  }
+  {
+    // Seven copies of Xcode really do share an icon, and this route reads what
+    // each app declares for itself -- so agreeing is not evidence of a
+    // placeholder the way it is when the OS is doing the answering.
+    const SHARED = 'data:image/png;base64,' + 'X'.repeat(1400);
+    const w = makeWorld({ iconFromBundle: async () => SHARED });
+    await w.ctx.api.iconFor('Xcode', FIGMA);
+    const second = await w.ctx.api.iconFor('Xcode 26.5', TERMINAL);
+    ok('two apps that genuinely share an icon both keep it', second === SHARED, String(second).slice(0, 24));
+    ok('and neither is taken back',
+       Object.keys(w.ctx.sourceIcons).length === 2, JSON.stringify(Object.keys(w.ctx.sourceIcons)));
   }
 
   // ---------- two apps cannot have the same logo ----------

@@ -34,3 +34,5 @@ jobs:
         run: npx electron scripts/mac-icon-probe.js
       - name: Ask again
         run: npx electron scripts/mac-icon-probe2.js
+      - name: Ask about the icns
+        run: npx electron scripts/mac-icon-probe3.js
