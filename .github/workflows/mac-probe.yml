@@ -32,3 +32,5 @@ jobs:
         run: npm ci
       - name: Ask
         run: npx electron scripts/mac-icon-probe.js
+      - name: Ask again
+        run: npx electron scripts/mac-icon-probe2.js
