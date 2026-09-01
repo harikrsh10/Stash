@@ -12,6 +12,8 @@ const vm = require('vm');
 const SRCDIR = path.join(__dirname, '..', 'src');
 const MAIN = fs.readFileSync(path.join(SRCDIR, 'main.js'), 'utf8');
 const RENDERER = path.join(SRCDIR, 'renderer.html');
+const RENDERER_SRC = fs.readFileSync(RENDERER, 'utf8');
+const STORE = fs.readFileSync(path.join(SRCDIR, 'history-store.js'), 'utf8');
 
 const results = [];
 const ok = (name, pass, detail) => results.push({ name, pass, detail });
@@ -144,14 +146,20 @@ app.whenReady().then(async () => {
       window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
       await tick(320);
 
-      // and history rows, which keep no order, get no strip at all
+      // History rows get the strip too. They did not while history was
+      // memory-only -- an order arranged there undid itself at the next launch
+      // -- but it persists now, so a handle that is drawn and does nothing is
+      // just a broken handle in the place people spend most of their time.
       const wasScope = activeScope;
       activeScope = 'all';
       render();
       await tick(20);
       const hist = rows().find(r2 => r2.dataset.block === 'history');
-      ok('history rows get no grab strip',
-         !hist || getComputedStyle(hist.querySelector('.drag-handle'), '::before').content === 'none',
+      ok('a history row can be reordered like any other',
+         !!hist && hist.classList.contains('orderable'),
+         hist ? hist.className : 'no history row');
+      ok('and it has a working grab strip',
+         !hist || getComputedStyle(hist.querySelector('.drag-handle'), '::before').content !== 'none',
          hist ? getComputedStyle(hist.querySelector('.drag-handle'), '::before').content : 'no history row');
       activeScope = wasScope;
       render();
@@ -241,8 +249,8 @@ app.whenReady().then(async () => {
        ids().join(' ') === 'q1 q2 k1 k2 h1 h2', ids().join(' '));
     ok('kept rows offer a reorder',
        rows().slice(0, 4).every(r => r.classList.contains('orderable')), '');
-    ok('history rows do not',
-       rows().slice(4).every(r => !r.classList.contains('orderable')), '');
+    ok('and so do history rows now that history is kept',
+       rows().slice(4).every(r => r.classList.contains('orderable')), '');
 
     sentIds = null;
     await dragRow(0, 1, true);
@@ -278,10 +286,14 @@ app.whenReady().then(async () => {
     hrow.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0,
       clientX: hb.left + 120, clientY: hb.top + 8 }));
     await tick(240);
-    ok('holding a history row lifts nothing',
-       document.querySelectorAll('.item.slot').length === 0, '');
+    ok('holding a history row lifts it, like every other row',
+       document.querySelectorAll('.item.slot').length === 1, '');
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-    await tick(60);
+    // long enough for the drop to land: a ghost still in flight is a .item
+    // like any other, and the next block counts rows
+    await tick(340);
+    ok('and the ghost is gone once it lands',
+       document.querySelectorAll('.item.lifting').length === 0, '');
 
     pinned = [
       { id: 'p1', type: 'text', isPrompt: true, ts: 1, content: 'alpha' },
@@ -322,7 +334,29 @@ app.whenReady().then(async () => {
   }
   rendered.forEach(r => results.push(r));
 
-  let failed = 0;
+  
+// History can be reordered too, now that it survives a restart.
+//
+// It could not when history was memory-only and capped: an order arranged
+// there undid itself at the next launch. That stopped being true when history
+// started persisting, but the line saying so outlived it -- leaving a drag
+// handle that was drawn, hovered and did nothing in the "all" place, which is
+// where most rows are. Reported from a Mac as "the drag handle does not work".
+ok('every block can be ordered, history included',
+   /const canOrderBlock = \(\) => true;/.test(RENDERER_SRC), '');
+ok('and history reordering has somewhere to go',
+   /reorderHistory/.test(RENDERER_SRC) && /ipcMain\.handle\('order:history'/.test(MAIN), '');
+ok('the drawer moves the history array, not the pinned one',
+   /block === 'history' \? history : pinned/.test(RENDERER_SRC), '');
+// An order that is not written down is an order that undoes itself, which was
+// the original reason for refusing to offer it at all.
+ok('and the new order is written to the log',
+   /historyStore\.reorder\(/.test(MAIN), '');
+const reorderBody = STORE.slice(STORE.indexOf('reorder(ids)'));
+ok('which rewrites the file, because the log is append-only',
+   reorderBody.slice(0, reorderBody.indexOf('},')).includes('this.compact()'), '');
+
+let failed = 0;
   for (const r of results) {
     if (!r.pass) failed++;
     console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}${r.detail ? '   [' + r.detail + ']' : ''}`);

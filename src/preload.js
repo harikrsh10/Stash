@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('api', {
   // manual order — `ids` is the new order of the rows the drawer was showing
   reorderPinned: (ids) => ipcRenderer.invoke('order:pinned', ids),
   reorderSession: (sessionId, ids) => ipcRenderer.invoke('order:session', sessionId, ids),
+  reorderHistory: (ids) => ipcRenderer.invoke('order:history', ids),
 
   // OCR
   ocr: (id) => ipcRenderer.invoke('ocr:run', id),
