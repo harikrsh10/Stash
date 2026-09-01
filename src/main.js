@@ -713,7 +713,12 @@ function loadPinned() {
       console.warn(`[Stash] keeping ${entry.id}: cannot read ${dir} to check it`);
       return true;
     });
+    storeCarriedThumbs = false;
     pinned.forEach(recallThumb);
+    if (storeCarriedThumbs) {
+      console.log('[Stash] moving pinned previews into the cache');
+      savePinned();
+    }
     console.log(`[Stash] loaded ${pinned.length} pinned items`);
   } catch (err) {
     console.error('[Stash] failed to load pinned:', err);
@@ -811,8 +816,21 @@ function rememberThumb(id, dataUrl) {
   }
 }
 
+// True when a store handed us a preview it should no longer be carrying, so
+// the caller knows to write the smaller file back once.
+let storeCarriedThumbs = false;
+
 function recallThumb(entry) {
-  if (!entry || entry.type !== 'img' || entry.dataUrl) return;
+  if (!entry || entry.type !== 'img') return;
+  if (entry.dataUrl) {
+    // An older store, from before previews were cached. Take a copy now and
+    // let the caller rewrite the file without them -- otherwise the migration
+    // waits for the person to happen to edit a collection, and until then they
+    // keep paying to parse a thirteen megabyte store on every launch.
+    storeCarriedThumbs = true;
+    rememberThumb(entry.id, entry.dataUrl);
+    return;
+  }
   const p = thumbPathFor(entry.id);
   try {
     if (p && fs.existsSync(p)) {
@@ -1376,7 +1394,12 @@ function loadSessions() {
       if (c.type === 'img' && c.filepath) return fs.existsSync(c.filepath);
       return true;
     });
+    storeCarriedThumbs = false;
     sessionClips.forEach(recallThumb);
+    if (storeCarriedThumbs) {
+      console.log('[Stash] moving collection previews into the cache');
+      saveSessions();
+    }
     console.log(`[Stash] loaded ${sessions.length} sessions, ${sessionClips.length} session clips`);
   } catch (err) {
     console.error('[Stash] failed to load sessions:', err);

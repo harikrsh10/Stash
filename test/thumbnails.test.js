@@ -50,6 +50,7 @@ function context() {
     nativeImage: { createFromPath: () => ({ isEmpty: () => true }) },
     Buffer, Date, JSON, String,
     thumbsToRebuild: [],
+    storeCarriedThumbs: false,
   };
   vm.createContext(ctx);
   vm.runInContext([
@@ -108,6 +109,36 @@ ok('and the cached bytes are the picture, not the base64 of it',
 ctx.api.forgetThumb('img:aaa');
 ok('deleting a clip drops its cached preview',
    fs.readdirSync(path.join(STORE, 'thumbs')).length === 1, '');
+
+// ---------- an older store migrates itself ----------
+// Caching on save alone is not enough: a library from before this change keeps
+// its previews in the store, so nothing needs rebuilding and nothing triggers
+// a save. Left like that, someone goes on parsing a thirteen megabyte store on
+// every launch until they happen to edit a collection. Loading one has to
+// notice and write the smaller file back once.
+{
+  const ctx2 = context();
+  ctx2.thumbsToRebuild = [];
+  vm.runInContext(lift('function recallThumb(') + '\nthis.recallThumb = recallThumb;', ctx2);
+
+  const old = { id: 'img:zzz', type: 'img', filepath: '/x/z.png', dataUrl: FAKE_THUMB };
+  ctx2.recallThumb(old);
+  ok('a preview found in an old store is taken into the cache',
+     fs.existsSync(path.join(STORE, 'thumbs', 'img_zzz.png')), '');
+  ok('and the store is marked as needing rewriting',
+     vm.runInContext('storeCarriedThumbs', ctx2) === true, '');
+
+  // A clip whose preview is already cached must not set that flag, or every
+  // launch rewrites the store for nothing.
+  vm.runInContext('storeCarriedThumbs = false;', ctx2);
+  ctx2.recallThumb({ id: 'img:zzz', type: 'img', filepath: '/x/z.png' });
+  ok('but a store that is already migrated is left alone',
+     vm.runInContext('storeCarriedThumbs', ctx2) === false, '');
+}
+
+ok('loading a store with previews in it writes the smaller one back',
+   /if \(storeCarriedThumbs\)[\s\S]{0,160}saveSessions\(\);/.test(MAIN)
+   && /if \(storeCarriedThumbs\)[\s\S]{0,160}savePinned\(\);/.test(MAIN), '');
 
 // ---------- and the shape of it, so it cannot regress ----------
 ok('the stores strip previews on the way out',
