@@ -1057,6 +1057,16 @@ async function dropRememberedGenericIcons() {
   if (sweptGenericIcons) return;
   sweptGenericIcons = true;
   const generic = await genericIconSet();
+  // Anything two apps share is a placeholder by definition, whatever it looks
+  // like. A store written before this check has every app pointing at the same
+  // picture, and none of them would ever be asked about again -- so the sweep
+  // has to find them by the collision rather than by recognising the picture.
+  const byIcon = new Map();
+  for (const [n, url] of Object.entries(sourceIcons)) {
+    if (!url) continue;
+    byIcon.set(url, (byIcon.get(url) || 0) + 1);
+  }
+  for (const [url, count] of byIcon) if (count > 1) generic.add(url);
   if (!generic.size) return;
   const bad = Object.keys(sourceIcons).filter(n => generic.has(sourceIcons[n]));
   if (!bad.length) return;
@@ -1137,6 +1147,26 @@ async function iconFor(name, appPath) {
     // picture, which is the other way a placeholder reaches a row.
     if (url.length < 256) throw new Error(`icon is empty (${url.length} chars)`);
     if ((await genericIconSet()).has(url)) throw new Error('generic icon, not the app');
+    // Two different apps cannot have the same logo.
+    //
+    // This needs no idea of what a placeholder looks like, which is why it is
+    // here: asked on a Mac, getFileIcon returned one identical picture for
+    // Terminal, TextEdit, Calculator, Chrome and Firefox -- and that picture is
+    // not the one an unplaceable path returns, so the set of generics learned
+    // up front never matches it. A collision is the tell, and it needs nothing
+    // learned in advance.
+    //
+    // Two apps really shipping identical icons costs both of them a logo and
+    // leaves both showing a name, which is the old behaviour and survivable.
+    const clash = Object.keys(sourceIcons).find(other => sourceIcons[other] === url);
+    if (clash) {
+      genericIcons.add(url);
+      delete sourceIcons[clash];
+      iconMisses.add(clash);
+      saveSourceIcons();
+      broadcastState();
+      throw new Error(`the same picture as ${clash}, so it is not either app's logo`);
+    }
     sourceIcons[name] = url;
   } catch (err) {
     iconMisses.add(name);
@@ -1205,10 +1235,19 @@ function diagnosticsReport() {
   // The size is the tell. A real logo is a few kilobytes; a generic icon is a
   // valid picture of nothing, and reads as a broken square on a row -- so it is
   // named here rather than counted as a success.
+  // The fingerprint is the useful part of this line. Two apps showing the same
+  // one means neither picture is a logo, which is the failure that took three
+  // attempts to find -- and it reads off the report at a glance.
+  const fingerprint = (v) => require('crypto').createHash('sha1').update(v).digest('hex').slice(0, 8);
   icons.slice(0, 12).forEach(([name, v]) => lines.push(`  icon "${name}": `
     + (!v ? 'NO ICON'
       : (genericIcons && genericIcons.has(v)) ? `GENERIC (${v.length} chars)`
-      : `${v.length} chars`)));
+      : `${v.length} chars, ${fingerprint(v)}`)));
+  const shas = icons.filter(([, v]) => v).map(([, v]) => fingerprint(v));
+  if (shas.length > 1) {
+    lines.push(`  ${shas.length} icons, ${new Set(shas).size} of them different`
+      + (new Set(shas).size < shas.length ? '  <-- apps sharing a picture are not showing logos' : ''));
+  }
   if (iconMisses.size) {
     lines.push(`icons refused this session: ${[...iconMisses].join(', ')}`);
   }

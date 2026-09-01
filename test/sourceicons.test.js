@@ -157,6 +157,40 @@ function makeWorld(opts = {}) {
        vm.runInContext('sweptGenericIcons', w.ctx) === true, '');
   }
 
+  // ---------- two apps cannot have the same logo ----------
+  // Asked on a real Mac: getFileIcon returned one identical picture for
+  // Terminal, TextEdit, Calculator, Chrome and Firefox. That picture is not the
+  // one an unplaceable path returns, so the learned set never matches it and
+  // 0.7.4's check did nothing. A collision needs nothing learned in advance.
+  {
+    const SAME = 'data:image/png;base64,' + 'S'.repeat(1200);
+    // only the real bundles: the probes must still answer as they would,
+    // or SAME lands in the learned generic set and the collision never happens
+    const w = makeWorld({ getFileIcon: (p) => (p.includes('stash-icon-probe') ? undefined : SAME) });
+    const first = await w.ctx.api.iconFor('Terminal', TERMINAL);
+    ok('the first app is believed, there being nothing to compare it against',
+       first === SAME, String(first).slice(0, 24));
+    const second = await w.ctx.api.iconFor('Figma', FIGMA);
+    ok('a second app with the identical picture is refused', second === null, String(second));
+    ok('and the first one is taken back, because it was never a logo either',
+       !('Terminal' in w.ctx.sourceIcons), JSON.stringify(Object.keys(w.ctx.sourceIcons)));
+    ok('a third app is refused without having to collide again',
+       (await w.ctx.api.iconFor('Word', WORD)) === null, '');
+  }
+  {
+    // The store everyone upgrading has: every app pointing at one picture, and
+    // nothing that would ever ask again.
+    const dupe = 'data:image/png;base64,' + 'D'.repeat(1000);
+    const w = makeWorld({ sourceIcons: { Notion: dupe, Arc: dupe, Slack: dupe } });
+    await w.ctx.api.iconFor('Figma', FIGMA);
+    ok('a store already full of one repeated picture is swept',
+       !('Notion' in w.ctx.sourceIcons) && !('Arc' in w.ctx.sourceIcons)
+       && !('Slack' in w.ctx.sourceIcons),
+       JSON.stringify(Object.keys(w.ctx.sourceIcons)));
+    ok('and the real logo found afterwards is kept',
+       w.ctx.sourceIcons['Figma'] === REAL[FIGMA], '');
+  }
+
   // ---------- the second route: the name ----------
   {
     const w = makeWorld();
