@@ -35,6 +35,7 @@ const SUITES = [
   { file: 'sessions.test.js', runtime: 'electron', what: 'sessions, their store and the drawer' },
   { file: 'richtext.test.js', runtime: 'electron', what: 'keeping formatting, and pasting without it' },
   { file: 'theme.test.js', runtime: 'node', what: 'the light and dark palettes staying in step' },
+  { file: 'appearance.test.js', runtime: 'node', what: 'switching appearance, and the loop it used to arm' },
   { file: 'order.test.js', runtime: 'electron', what: 'dragging clips into the order you want' },
   { file: 'filters.test.js', runtime: 'electron', what: 'the type filters, colour included' },
   { file: 'panelmotion.test.js', runtime: 'electron', what: 'the drawer holding still while the panel opens' },

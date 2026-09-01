@@ -124,10 +124,44 @@ const DEFAULT_SHORTCUTS = { drawer: 'CommandOrControl+Shift+V', dock: 'CommandOr
 // Setting themeSource is what flips prefers-color-scheme inside the windows, so
 // the stylesheets need no theme class of their own — and native bits like
 // scrollbars and menus follow at the same time.
-function applyAppearance() {
-  const choice = ['system', 'dark', 'light'].includes(settings.appearance) ? settings.appearance : 'system';
-  nativeTheme.themeSource = choice;
+function appearanceChoice() {
+  return ['system', 'dark', 'light'].includes(settings.appearance) ? settings.appearance : 'system';
+}
+
+// What the drawer was last told, so an event that changes nothing sends nothing.
+let lastAppearanceSent = '';
+
+// Tell the drawer where things stand. Assigns nothing -- which is the whole
+// point of it being separate from applyAppearance below.
+function notifyAppearance() {
+  const choice = appearanceChoice();
   const dark = choice === 'system' ? nativeTheme.shouldUseDarkColors : choice === 'dark';
+  const key = `${choice}:${dark}`;
+  if (key === lastAppearanceSent) return;
+  lastAppearanceSent = key;
+  // the drawer has its own switch, so it has to hear about changes made from
+  // the tray — and about the system flipping underneath a 'system' choice
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('appearance:changed', { choice, dark });
+  }
+}
+
+function applyAppearance() {
+  const choice = appearanceChoice();
+  // Assigning themeSource is neither free nor idempotent.
+  //
+  // Measured on a Mac: assigning 'light' when it is already 'light' emits
+  // nothing, but assigning 'system' when it is already 'system' emits
+  // 'updated' every single time. The handler for that event called back into
+  // here, which assigned it again -- 86,985 times in two seconds, each one
+  // sending an appearance:changed to the drawer.
+  //
+  // 'system' is the default, and this runs at startup, so every Mac has been
+  // spinning a core from launch and had no room left to handle the click that
+  // would change the appearance. Two guards, because one of them being enough
+  // is not worth relying on: assign only on a real change, and never assign
+  // from the event handler.
+  if (nativeTheme.themeSource !== choice) nativeTheme.themeSource = choice;
   // The windows are NOT given a background of their own here, and must not be.
   //
   // They used to be, so that neither painted its old ground for a frame when
@@ -139,11 +173,13 @@ function applyAppearance() {
   //
   // Nothing is lost. What each window is transparent to is its own page, which
   // paints its ground in the theme colour on the first frame it draws.
-  // the drawer has its own switch, so it has to hear about changes made from
-  // the tray — and about the system flipping underneath a 'system' choice
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('appearance:changed', { choice, dark });
-  }
+  //
+  // An explicit apply always tells the drawer, even if nothing appears to have
+  // moved: this runs a second time once the windows exist, and a window that
+  // was not there for the first call still needs the answer. The deduplication
+  // is there to quieten the event handler, not this.
+  lastAppearanceSent = '';
+  notifyAppearance();
 }
 
 function setAppearance(choice) {
@@ -3915,8 +3951,12 @@ app.whenReady().then(() => {
   applyAppearance(); // again, now that the windows exist and can be repainted
 
   // following the system means following it as it changes, not only at launch
+  // The OS flipped its appearance under a 'system' choice, so the drawer is
+  // told. It is told and nothing more: this used to call applyAppearance,
+  // which assigns themeSource, which emits this event again -- see the note
+  // there for what that cost.
   nativeTheme.on('updated', () => {
-    if ((settings.appearance || 'system') === 'system') applyAppearance();
+    if (appearanceChoice() === 'system') notifyAppearance();
   });
 
   console.log('[Stash] tray created:', tray ? 'yes' : 'no');
