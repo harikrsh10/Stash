@@ -917,7 +917,9 @@ let sourceApp = createSourceApp({
     return p;
   },
   // Only worth a second process for an app we have no icon for yet.
-  needsPath: (name) => !Object.prototype.hasOwnProperty.call(sourceIcons, name),
+  // Ask for the bundle path unless we already have an icon. A miss must not
+  // stop the lookup, or a single failure is permanent.
+  needsPath: (name) => !sourceIcons[name],
   // macOS asks per copy instead of keeping a helper alive; see source-app.js.
   runOnce: (cmd, args) => new Promise((resolve, reject) => {
     require('child_process').execFile(cmd, args, { timeout: 2000 }, (err, stdout) => {
@@ -969,7 +971,18 @@ function loadSourceIcons() {
   try {
     if (!fs.existsSync(sourceIconStorePath)) return;
     const data = JSON.parse(fs.readFileSync(sourceIconStorePath, 'utf8'));
-    if (data && typeof data === 'object') sourceIcons = data;
+    if (data && typeof data === 'object') {
+      // Older builds wrote misses in here as nulls, and a null was permanent:
+      // it looked like a remembered answer, so the icon was never fetched
+      // again. Anyone upgrading with a store full of them would keep seeing
+      // names where logos should be, so they are dropped on the way in.
+      sourceIcons = {};
+      for (const [name, icon] of Object.entries(data)) {
+        if (icon) sourceIcons[name] = icon;
+      }
+      const dropped = Object.keys(data).length - Object.keys(sourceIcons).length;
+      if (dropped) console.log(`[Stash] forgetting ${dropped} app(s) remembered as having no icon`);
+    }
     console.log(`[Stash] ${Object.keys(sourceIcons).length} app icon(s) remembered`);
   } catch (err) {
     console.error('[Stash] failed to load app icons:', err);
@@ -993,17 +1006,31 @@ function saveSourceIcons() {
 // Ask the OS for an app's icon once and remember it. Everything here is
 // best-effort: an app that will not give up its icon shows as a name, which is
 // what every row looked like before icons existed.
+// Apps we asked about and got nothing for. Deliberately in memory and not on
+// disk: a miss used to be written to the store like a hit, and once written it
+// was permanent -- hasOwnProperty said we knew the answer, so the icon was
+// never fetched again and the bundle path was never even looked up again. One
+// bad run, and every app on the machine showed as text for ever with no way
+// back short of deleting the file by hand. That is exactly what "no source app
+// is able to retrieve the logos" looks like from the outside.
+//
+// Kept for the session so a protected process is not asked on every copy, and
+// forgotten at quit so a restart is all it takes to try again.
+const iconMisses = new Set();
+
 async function iconFor(name, appPath) {
   if (!name) return null;
   if (Object.prototype.hasOwnProperty.call(sourceIcons, name)) return sourceIcons[name];
+  if (iconMisses.has(name)) return null;
   if (!appPath) return null;
   try {
     const img = await app.getFileIcon(appPath, { size: 'small' });
     if (!img || img.isEmpty()) throw new Error('no icon');
     sourceIcons[name] = img.toDataURL();
-  } catch (_) {
-    // Remembered as a miss so a protected process is not asked on every copy.
-    sourceIcons[name] = null;
+  } catch (err) {
+    iconMisses.add(name);
+    console.warn(`[Stash] no icon for ${name} at ${appPath}: ${err.message}`);
+    return null;
   }
   saveSourceIcons();
   return sourceIcons[name];
@@ -1048,6 +1075,9 @@ function diagnosticsReport() {
   // The thing to look at first when someone says Stash is heating their
   // machine: this window is transparent, so anything that animates in it is
   // blended with the desktop every frame and costs far more than it looks.
+  lines.push(`updates: ${updateState ? updateState.status : 'nothing pending'}`
+    + ` · ${updateBlockedReason() || 'can install'}`
+    + (app.isPackaged ? '' : ' · UNPACKAGED (no feed)'));
   lines.push(`background: ${settings.animateBackground === true ? 'ANIMATED (opt-in)' : 'still'}`
     + ` · window transparent, so motion here is expensive`);
   lines.push(`shortcuts: drawer ${shortcutState.drawer ? 'held' : 'TAKEN BY ANOTHER APP'}`
@@ -2342,6 +2372,21 @@ ipcMain.handle('order:pinned', (_e, ids) => {
   return moved;
 });
 
+// History can be reordered too, now that it survives a restart. It could not
+// when it was memory-only and capped -- an order arranged there undid itself at
+// the next launch, so the handle was left inert in the one place people spend
+// most of their time. The log is append-only, so the new order is persisted by
+// rewriting it, which is what compact already does.
+ipcMain.handle('order:history', (_e, ids) => {
+  if (!Array.isArray(ids)) return false;
+  const moved = reorderWithin(history, ids);
+  if (moved) {
+    historyStore.reorder(history.map(h => h.id));
+    broadcastState();
+  }
+  return moved;
+});
+
 ipcMain.handle('order:session', (_e, sessionId, ids) => {
   if (!Array.isArray(ids) || !sessions.some(s => s.id === sessionId)) return false;
   // a session's clips share one array with every other session's, so the ids
@@ -3382,12 +3427,28 @@ function settleCheck(result) {
   resolve(result);
 }
 
+// macOS will not let an app replace itself unless it is installed. Run from a
+// mounted .dmg, or from Downloads with the quarantine flag still on it, and
+// the updater fails in a way that reads as "the button does nothing" -- which
+// is exactly how this was reported. Saying so is the whole fix.
+function updateBlockedReason() {
+  if (process.platform !== 'darwin') return null;
+  const where = app.getPath('exe');
+  if (where.includes('/Applications/')) return null;
+  if (where.includes('/Volumes/')) {
+    return 'Stash is running from the disk image. Drag it to Applications first.';
+  }
+  return 'Stash is not in your Applications folder, so macOS will not let it update itself.';
+}
+
 ipcMain.handle('update:check', () => {
   // A dev run has no feed to read and no installed copy to replace. Saying so
   // beats a button that looks broken.
   if (isDev || !app.isPackaged) {
     return { status: 'dev', version: app.getVersion() };
   }
+  const blocked = updateBlockedReason();
+  if (blocked) return { status: 'failed', detail: blocked };
   // Already downloaded and waiting for a restart: that is the answer.
   if (updateState && updateState.status === 'ready') {
     return { ...updateState };

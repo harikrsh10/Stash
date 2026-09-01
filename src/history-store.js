@@ -145,6 +145,22 @@ function createHistoryStore({ filePath, limit = 10000, enabled = true } = {}) {
 
     // Rewrite the log as one line per live clip, dropping every superseded and
     // tombstoned record.
+    // Put the entries in the order given. The log is append-only and replayed
+    // in file order, so the only way to remember a new arrangement is to write
+    // the file out in it -- which is what compact already does.
+    reorder(ids) {
+      if (!enabled || !filePath || !Array.isArray(ids)) return false;
+      const next = new Map();
+      ids.forEach(id => { if (entries.has(id)) next.set(id, entries.get(id)); });
+      // anything the caller did not mention keeps its place at the end, so a
+      // partial list can never drop a clip
+      entries.forEach((v, k) => { if (!next.has(k)) next.set(k, v); });
+      entries.clear();
+      next.forEach((v, k) => entries.set(k, v));
+      this.compact();
+      return true;
+    },
+
     // Appending is safe on its own: an interrupted append costs the record
     // being written and nothing else, and replay skips the partial line. This
     // is the one operation that touches the whole file, so it is the one that

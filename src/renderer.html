@@ -3357,7 +3357,10 @@
       if (id === 'prompts') return 'prompts';
       if (id === 'pinned') return 'pinned';
       const s = sessions.find(x => x.id === id);
-      return s ? s.name : 'everything';
+      // The rail calls this place "all"; the header used to call it
+      // "everything", which reads as a different place to the person looking
+      // for the one they just clicked.
+      return s ? s.name : 'all';
     }
 
     // What belongs in each place. Prompts and pinned share one store, told
@@ -3382,10 +3385,14 @@
       return 'history';
     }
 
-    // Everything else keeps an order; history cannot. It is memory-only and
-    // capped, every new copy lands at the top, and it is gone at the next
-    // restart — an order arranged there would quietly undo itself.
-    const canOrderBlock = (block) => block !== 'history';
+    // Every block keeps an order, history included.
+    //
+    // It did not used to: history was memory-only and capped, so an order
+    // arranged there undid itself at the next launch and the handle was left
+    // inert. History persists now, and the log can be rewritten in a new order,
+    // so that reason is gone -- it just outlived itself in this line, leaving a
+    // dead handle in the one place people spend most of their time.
+    const canOrderBlock = () => true;
 
     function railItem(id, label, icon, cls) {
       const b = document.createElement('button');
@@ -5037,11 +5044,13 @@
       const ids = rowsIn()
         .filter(n => n.dataset.block === block)
         .map(n => n.dataset.id);
-      applyOrder(sessionId ? sessionClips : pinned, ids);
+      applyOrder(sessionId ? sessionClips : (block === 'history' ? history : pinned), ids);
 
       const ok = sessionId
         ? await window.api.reorderSession?.(sessionId, ids)
-        : await window.api.reorderPinned?.(ids);
+        : block === 'history'
+          ? await window.api.reorderHistory?.(ids)
+          : await window.api.reorderPinned?.(ids);
       if (ok === false) render(); // rejected — fall back to what the store says
     }
 
@@ -5127,7 +5136,7 @@
         headlineHtml = `<div class="asset-name">${esc(assetLabel(c))}</div>`;
         const url = svgDataUrl(c.content);
         extraHtml = url
-          ? `<div class="asset-stage"><img class="asset-preview" src="${url}" alt=""/></div>`
+          ? `<div class="asset-stage"><img class="asset-preview" src="${url}" alt="" loading="lazy" decoding="async"/></div>`
           : '<div class="asset-stage empty">too large to preview</div>';
         // no meta line: the card's own foot carries the time and the source
       } else if (c.asset === 'figma' || c.asset === 'paper' || c.asset === 'artwork') {
@@ -5156,7 +5165,7 @@
         // instructions — the instruction belongs on the row, not in the frame
         // where the artwork should be.
         extraHtml = c.dataUrl
-          ? `<div class="asset-stage"><img class="asset-preview" src="${c.dataUrl}" alt=""/></div>`
+          ? `<div class="asset-stage"><img class="asset-preview" src="${c.dataUrl}" alt="" loading="lazy" decoding="async"/></div>`
           : `<div class="asset-stage empty">${ICON.assetGlyph}<span class="asset-kind">${esc(tool)} asset</span></div>`;
       } else if (c.type === 'url') {
         const dom = domainOf(c.content);
@@ -5177,7 +5186,13 @@
         headlineHtml = `<div class="item-headline">${esc(c.meta || 'image')}</div>`;
         metaParts.push(`<span class="time">${stamp}</span>`);
         if (c.dataUrl) {
-          extraHtml = `<img class="item-image" src="${c.dataUrl}" alt=""/>`;
+          // Lazy and async on purpose. A list can hold 150 rows and every
+          // picture in it becomes a decoded bitmap and a GPU texture the
+          // moment it is in the DOM, whether or not anyone has scrolled to
+          // it -- the GPU helper was seen doubling to 289MB with a list of
+          // images open. Deferring the ones nobody is looking at costs
+          // nothing visible and is the difference.
+          extraHtml = `<img class="item-image" src="${c.dataUrl}" alt="" loading="lazy" decoding="async"/>`;
         }
         if (matchedOnImageText(c)) {
           metaParts.push('<span class="dot">·</span><span class="in-image">text in image</span>');
@@ -5217,7 +5232,7 @@
       // have not seen the icon of before.
       const sourceIcon = c.sourceApp ? sourceIcons[c.sourceApp] : null;
       const sourceMark = !c.sourceApp ? '' : (sourceIcon
-        ? `<img class="from-icon" src="${sourceIcon}" alt="${esc(c.sourceApp)}" title="${esc(c.sourceApp)}"/>`
+        ? `<img class="from-icon" src="${sourceIcon}" alt="${esc(c.sourceApp)}" title="${esc(c.sourceApp)}" loading="lazy" decoding="async"/>`
         : `<span class="from-app" title="${esc(c.sourceApp)}">${esc(c.sourceApp)}</span>`);
 
       if (c.asset) {
