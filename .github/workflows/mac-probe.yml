@@ -1,0 +1,36 @@
+# Ask a Mac, rather than reasoning about one.
+#
+# The app is developed on Windows. Every source-app icon fix so far has been
+# made by working out what macOS probably answers, and every one of them has
+# been wrong. CI has a real Mac in it; this runs one script on it and prints
+# what actually comes back.
+#
+# Not part of the release path, and it builds nothing. Run it by hand from the
+# Actions tab, or by pushing a branch called mac-probe.
+name: Ask a Mac
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - mac-probe
+
+jobs:
+  probe:
+    name: What does a Mac answer
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Ask
+        run: npx electron scripts/mac-icon-probe.js
+      - name: Ask again
+        run: npx electron scripts/mac-icon-probe2.js
