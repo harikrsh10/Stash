@@ -38,3 +38,5 @@ jobs:
         run: npx electron scripts/mac-icon-probe3.js
       - name: Ask about the theme
         run: npx electron scripts/mac-theme-probe.js
+      - name: Ask about the theme loop
+        run: npx electron scripts/mac-theme-probe2.js
