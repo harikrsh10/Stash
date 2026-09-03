@@ -81,14 +81,22 @@ app.whenReady().then(async () => {
     ok('arrows still walk the list while the search box has focus',
        cursor().dataset.id === 'c1', cursor().dataset.id);
 
-    // The editor is a text box; arrows and Enter belong to it entirely.
+    // The preview panel edits a clip in a text box, and a text box owns arrows
+    // and Enter entirely. There is no flag for this: the panel is guarded by
+    // where the focus is, which is the thing that actually decides.
     const before = cursor().dataset.id;
-    editingId = 'c0';
+    document.querySelector('.item[data-id="c0"] [data-act="name"]').click();
+    await tick(80);
+    document.getElementById('inspEdit').focus();
+    ok('the panel takes the focus into its text box',
+       document.activeElement === document.getElementById('inspEdit'),
+       String(document.activeElement && document.activeElement.id));
     press('ArrowDown'); press('Enter');
     await tick(60);
-    ok('the editor keeps its own arrows', cursor().dataset.id === before, cursor().dataset.id);
+    ok('the panel keeps its own arrows', cursor().dataset.id === before, cursor().dataset.id);
     ok('and its own enter', copied === null, String(copied));
-    editingId = null;
+    document.getElementById('inspClose').click();
+    await tick(220);
 
     // The shortcut recorder wants every key there is.
     const gear = document.getElementById('settingsBtn');

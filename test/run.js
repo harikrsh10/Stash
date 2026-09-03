@@ -32,6 +32,7 @@ const SUITES = [
   { file: 'screenshots.test.js', runtime: 'node', what: 'catching macOS screenshots' },
   { file: 'updates.test.js', runtime: 'node', what: 'updating itself in the background' },
   { file: 'rename.test.js', runtime: 'electron', what: 'naming a clip yourself' },
+  { file: 'edit.test.js', runtime: 'electron', what: 'correcting the words in a clip' },
   { file: 'sessions.test.js', runtime: 'electron', what: 'sessions, their store and the drawer' },
   { file: 'richtext.test.js', runtime: 'electron', what: 'keeping formatting, and pasting without it' },
   { file: 'theme.test.js', runtime: 'node', what: 'the light and dark palettes staying in step' },

@@ -1631,6 +1631,9 @@ function updatePrompt(id, patch) {
     // refuse to empty a prompt — that's a delete, and there's a button for it
     if (!patch.content.trim()) return false;
     if (entry.content !== patch.content) {
+      // the words it arrived with, kept once so the preview panel can put
+      // them back however the edit was made
+      if (typeof entry.originalContent !== 'string') entry.originalContent = entry.content || '';
       // the styled copies describe the old words; keeping them would paste
       // something the editor no longer shows
       delete entry.html;
@@ -2720,6 +2723,102 @@ ipcMain.handle('clip:rename', (_e, id, name) => {
     }
     if (dockWindow && dockWindow.isVisible()) refreshDock();
   }
+  return ok;
+});
+
+// The words a clip arrived with are not always the words you want to paste: a
+// snippet comes with a stray line above it, a link comes with tracking on the
+// end, a stretch of read-back text comes close but not right. Editing used to
+// be a prompt's privilege alone, which put a filing decision -- "save this as
+// a prompt first" -- in front of fixing a typo.
+//
+// The captured text is kept the first time an edit lands, and only then, so
+// reset has somewhere to go back to and the clips nobody touches store nothing
+// extra. What was derived from the words goes with them: the styled copies
+// describe sentences that are no longer there, an asset describes a shape no
+// longer being carried, and a link edited into a sentence has stopped being a
+// link.
+//
+// Like a name, the text belongs to the clip rather than to one copy of it. The
+// same id can sit in history, in pinned and in any number of collections at
+// once, and one drawer showing the same clip under two different texts is the
+// bug this avoids.
+const CLIP_TEXT_MAX = 100000;
+
+function writeClipText(id, next, isReset) {
+  let inHistory = false, inPinned = false, inSessions = false;
+
+  const apply = (entry) => {
+    // A picture has no words to edit. Refusing here means a stray id cannot
+    // quietly turn a screenshot into a text clip.
+    if (entry.type === 'img') return false;
+    if (isReset) delete entry.originalContent;   // it is the original again
+    else if (typeof entry.originalContent !== 'string') entry.originalContent = entry.content || '';
+    if (entry.content !== next) {
+      delete entry.html;
+      delete entry.rtf;
+      delete entry.asset;
+      delete entry.assetName;
+      delete entry.assetSize;
+    }
+    entry.content = next;
+    entry.type = sniffType(next);
+    entry.updatedAt = Date.now();
+    return true;
+  };
+
+  history.forEach(h => { if (h.id === id && apply(h)) inHistory = true; });
+  pinned.forEach(p => { if (p.id === id && apply(p)) inPinned = true; });
+  sessionClips.forEach(s => { if (s.id === id && apply(s)) inSessions = true; });
+  if (!inHistory && !inPinned && !inSessions) return false;
+
+  // History is written too, for the reason a name is: an edit is worth more
+  // than the clip it sits on, and losing it to a restart would make editing an
+  // unpinned clip pointless.
+  if (inHistory) history.forEach(h => { if (h.id === id) historyStore.add(h); });
+  if (inPinned) savePinned();
+  if (inSessions) saveSessions();
+  return true;
+}
+
+function editClipContent(id, content) {
+  if (typeof content !== 'string') return false;
+  const next = content.slice(0, CLIP_TEXT_MAX);
+  // Refuse to empty a clip. That is a delete, and there is a button for it.
+  if (!next.trim()) return false;
+  return writeClipText(id, next, false);
+}
+
+// Back to the words it was captured with. Only a clip that has actually been
+// edited has anywhere to go back to, so this says no rather than quietly doing
+// nothing and leaving the drawer to claim it worked.
+function resetClipContent(id) {
+  const source = history.find(h => h.id === id)
+              || pinned.find(p => p.id === id)
+              || sessionClips.find(s => s.id === id);
+  if (!source || typeof source.originalContent !== 'string') return false;
+  return writeClipText(id, source.originalContent, true);
+}
+
+// An edited clip shows up on the row, in the tray and in the dock, all of
+// which are reading the same three stores this just rewrote.
+function announceClipChange() {
+  refreshTrayMenu();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('state:updated', { history, pinned, sourceIcons, ...sessionState() });
+  }
+  if (dockWindow && dockWindow.isVisible()) refreshDock();
+}
+
+ipcMain.handle('clip:edit', (_e, id, content) => {
+  const ok = editClipContent(id, content);
+  if (ok) announceClipChange();
+  return ok;
+});
+
+ipcMain.handle('clip:resetContent', (_e, id) => {
+  const ok = resetClipContent(id);
+  if (ok) announceClipChange();
   return ok;
 });
 

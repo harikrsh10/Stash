@@ -1,5 +1,5 @@
 ﻿// Part 1: updatePrompt/normalizeTags pulled from the real main.js
-// Part 2: the real renderer driven through the editor sheet and tag filters
+// Part 2: the real renderer driven through the preview panel and tag filters
 const { app, BrowserWindow } = require('electron');
 const fs = require('fs');
 const path = require('path');
@@ -203,28 +203,65 @@ app.whenReady().then(async () => {
     [...document.querySelectorAll('#tagMenu button')].find(b => b.textContent === 'all tags').click();
     ok('reset restores every prompt', promptRows() === 3, promptRows() + '');
 
-    // the editor sheet
-    const editor = document.getElementById('editor');
-    ok('sheet starts hidden', !editor.classList.contains('show'), '');
-    document.querySelector('.item[data-id=\\"pr1\\"] [data-act=\\"edit\\"]').click();
-    ok('edit opens the sheet', editor.classList.contains('show'), '');
-    ok('sheet loads the prompt text', document.getElementById('editorBody').value === 'make a hero image',
-       document.getElementById('editorBody').value);
-    ok('editing row is highlighted', document.querySelector('.item[data-id=\\"pr1\\"]').classList.contains('editing'), '');
-    ok('sheet shows existing tags', document.querySelectorAll('#editorTags .tag-chip').length === 2,
-       document.querySelectorAll('#editorTags .tag-chip').length + '');
-    ok('only prompts have an edit button', !document.querySelector('.item[data-id=\\"h1\\"] [data-act=\\"edit\\"]'), '');
+    // ---- tagging, in the preview panel ----
+    // There used to be a second sheet for this, opened by a second button, that
+    // covered the list with a copy of the text the panel was already showing.
+    // The panel does the whole job now, so the sheet and its button are gone.
+    ok('no prompt row carries a separate edit button',
+       !document.querySelector('[data-act=\\"edit\\"]'), '');
+    ok('and there is no sheet left to open', !document.getElementById('editor'), '');
 
-    // remove a tag from the sheet
-    document.querySelector('#editorTags .tag-x').click();
+    const insp = document.getElementById('inspector');
+    const tagRow = document.getElementById('inspTags');
+    ok('panel starts hidden', !insp.classList.contains('show'), '');
+    document.querySelector('.item[data-id=\\"pr1\\"] [data-act=\\"name\\"]').click();
+    await tick();
+    ok('the info button opens the panel', insp.classList.contains('show'), '');
+    ok('the panel loads the prompt text',
+       document.getElementById('inspEdit').value === 'make a hero image',
+       document.getElementById('inspEdit').value);
+    ok('the row it is open on is highlighted',
+       document.querySelector('.item[data-id=\\"pr1\\"]').classList.contains('editing'), '');
+    ok('the panel shows the prompt tags',
+       tagRow.querySelectorAll('.tag-chip').length === 2,
+       tagRow.querySelectorAll('.tag-chip').length + '');
+    ok('and the tag row is actually visible',
+       getComputedStyle(tagRow).display !== 'none', getComputedStyle(tagRow).display);
+
+    // remove a tag from the panel
+    tagRow.querySelector('.tag-x').click();
     await tick();
     ok('removing a chip patches tags', JSON.stringify(patches[patches.length-1].patch.tags) === '["mobile"]',
        JSON.stringify(patches[patches.length-1].patch.tags));
 
     // + tag opens a picker offering tags that already exist
-    document.querySelector('.tag-add').click();
+    tagRow.querySelector('.tag-add').click();
     const picker = document.getElementById('tagPicker');
     ok('+ tag opens the picker', picker.classList.contains('show'), '');
+
+    // The panel's card is overflow:hidden for its rounded corners, so a picker
+    // parented inside it would be cut off at the card's edge — the same trap
+    // the tag dropdown fell into. The only way out is not to be in there.
+    ok('the picker is not inside anything that clips it',
+       !picker.closest('.insp-card') && !picker.closest('.card'),
+       picker.parentElement.tagName + '.' + picker.parentElement.className);
+    ok('and is placed against the window, from the button that opened it',
+       getComputedStyle(picker).position === 'fixed', getComputedStyle(picker).position);
+    const addBox = tagRow.querySelector('.tag-add').getBoundingClientRect();
+    const pickBox = picker.getBoundingClientRect();
+    // Left is clamped back inside the window, so it proves nothing on its own.
+    // The vertical rule does: 6px under the button, or 6px over it when there
+    // is no room below. Either one means it found the button.
+    ok('the picker opens against the button, not at the old sheet foot',
+       Math.abs(pickBox.top - (addBox.bottom + 6)) <= 1
+       || Math.abs(pickBox.bottom - (addBox.top - 6)) <= 1,
+       'picker ' + Math.round(pickBox.top) + '-' + Math.round(pickBox.bottom)
+       + ', button ' + Math.round(addBox.top) + '-' + Math.round(addBox.bottom));
+    ok('the whole picker is within the window',
+       pickBox.top >= 0 && pickBox.left >= 0
+       && pickBox.bottom <= innerHeight && pickBox.right <= innerWidth,
+       [pickBox.top, pickBox.left, pickBox.bottom, pickBox.right].map(Math.round).join(' '));
+
     const suggestions = () => [...document.querySelectorAll('#tagSuggestions button')].map(b => b.textContent);
     ok('picker suggests other existing tags', suggestions().join(',') === 'video gen', suggestions().join(','));
     ok('picker hides tags this prompt already has', !suggestions().includes('mobile'), suggestions().join(','));
@@ -236,6 +273,9 @@ app.whenReady().then(async () => {
     ok('picking a suggestion adds it', JSON.stringify(patches[patches.length-1].patch.tags) === '["mobile","video gen"]',
        JSON.stringify(patches[patches.length-1].patch.tags));
     ok('picker stays open for the next one', picker.classList.contains('show'), '');
+    ok('and the chip turns up in the panel without anything being pressed',
+       [...tagRow.querySelectorAll('.tag-chip')].map(c => c.textContent.replace('×', '')).join(',') === 'mobile,video gen',
+       [...tagRow.querySelectorAll('.tag-chip')].map(c => c.textContent.replace('×', '')).join(','));
 
     // typing a brand new one
     const pinput = document.getElementById('tagPickerInput');
@@ -254,36 +294,54 @@ app.whenReady().then(async () => {
       return has;
     })(), '');
 
-    // content editing
-    const body = document.getElementById('editorBody');
+    // Content is the one thing that does not save itself. The sheet autosaved on
+    // a timer because there was nothing to press; the panel has Update, and a
+    // clip you are about to paste should not change because a box lost focus.
+    const body = document.getElementById('inspEdit');
+    const beforeEdit = patches.length;
     body.value = 'make a hero image, 9:16';
+    body.dispatchEvent(new Event('input', { bubbles: true }));
     body.dispatchEvent(new Event('blur'));
     await tick();
-    ok('blur saves the content', patches[patches.length-1].patch.content === 'make a hero image, 9:16',
-       String(patches[patches.length-1].patch.content));
+    ok('blur does not save the words', patches.length === beforeEdit, String(patches.length - beforeEdit));
+    ok('update is offered instead', !document.getElementById('inspUpdate').disabled, '');
 
-    // escape backs out one layer at a time: picker, sheet, then the drawer
+    // escape backs out one layer at a time: picker, panel, then the drawer
     let hidden = false; window.api.hide = () => { hidden = true; };
     const esc = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    ok('picker still open after adding tags', picker.classList.contains('show'), '');
+    tagRow.querySelector('.tag-add').click();
+    ok('picker open again', picker.classList.contains('show'), '');
     esc();
     ok('esc #1 closes the picker only',
-       !picker.classList.contains('show') && editor.classList.contains('show') && !hidden, 'hidden=' + hidden);
+       !picker.classList.contains('show') && insp.classList.contains('show') && !hidden, 'hidden=' + hidden);
     esc();
-    ok('esc #2 closes the sheet', !editor.classList.contains('show') && !hidden, 'hidden=' + hidden);
-    ok('editing highlight cleared', !document.querySelector('.item.editing'), '');
+    await tick();
+    ok('esc #2 closes the panel', !insp.classList.contains('show') && !hidden, 'hidden=' + hidden);
+    ok('the row highlight is cleared', !document.querySelector('.item.editing'), '');
     esc();
     ok('esc #3 hides the drawer', hidden, '');
 
-    // unmarking a prompt while its sheet is open closes the sheet
-    document.querySelector('.item[data-id=\\"pr2\\"] [data-act=\\"edit\\"]').click();
-    ok('sheet open again', editor.classList.contains('show'), '');
+    // tags are a prompt's filing, so an ordinary clip gets no row for them
+    goTo('all');
+    document.querySelector('.item[data-id=\\"h1\\"] [data-act=\\"name\\"]').click();
+    await tick();
+    ok('an ordinary clip is offered no tags',
+       getComputedStyle(tagRow).display === 'none', getComputedStyle(tagRow).display);
+    document.getElementById('inspClose').click();
+    await tick();
+    goTo('prompts');
+
+    // unmarking a prompt while the panel is open on it closes the panel
+    document.querySelector('.item[data-id=\\"pr2\\"] [data-act=\\"name\\"]').click();
+    await tick();
+    ok('panel open again', insp.classList.contains('show'), '');
     pinned = pinned.filter(p => p.id !== 'pr2');
     render();
-    ok('sheet closes when the prompt goes away', !editor.classList.contains('show'), '');
+    ok('panel closes when the prompt goes away', !insp.classList.contains('show'), '');
 
     return out;
   })()`;
+
 
   let rendered;
   try {
