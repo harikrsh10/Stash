@@ -82,7 +82,7 @@ beside the preview because seeing the thing is what lets you name it.
 
 - The name replaces the headline. Nothing that was visible is lost: an image's
   dimensions move down to the meta line, and any other kind of clip keeps its
-  preview underneath the name
+  text underneath the name, in the box that edits it
 - Clearing the name puts the derived headline back
 - A clip can sit in history, in pinned, and in several collections at once —
   renaming it renames every copy, so it isn't called two things in one drawer
@@ -97,14 +97,51 @@ beside the preview because seeing the thing is what lets you name it.
 
 ---
 
+## Fixing the words in a clip
+
+The same panel edits what it is showing. A text clip opens in a box you can type
+into rather than a block you can only read, with three things to do beneath it:
+
+- **Update** writes the words to the clip. It is a press, not an autosave — the
+  name above it saves itself because a name only labels a clip, while the text
+  *is* the clip, and an edit that happened because a panel got closed is an edit
+  nobody asked for. `⌘⏎` does the same without reaching for the button
+- **Copy** takes what is in the box, saved or not, for the one-off paste you
+  don't want to keep
+- **Reset to defaults** puts back the words the clip was captured with. The
+  original is kept the first time an edit lands, and only then, so the clips
+  nobody touches store nothing extra
+
+Editing used to be a prompt's privilege, which put a filing decision — "save
+this as a prompt first" — in front of fixing a typo.
+
+- Emptying a clip is refused. That is a delete, and there is a button for it
+- What was derived from the words goes with them: the styled copies describe
+  sentences that are no longer there, so they are dropped, and a link edited
+  into a sentence stops being filed as a link
+- Like a name, the text belongs to the clip rather than to one copy of it —
+  every store holding that id is rewritten together
+- Edits last as long as the clip does, ordinary history included
+- A picture has no words, so an image gets the preview and nothing else
+- A prompt also gets its tags here, under the buttons. Those save the moment
+  they change: the chip turning up is the confirmation, so there is nothing to
+  press. The words are the other way round, because the words are the clip
+- The row the panel is open on is marked in the list behind it
+
+This used to be a second sheet, opened by a second button on prompt rows only,
+which slid up over the list carrying a copy of the text the panel was already
+showing. Two ways to look at one clip, and only one of them could edit it.
+
+---
+
 ## Prompts
 
 The clips you reuse shouldn't age out behind a hundred screenshots.
 
 - Hover a clip and press **✦** to mark it a prompt. That single act makes it permanent — there's no separate pin step, and a prompt that could expire wouldn't be a library
 - Prompts live in their own section at the top, with their own filter
-- **edit** opens a sheet with the full text — editable in place, autosaved — and its tags
-- **Tag** prompts (`image gen`, `mobile`, `review`) and filter by tag from the prompts header. The picker offers tags you already use, so a library doesn't drift into three spellings of the same idea
+- Editing a prompt is editing a clip: the info button opens the preview panel, same as anywhere else. See [Fixing the words in a clip](#fixing-the-words-in-a-clip)
+- **Tag** prompts (`image gen`, `mobile`, `review`) from the panel, and filter by tag from the prompts header. The picker offers tags you already use, so a library doesn't drift into three spellings of the same idea
 - Unmarking a prompt returns it to ordinary history, where it ages out again
 
 ---
@@ -355,7 +392,7 @@ stash/
 └── src/
     ├── main.js       # main process — clipboard polling, hotkey, drag-out, OCR, tray
     ├── preload.js    # secure bridge between main and renderer
-    ├── renderer.html # the drawer, prompt editor and image inspector
+    ├── renderer.html # the drawer and the preview panel
     └── dock.html     # the quick-access popover UI
 ```
 

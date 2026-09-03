@@ -246,9 +246,9 @@
       /* clip, not hidden. Both cut off what sticks out, but `hidden` still
          makes a scroll container -- one that nothing can scroll by hand and
          the browser scrolls anyway, to bring a focused field into view.
-         The editor and the extracted-text sheet are parked below the panel on
+         The settings and extracted-text sheets are parked below the panel on
          a translateY(100%) when they are shut, which is enough to make the
-         page scrollable; focusing the editor's textarea then scrolled the
+         page scrollable; focusing a field inside one then scrolled the
          whole drawer up by the height of a sheet and took the top bar off the
          screen with it. `clip` creates no scroll container, so there is
          nothing to scroll and the drawer cannot be moved off its own window. */
@@ -337,7 +337,7 @@
       min-width: 0;
       flex: 1;
       height: 100vh;
-      /* the prompt editor and the OCR sheet dock against this */
+      /* the settings and extracted-text sheets dock against this */
       position: relative;
     }
 
@@ -627,6 +627,77 @@
       border-radius: 5px;
     }
     .inspector[data-mode="detail"] .detail-text.show { display: block; }
+
+    /* The same words, in a box you can type into. A clip is the thing you are
+       about to paste, so correcting it belongs beside the preview of it —
+       editing used to mean "save this as a prompt first", which is a filing
+       decision standing in front of a typo. */
+    .detail-edit {
+      display: none;
+      width: 100%;
+      min-height: 132px;
+      max-height: 44vh;
+      resize: vertical;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: inherit;
+      font-size: 12.5px;
+      line-height: 1.55;
+      color: var(--text);
+      padding: 12px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      outline: none;
+    }
+    .detail-edit:focus { border-color: var(--session-line-2); }
+    .inspector[data-mode="detail"] .detail-edit.show { display: block; }
+
+    /* What to do with what is in that box. Update is a press rather than an
+       autosave, unlike the name above it: a name only labels the clip, the
+       text IS the clip, and an edit that happened because a panel was closed
+       is an edit nobody asked for. */
+    .detail-acts { display: none; gap: 8px; margin: 10px 14px 0; }
+    .inspector[data-mode="detail"] .detail-acts.show { display: flex; }
+    .detail-act {
+      flex: 1;
+      padding: 8px 10px;
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      background: var(--surface2);
+      color: var(--text-2);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      cursor: pointer;
+      transition: color var(--t-quick), background var(--t-quick), border-color var(--t-quick);
+    }
+    .detail-act:hover { color: var(--text); background: var(--surface3); }
+    /* Nothing to save, or nothing to go back to. Saying so is worth more than
+       accepting a press that quietly does nothing. */
+    .detail-act:disabled { opacity: 0.4; cursor: default; }
+    .detail-act:disabled:hover { color: var(--text-2); background: var(--surface2); }
+    /* lit only while the box says something the clip does not */
+    .detail-act.primary.on {
+      background: var(--select-wash-2);
+      border-color: var(--select-dim);
+      color: var(--select);
+    }
+    .detail-act.primary.on:hover { background: var(--select-wash-3); color: var(--text); }
+
+    /* How a prompt is filed, kept beside the words it files rather than
+       behind a second sheet that opened over the list you were reading.
+       Only a prompt has tags, so only a prompt grows the row. */
+    .detail-tags {
+      display: none;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 5px;
+      margin: 12px 14px 0;
+    }
+    .inspector[data-mode="detail"] .detail-tags.show { display: flex; }
+    .detail-tags .tag-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; padding: 4px 7px; }
+    .detail-tags .tag-x { cursor: pointer; color: var(--muted); }
+    .detail-tags .tag-x:hover { color: var(--danger-dim); }
 
     /* text / colour — a switch, not an action. It sits under the name and stays
        there while you move between them, so the footer is free to belong to
@@ -1863,10 +1934,14 @@
       100% { background: transparent; }
     }
 
-    /* the row being edited stays visibly tied to the sheet below it */
+    /* The row the panel is open on. Deliberately colourless: this used to be
+       the prompt purple, because only a prompt had a sheet, and the panel
+       opens on anything -- a purple wash on a screenshot would read as a claim
+       about what the clip is rather than about which one you are looking at.
+       Blue and tan are spoken for too, by selection and by pinning. */
     .item.editing {
-      background: var(--prompt-wash);
-      box-shadow: inset 0 0 0 1px var(--prompt-strong);
+      background: var(--surface2);
+      box-shadow: inset 0 0 0 1px var(--border2);
     }
 
     /* tag chips shown inline on a prompt row, so the library is scannable */
@@ -1883,7 +1958,11 @@
       white-space: nowrap;
     }
 
-    /* ---------- prompt editor sheet ---------- */
+    /* ---------- sheets ----------
+       Settings and extracted text. The prompt editor was the third, until
+       the preview panel took its job: a sheet over the list, carrying a
+       copy of the text the panel was already showing, was two ways to look
+       at one clip with only one of them able to change it. */
     .editor {
       position: absolute;
       left: 0;
@@ -1901,7 +1980,7 @@
     }
     .editor.show { transform: translateY(0); }
 
-    /* Settings are a list to read down, so this one is taller than the editor
+    /* Settings are a list to read down, so this one is taller than the other
        and scrolls its own body rather than the page. */
     .settings-sheet { max-height: 78%; }
     .settings-body { overflow-y: auto; padding: 0 14px 12px; }
@@ -2093,36 +2172,6 @@
     }
     .editor-saved.show { opacity: 1; }
 
-    .editor-body {
-      margin: 0 14px;
-      padding: 10px;
-      min-height: 78px;
-      max-height: 190px;
-      resize: none;
-      overflow-y: auto;
-      background: var(--surface2, var(--surface2));
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      color: var(--text);
-      font-family: var(--font-mono);
-      font-size: 11.5px;
-      line-height: 1.5;
-      outline: none;
-    }
-    .editor-body:focus { border-color: var(--prompt-line-2); }
-
-    .editor-tags {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 5px;
-      padding: 10px 14px 12px;
-      flex-shrink: 0;
-    }
-    .editor-tags .tag-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; padding: 4px 7px; }
-    .editor-tags .tag-x { cursor: pointer; color: var(--muted); }
-    .editor-tags .tag-x:hover { color: var(--danger-dim); }
-
     .tag-add {
       font-family: var(--font-mono);
       font-size: 10px;
@@ -2249,11 +2298,12 @@
     }
     .ocr-bar span { display: block; height: 100%; width: 0; background: var(--ocr-strong); transition: width var(--t-mid); }
 
-    /* picker that opens from "+ tag" — existing tags to choose, or type a new one */
+    /* picker that opens from "+ tag" — existing tags to choose, or type a new
+       one. Placed against the window, from the button that opened it. */
     .tag-picker {
-      position: absolute;
-      left: 14px;
-      bottom: 44px;
+      position: fixed;
+      left: 0;
+      top: 0;
       z-index: 30;
       width: 176px;
       padding: 6px;
@@ -2562,6 +2612,27 @@
       font-size: 15px;
       font-weight: 600;
     }
+    /* the box the words sit in is the card's own surface, not a well cut into
+       it -- a sunken box inside a card reads as a second card */
+    .detail-edit {
+      padding: 13px 14px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 13.5px;
+    }
+    .detail-acts { margin: 12px 14px 0; gap: 10px; }
+    .detail-act {
+      padding: 12px 10px;
+      border-radius: 10px;
+      font-size: 12px;
+      background: var(--card);
+      border-color: var(--card-line);
+    }
+    /* the tags keep the card's rhythm rather than the sheet's tighter one */
+    .detail-tags { margin: 14px 14px 0; gap: 6px; }
+    .detail-tags .tag-chip { font-size: 11px; padding: 5px 9px; border-radius: 6px; }
+    .detail-tags .tag-add { font-size: 11px; padding: 5px 9px; border-radius: 6px; }
     .detail-meta { margin: 14px 14px 0; }
     .meta-row { padding: 8px 0; }
     .meta-key { width: 116px; font-size: 12px; }
@@ -2645,7 +2716,19 @@
     <div class="insp-canvas">
       <div class="insp-stage" id="inspStage"></div>
       <div class="detail-text" id="inspDetailText"></div>
+      <!-- a text clip is shown in the box that edits it: reading it and
+           fixing it are the same act, so they are the same field -->
+      <textarea class="detail-edit" id="inspEdit" spellcheck="false"
+                placeholder="this clip has no text"></textarea>
     </div>
+    <div class="detail-acts" id="inspEditActs">
+      <button class="detail-act primary" id="inspUpdate" type="button" title="save these words to the clip (⌘⏎)">Update</button>
+      <button class="detail-act" id="inspCopyBtn" type="button" title="copy what is in the box">Copy</button>
+      <button class="detail-act" id="inspReset" type="button" title="back to the words this clip was captured with">Reset to defaults</button>
+    </div>
+    <!-- How a prompt is filed. Tags save the moment they change: the chip
+         turning up is the confirmation, so there is nothing to press. -->
+    <div class="detail-tags" id="inspTags"></div>
     <!-- what the clip is, set out beneath the picture of it -->
     <div class="detail-meta" id="inspMeta"></div>
     </div><!-- /insp-card -->
@@ -2840,20 +2923,6 @@
       </div>
     </div>
 
-    <div class="editor" id="editor">
-      <div class="editor-head">
-        <span class="editor-title">edit prompt</span>
-        <span class="editor-saved" id="editorSaved">saved</span>
-        <button class="close-btn" id="editorClose" title="close (Esc)">×</button>
-      </div>
-      <textarea class="editor-body" id="editorBody" spellcheck="false"></textarea>
-      <div class="editor-tags" id="editorTags"></div>
-      <div class="tag-picker" id="tagPicker">
-        <input class="tag-input" id="tagPickerInput" placeholder="type a new tag" maxlength="24" />
-        <div class="tag-suggestions" id="tagSuggestions"></div>
-      </div>
-    </div>
-
     <!-- Which collections hold this clip. Anchored to the button that opened it but
        kept outside the row list, which is rebuilt from scratch on a timer. -->
   <div class="ses-menu" id="sesMenu">
@@ -2895,6 +2964,14 @@
     <nav class="rail card card-sessions" id="railSessions" aria-label="collections"></nav>
   </div>
   </div>
+  </div>
+
+  <!-- Opens from "+ tag" in the preview panel. Kept out here for the reason
+       the tag dropdown is: the card it opens over is overflow:hidden for its
+       rounded corners, and would cut most of it off. -->
+  <div class="tag-picker" id="tagPicker">
+    <input class="tag-input" id="tagPickerInput" placeholder="type a new tag" maxlength="24" />
+    <div class="tag-suggestions" id="tagSuggestions"></div>
   </div>
 
   <div class="toast" id="toast"></div>
@@ -3017,16 +3094,10 @@
 
     // tag chosen in the prompts-section dropdown; narrows prompts only
     let activeTag = null;
-    // prompt editor state — the id of the prompt whose sheet is open
-    let editingId = null;
-    // Which clip the preview panel is showing. Naming happens there, beside a
-    // view of the thing, rather than in the row underneath the hover actions.
+    // Which clip the preview panel is showing. Naming, editing and tagging all
+    // happen there, beside a view of the thing, rather than in the row
+    // underneath the hover actions or in a sheet over the list.
     let detailId = null;
-    let editorSaveTimer = null;
-    const editorEl = document.getElementById('editor');
-    const editorBodyEl = document.getElementById('editorBody');
-    const editorTagsEl = document.getElementById('editorTags');
-    const editorSavedEl = document.getElementById('editorSaved');
     const tagPickerEl = document.getElementById('tagPicker');
     const tagPickerInputEl = document.getElementById('tagPickerInput');
     const tagSuggestionsEl = document.getElementById('tagSuggestions');
@@ -3582,11 +3653,11 @@
       return sessionClips.some(c => c.id === clipId && c.sessionId === sessionId);
     }
 
-    // ---------- prompt editor ----------
+    // ---------- finding a clip ----------
     // Every store, not just the two the drawer usually shows. A clip collected
     // into a collection and since aged out of history lives only in sessionClips,
-    // and leaving it out here made every panel that opens by id -- naming, the
-    // editor -- do nothing at all when you clicked it inside a collection.
+    // and leaving it out here made everything that opens by id -- the preview
+    // panel, both extractors -- do nothing at all inside a collection.
     function findClip(id) {
       return pinned.find(p => p.id === id)
           || history.find(h => h.id === id)
@@ -3594,46 +3665,29 @@
           || null;
     }
 
-    function openEditor(id) {
-      // both sheets dock to the same edge, so only one can be up at a time
-      closeOcr();
-      editingId = id;
-      const c = findClip(id);
-      if (!c) return closeEditor();
-      editorBodyEl.value = c.content || '';
-      renderEditorTags();
-      editorEl.classList.add('show');
-      markEditingRow();
-      editorBodyEl.focus();
-    }
-
-    function closeEditor() {
-      flushEditorContent();
-      closeTagPicker();
-      editingId = null;
-      editorEl.classList.remove('show');
-      markEditingRow();
-    }
-
     const inspNameEl = document.getElementById('inspName');
     const inspDetailTextEl = document.getElementById('inspDetailText');
+    const inspTagsEl = document.getElementById('inspTags');
 
     // The panel can be opened three ways — view, or either extractor straight
-    // from the row. However you got here it is the same clip, so the name field
-    // and the mode switch have to be bound to it either way.
+    // from the row. However you got here it is the same clip, so the name field,
+    // the tags and the mode switch have to be bound to it either way.
     function bindDetail(id) {
       const c = findClip(id);
       if (!c) return null;
       detailId = id;
       inspNameEl.value = c.name || '';
       buildDetailMeta(c);
+      renderDetailTags();
+      // the row you are working on, marked in the list behind the panel
+      markEditingRow();
       return c;
     }
 
     async function openDetail(id) {
       const c = bindDetail(id);
       if (!c) return;
-      closeEditor();
+      closeTagPicker();
       ocrSheetEl.classList.remove('show');
       inspMode = 'detail';
       inspectorEl.dataset.mode = 'detail';
@@ -3646,6 +3700,11 @@
       // Only images have anything to pull out; there is nothing to read out of
       // text that you cannot already see in front of you.
       setModes(c.type === 'img', null);
+
+      // A picture has no words to correct; everything else opens in the box
+      // that edits it.
+      inspEditEl.classList.toggle('show', c.type !== 'img');
+      inspEditActsEl.classList.toggle('show', c.type !== 'img');
 
       if (c.type === 'img') {
         // the full picture where we still have it, the row's thumbnail where we
@@ -3663,8 +3722,8 @@
         }
       } else {
         showInspectorShell();
-        inspDetailTextEl.textContent = c.content || '';
-        inspDetailTextEl.classList.add('show');
+        inspEditEl.value = c.content || '';
+        syncEditActions();
       }
       inspNameEl.focus();
       inspNameEl.select();
@@ -3814,6 +3873,109 @@
       return 'file:///' + String(p).split('\\').join('/').replace(/^\/+/, '');
     }
 
+    const inspEditEl = document.getElementById('inspEdit');
+    const inspEditActsEl = document.getElementById('inspEditActs');
+    const inspUpdateEl = document.getElementById('inspUpdate');
+    const inspCopyBtnEl = document.getElementById('inspCopyBtn');
+    const inspResetEl = document.getElementById('inspReset');
+
+    // Whether either action has anything left to do. Update is lit only while
+    // the box says something the clip does not; reset is offered where there is
+    // a captured text to go back to, or typing to throw away.
+    function syncEditActions() {
+      const c = detailId ? findClip(detailId) : null;
+      if (!c) return;
+      const dirty = inspEditEl.value !== (c.content || '');
+      const canUpdate = dirty && !!inspEditEl.value.trim();
+      inspUpdateEl.disabled = !canUpdate;
+      inspUpdateEl.classList.toggle('on', canUpdate);
+      inspResetEl.disabled = !dirty && typeof c.originalContent !== 'string';
+    }
+
+    // Explicit, unlike the name field beside it. The stores are rewritten in
+    // main and come back as state:updated, but the panel's own copy is patched
+    // here too so the buttons are right in the frame the press lands in rather
+    // than the frame the broadcast arrives in.
+    async function commitDetailText() {
+      const c = detailId ? findClip(detailId) : null;
+      if (!c) return;
+      const text = inspEditEl.value;
+      if (text === (c.content || '')) return;
+      if (!text.trim()) { toast('a clip cannot be emptied — delete it instead'); return; }
+      const ok = await window.api.editClip?.(detailId, text);
+      if (!ok) { toast('could not update that'); return; }
+      if (typeof c.originalContent !== 'string') c.originalContent = c.content || '';
+      c.content = text;
+      buildDetailMeta(c);
+      syncEditActions();
+      toast('updated');
+    }
+
+    // A clip that has been edited goes back to the words it was captured with.
+    // One that has not simply loses whatever is uncommitted in the box — there
+    // is nothing else a default could mean for it, and a button that does
+    // nothing on half the clips it appears on is worse than one that does the
+    // nearest useful thing.
+    async function resetDetailText() {
+      const c = detailId ? findClip(detailId) : null;
+      if (!c) return;
+      if (typeof c.originalContent === 'string') {
+        const original = c.originalContent;
+        const ok = await window.api.resetClip?.(detailId);
+        if (!ok) { toast('could not reset that'); return; }
+        delete c.originalContent;
+        c.content = original;
+        inspEditEl.value = original;
+        buildDetailMeta(c);
+        toast('back to the original text');
+      } else {
+        inspEditEl.value = c.content || '';
+        toast('changes discarded');
+      }
+      syncEditActions();
+    }
+
+    // Copies what is in the box, which is not always what is stored. The
+    // styled copies describe the stored words, so an uncommitted edit travels
+    // as plain text rather than pasting formatting over sentences that have
+    // since changed.
+    async function copyDetailText() {
+      const c = detailId ? findClip(detailId) : null;
+      if (!c) return;
+      const text = inspEditEl.value;
+      let entry = c;
+      if (text !== (c.content || '')) {
+        entry = { ...c, content: text };
+        delete entry.html;
+        delete entry.rtf;
+        delete entry.asset;
+      }
+      await window.api.write(entry);
+      toast('copied — paste with ⌘V');
+    }
+
+    inspUpdateEl.addEventListener('click', commitDetailText);
+    inspCopyBtnEl.addEventListener('click', copyDetailText);
+    inspResetEl.addEventListener('click', resetDetailText);
+    inspEditEl.addEventListener('input', syncEditActions);
+    inspEditEl.addEventListener('keydown', (e) => {
+      // Enter belongs to the text; the drawer's own keys must not fire while
+      // somebody is typing into a clip.
+      e.stopPropagation();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        const c = detailId ? findClip(detailId) : null;
+        inspEditEl.value = (c && c.content) || '';
+        syncEditActions();
+        // Esc gets you out of the box first and out of the panel second, the
+        // same two steps the name field above takes.
+        inspEditEl.blur();
+      } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        commitDetailText();
+      }
+    });
+
     async function commitDetailName() {
       if (!detailId) return;
       const c = findClip(detailId);
@@ -3925,52 +4087,52 @@
       closeSessionMenu();
     });
 
+    // The row the panel is looking at, marked in the list. This followed the
+    // prompt sheet before the sheet was folded into the panel; the panel is
+    // the only thing editing a clip now, so it is the panel it follows.
     function markEditingRow() {
       document.querySelectorAll('.item').forEach(n => {
-        n.classList.toggle('editing', !!editingId && n.dataset.id === editingId);
+        n.classList.toggle('editing', !!detailId && n.dataset.id === detailId);
       });
     }
 
-    function flashSaved() {
-      editorSavedEl.classList.add('show');
-      clearTimeout(flashSaved._t);
-      flashSaved._t = setTimeout(() => editorSavedEl.classList.remove('show'), 900);
-    }
+    // Tags are how a prompt is filed, so only a prompt grows the row. They save
+    // the moment they change -- the chip turning up is the confirmation, which
+    // is why there is nothing to press. The words above them are the other way
+    // round: they wait for Update, because the text is the clip.
+    function renderDetailTags() {
+      const c = detailId ? findClip(detailId) : null;
+      const isPrompt = !!(c && c.isPrompt);
+      inspTagsEl.classList.toggle('show', isPrompt);
+      inspTagsEl.innerHTML = '';
+      if (!isPrompt) return;
 
-    // content autosaves as you type; tags save the moment they change
-    function flushEditorContent() {
-      clearTimeout(editorSaveTimer);
-      if (!editingId) return;
-      const c = findClip(editingId);
-      const next = editorBodyEl.value;
-      if (!c || !next.trim() || next === c.content) return;
-      window.api.updatePrompt(editingId, { content: next }).then(ok => { if (ok) flashSaved(); });
-    }
-
-    function renderEditorTags() {
-      const c = editingId ? findClip(editingId) : null;
-      const tags = (c && c.tags) || [];
-      editorTagsEl.innerHTML = '';
+      const tags = c.tags || [];
       tags.forEach(t => {
         const chip = document.createElement('span');
         chip.className = 'tag-chip';
         chip.innerHTML = `<span></span><span class="tag-x" title="remove">×</span>`;
         chip.firstChild.textContent = t;
         chip.querySelector('.tag-x').addEventListener('click', () => setTags(tags.filter(x => x !== t)));
-        editorTagsEl.appendChild(chip);
+        inspTagsEl.appendChild(chip);
       });
 
       const add = document.createElement('button');
       add.className = 'tag-add';
       add.textContent = '+ tag';
-      add.addEventListener('click', (e) => { e.stopPropagation(); openTagPicker(); });
-      editorTagsEl.appendChild(add);
+      add.addEventListener('click', (e) => { e.stopPropagation(); openTagPicker(e.currentTarget); });
+      inspTagsEl.appendChild(add);
     }
 
     async function setTags(tags) {
-      if (!editingId) return;
-      const ok = await window.api.updatePrompt(editingId, { tags });
-      if (ok) flashSaved();
+      if (!detailId) return;
+      const ok = await window.api.updatePrompt(detailId, { tags });
+      if (!ok) return;
+      // main broadcasts too, but the panel's own copy is patched here so the
+      // chips and the suggestions are right in the frame the click lands in
+      const c = findClip(detailId);
+      if (c) c.tags = tags;
+      renderDetailTags();
     }
 
     // ---------- extracted text ----------
@@ -4062,6 +4224,8 @@
       // silently dropped because the panel was closed instead of blurred.
       if (detailId) commitDetailName();
       detailId = null;
+      closeTagPicker();
+      markEditingRow();
       inspBlocks = [];
       inspColors = [];
       inspPicked.clear();
@@ -4076,6 +4240,11 @@
         inspSwatchesEl.innerHTML = '';
         setModes(false, null);
         inspDetailTextEl.classList.remove('show');
+        inspEditEl.classList.remove('show');
+        inspEditActsEl.classList.remove('show');
+        inspTagsEl.classList.remove('show');
+        inspTagsEl.innerHTML = '';
+        inspEditEl.value = '';
         syncInspOut();
       };
       // Held on the same handle showInspectorShell clears, so reopening during
@@ -4310,7 +4479,7 @@
       if (ocrBusyId) return;
       ocrBusyId = id;
       bindDetail(id);
-      closeEditor();
+      closeTagPicker();
       ocrSheetEl.classList.add('show');
       ocrCountEl.classList.add('show');
       ocrCountEl.textContent = 'reading…';
@@ -4346,7 +4515,7 @@
       if (ocrBusyId) return;
       ocrBusyId = id;
       bindDetail(id);
-      closeEditor();
+      closeTagPicker();
       ocrSheetEl.classList.add('show');
       ocrCountEl.classList.add('show');
       ocrCountEl.textContent = 'reading…';
@@ -4385,10 +4554,24 @@
     // ---------- tag picker ----------
     // Reusing an existing tag has to be as easy as inventing one, otherwise a
     // library drifts into "img gen", "image gen", "image-gen" within a week.
-    function openTagPicker() {
+    function openTagPicker(anchorEl) {
       tagPickerEl.classList.add('show');
       tagPickerInputEl.value = '';
       renderTagSuggestions();
+      // It used to be parked at the foot of the sheet, which was the only
+      // place a sheet-bound picker could be. From the panel it has to find the
+      // button, then come back inside the window: measured with it already
+      // shown, or the box has no height to place against.
+      if (anchorEl) {
+        const r = anchorEl.getBoundingClientRect();
+        const GAP = 6;
+        const h = tagPickerEl.offsetHeight;
+        const w = tagPickerEl.offsetWidth;
+        const below = r.bottom + GAP;
+        const top = below + h > window.innerHeight - 8 ? r.top - GAP - h : below;
+        tagPickerEl.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+        tagPickerEl.style.top = Math.max(8, top) + 'px';
+      }
       tagPickerInputEl.focus();
     }
 
@@ -4397,7 +4580,7 @@
     }
 
     function renderTagSuggestions() {
-      const c = editingId ? findClip(editingId) : null;
+      const c = detailId ? findClip(detailId) : null;
       const mine = new Set(((c && c.tags) || []).map(t => t.toLowerCase()));
       const typed = tagPickerInputEl.value.trim().toLowerCase();
       const options = allTags()
@@ -4421,7 +4604,7 @@
     }
 
     function addTag(tag) {
-      const c = editingId ? findClip(editingId) : null;
+      const c = detailId ? findClip(detailId) : null;
       if (!c) return;
       const next = [...(c.tags || []), tag];
       tagPickerInputEl.value = '';
@@ -4445,13 +4628,6 @@
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeTagPicker(); }
     });
     tagPickerInputEl.addEventListener('blur', () => setTimeout(closeTagPicker, 120));
-
-    editorBodyEl.addEventListener('input', () => {
-      clearTimeout(editorSaveTimer);
-      editorSaveTimer = setTimeout(flushEditorContent, 400);
-    });
-    editorBodyEl.addEventListener('blur', flushEditorContent);
-    document.getElementById('editorClose').addEventListener('click', closeEditor);
 
     // A fixed menu stays where it was put while the page scrolls out from under
     // it, leaving it pointing at nothing. Scrolling is a dismissal.
@@ -5095,7 +5271,6 @@
         + '<path d="M4 12l8 4.3 8-4.3" opacity="0.55"/>'
         + '<path d="M4 16.2l8 4.3 8-4.3" opacity="0.3"/></svg>',
       name: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11.2v5"/><path d="M12 7.8v.4"/></svg>',
-      edit: '<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>',
       prompt: '<svg viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>',
       pin: '<svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8L3.5 9.7l5.9-.9z"/></svg>',
       pinned: '<svg viewBox="0 0 24 24" class="filled"><path d="M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8L3.5 9.7l5.9-.9z"/></svg>',
@@ -5326,8 +5501,7 @@
           ${tagsHtml}
           ${extraHtml}
           <div class="actions">
-            <button class="act-btn" data-act="name" title="preview">${ICON.name}</button>
-            ${c.isPrompt ? `<button class="act-btn" data-act="edit" title="edit text and tags">${ICON.edit}</button>` : ''}
+            <button class="act-btn" data-act="name" title="${c.type === 'img' ? 'preview' : 'preview and edit'}">${ICON.name}</button>
             ${promptable ? `<button class="act-btn ${c.isPrompt ? 'on' : ''}" data-act="prompt" title="${c.isPrompt ? 'stop keeping this as a prompt' : 'save as a prompt — kept forever'}">${ICON.prompt}</button>` : ''}
             ${c.isPrompt ? '' : `<button class="act-btn ${isPinned ? 'pinned' : ''}" data-act="pin" title="${isPinned ? 'unpin' : 'pin'}">${isPinned ? ICON.pinned : ICON.pin}</button>`}
             ${c.type === 'img' ? `<button class="act-btn" data-act="ocr" title="pull the text out of this image">${ICON.text}</button>` : ''}
@@ -5450,12 +5624,6 @@
         runPalette(c.id);
       });
 
-      el.querySelector('[data-act="edit"]')?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (editingId === c.id) closeEditor();
-        else openEditor(c.id);
-      });
-
       // optional now, like every other conditional action: the offer is only
       // made on text, so on an image or a link there is no button to wire
       el.querySelector('[data-act="prompt"]')?.addEventListener('click', async (e) => {
@@ -5519,15 +5687,14 @@
       // a tag that no longer exists anywhere shouldn't keep filtering
       if (activeTag && !allTags().some(t => t.toLowerCase() === activeTag.toLowerCase())) activeTag = null;
 
-      // a prompt that stopped being one (or was deleted) takes its sheet with it
-      if (editingId) {
-        const still = pinned.find(p => p.id === editingId && p.isPrompt);
-        if (!still) { editingId = null; editorEl.classList.remove('show'); }
-        else {
-          renderEditorTags();
-          // don't yank the text out from under someone mid-edit
-          if (document.activeElement !== editorBodyEl) editorBodyEl.value = still.content || '';
-        }
+      // A clip that has gone -- deleted, cleared, or a prompt that stopped
+      // being one and aged out -- takes the panel with it rather than leaving
+      // it open on nothing. The words in the box are deliberately left alone:
+      // they are not yanked out from under someone mid-edit.
+      if (detailId) {
+        const still = findClip(detailId);
+        if (!still) closeInspector({ immediate: true });
+        else renderDetailTags();
       }
 
       const sessionScope = scopeIsSession(activeScope) ? activeScope : null;
@@ -5749,10 +5916,11 @@
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Enter') return;
       // Anything with its own idea of what arrows and Enter mean gets them
-      // first: the editor, a tag field, the shortcut recorder, a menu.
+      // first: a text box, a tag field, the shortcut recorder, a menu. The
+      // panel needs no line of its own -- editing happens in its textarea, and
+      // the focus check below already hands the keys over.
       if (recording) return;
       if (settingsSheetEl.classList.contains('show')) return;
-      if (editingId) return;
       if (document.querySelector('.tag-menu.show')) return;
       const el = document.activeElement;
       if (el && (el.tagName === 'TEXTAREA'
@@ -5774,7 +5942,7 @@
     // gesture that backs out of selecting isn't also the one that hides everything
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        // back out one layer at a time: menus, editor, selection, then the drawer
+        // back out one layer at a time: menus, panels, selection, then the drawer
         const openMenu = document.querySelector('.tag-menu.show');
         if (openMenu) openMenu.classList.remove('show');
         else if (sesMenuEl.classList.contains('show')) closeSessionMenu();
@@ -5783,12 +5951,11 @@
         else if (settingsSheetEl.classList.contains('show')) closeSettings();
         else if (inspectorEl.classList.contains('show')) closeInspector();
         else if (ocrSheetEl.classList.contains('show')) closeOcr();
-        else if (editingId) closeEditor();
         else if (selected.size > 0) clearSelection();
         else window.api.hide();
       }
       // cmd/ctrl+a selects everything currently visible
-      const typing = document.activeElement === searchEl || document.activeElement === editorBodyEl
+      const typing = document.activeElement === searchEl || document.activeElement === inspEditEl
         || document.activeElement?.classList.contains('tag-input');
       if ((e.metaKey || e.ctrlKey) && e.key === 'a' && !typing) {
         e.preventDefault();

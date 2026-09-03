@@ -13,6 +13,11 @@ contextBridge.exposeInMainWorld('api', {
   markPrompt: (id) => ipcRenderer.invoke('clip:prompt', id),
   unmarkPrompt: (id) => ipcRenderer.invoke('clip:unprompt', id),
   updatePrompt: (id, patch) => ipcRenderer.invoke('prompt:update', id, patch),
+  // change the words in a clip. Every store holding that id is rewritten,
+  // and the text it arrived with is kept so the change can be undone.
+  editClip: (id, content) => ipcRenderer.invoke('clip:edit', id, content),
+  // put an edited clip back to the words it was captured with
+  resetClip: (id) => ipcRenderer.invoke('clip:resetContent', id),
   // give a clip a title of your own; an empty name restores the derived one
   renameClip: (id, name) => ipcRenderer.invoke('clip:rename', id, name),
 

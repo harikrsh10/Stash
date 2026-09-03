@@ -263,10 +263,12 @@ app.whenReady().then(async () => {
     await tick(220);
     txtRow().querySelector('[data-act=\"name\"]').click();
     await tick(60);
-    const full = document.getElementById('inspDetailText');
+    // The full text now arrives in the box that edits it — reading a clip and
+    // correcting it are the same act, so they are the same field.
+    const full = document.getElementById('inspEdit');
     ok('a text clip shows all of itself, not two clamped lines',
-       full.classList.contains('show') && full.textContent.includes('a good deal more text'),
-       full.textContent.slice(0, 40));
+       full.classList.contains('show') && full.value.includes('a good deal more text'),
+       full.value.slice(0, 40));
     ok('a text clip has nothing to extract, so the switch is absent',
        !document.getElementById('inspModes').classList.contains('show'), '');
 
