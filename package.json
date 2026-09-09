@@ -21,7 +21,7 @@
   "devDependencies": {
     "@paper-design/shaders": "^0.0.80",
     "electron": "^31.0.0",
-    "electron-builder": "^26.15.3",
+    "electron-builder": "^26.16.1",
     "esbuild": "^0.28.2"
   },
   "build": {
