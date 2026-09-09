@@ -58,7 +58,17 @@ jobs:
               dist/*.blockmap
               dist/latest.yml
           - platform: macos
-            os: macos-latest
+            # Pinned, not macos-latest. electron-builder creates a temporary
+            # keychain with a random password, then calls set-key-partition-list
+            # passing CSC_KEY_PASSWORD -- the certificate password -- where the
+            # keychain password belongs (macCodeSign.js: keychainPassword is not
+            # in scope in importCerts). That only ever worked because the keychain
+            # was already unlocked and the runner did not re-validate -k. The
+            # macos-26 image of 2026-08-31 does re-validate, and 0.7.9 died on it
+            # with SecKeychainUnlock while the identical secrets had signed 0.7.8
+            # a week earlier. Nothing here is wrong with the certificate; unpin
+            # this when electron-builder passes the right password.
+            os: macos-15
             command: npm run dist:mac
             # The dmg is what a person downloads the first time. The zip is what
             # Squirrel installs on top of an existing copy — without it the Mac
