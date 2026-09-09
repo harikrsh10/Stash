@@ -1769,125 +1769,81 @@
     /* dim the list when paused */
     body.paused .list { opacity: 0.4; pointer-events: none; }
     body.paused .controls { opacity: 0.5; }
+    /* Collecting-into: a status rule, not a card. Decided from
+       proto/collecting-banner, against three alternatives.
+       This is permanent chrome -- it sits above the search field for as long as
+       a collection is open -- and the card version spent 60px of a 560px drawer
+       saying one short sentence. This says the same thing in half the height
+       and hands the rest to the list.
+       Rejected: a count-forward "meter" (a 23px tabular number that bumped as
+       clips landed) read as a dashboard stat and pushed the collection's name
+       to secondary, which is the thing you actually need to confirm once you
+       have several sessions. A "vessel" showing type chips for the last few
+       clips was the most informative and the tallest at 72px, and it changed
+       shape as a collection filled -- wrong for something always on screen.
+       Full-bleed on 18px like .paused-banner and .controls, so the name lines
+       up with the search field under it. */
     .collection-banner {
       display: none;
       align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin: 10px 14px 0;
-      padding: 10px 10px 10px 12px;
-      background: var(--session-tint);
-      border: 1px solid var(--session-line);
-      border-radius: 8px;
-      color: var(--text-2);
+      gap: 8px;
+      padding: 6px 18px 7px;
+      background: var(--session-wash);
+      border-bottom: 1px solid var(--session-line);
       font-family: var(--font-mono);
       font-size: 10px;
-      letter-spacing: 0.04em;
     }
     .collection-banner.show { display: flex; }
-    .collection-main {
-      min-width: 0;
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr);
-      align-items: center;
-      column-gap: 10px;
+    /* The only moving part left, in place of the simmering pot the card
+       carried: at 22px that icon was two thirds of a 31px row, and the row
+       being short is the whole point. Same idea as the rail's .rec dot. */
+    .collection-dot {
+      flex-shrink: 0;
+      width: 5px;
+      height: 5px;
+      border-radius: 999px;
+      background: var(--session);
+      animation: collectionDot 2.4s ease-in-out infinite;
     }
-    .collection-capture-icon {
-      width: 22px;
-      height: 22px;
-      display: inline-grid;
-      place-items: center;
-      color: var(--session);
-    }
-    .collection-capture-icon svg {
-      width: 22px;
-      height: 22px;
-      display: block;
-      fill: none;
-      stroke: currentColor;
-      stroke-width: 1.8;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      overflow: visible;
-    }
-    .collection-pot-body {
-      transform-box: fill-box;
-      transform-origin: center bottom;
-      animation: collectionPotBody 4.8s ease-in-out infinite;
-    }
-    .collection-pot-lid {
-      transform-box: fill-box;
-      transform-origin: 80% 36%;
-      animation: collectionPotLid 4.8s ease-in-out infinite;
-    }
-    @keyframes collectionPotBody {
-      0%, 62%, 100% { transform: scale(1); }
-      68% { transform: scale(1.035); }
-      76% { transform: scale(1); }
-    }
-    @keyframes collectionPotLid {
-      0%, 58%, 100% { transform: rotate(0deg); }
-      64% { transform: rotate(-8deg); }
-      70% { transform: rotate(7deg); }
-      76% { transform: rotate(-4deg); }
-      82% { transform: rotate(0deg); }
+    @keyframes collectionDot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
     }
     @media (prefers-reduced-motion: reduce) {
-      .collection-pot-body,
-      .collection-pot-lid { animation: none; }
-    }
-    .collection-copy {
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-    .collection-line {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-      min-width: 0;
-      overflow: hidden;
-      white-space: nowrap;
+      .collection-dot { animation: none; }
     }
     .collection-label {
       flex-shrink: 0;
       color: var(--muted);
       font-size: 9px;
-      line-height: 1;
       letter-spacing: 0.06em;
       text-transform: uppercase;
     }
-    .collection-line b {
+    /* takes the slack, so a long collection name ellipsises instead of
+       pushing the count and the stop button off the end */
+    .collection-name {
       min-width: 0;
+      flex: 1;
       overflow: hidden;
       text-overflow: ellipsis;
+      white-space: nowrap;
       color: var(--session);
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 500;
       letter-spacing: 0.02em;
     }
     .collection-count {
       flex-shrink: 0;
-      min-width: 18px;
-      height: 18px;
-      padding: 0 6px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 999px;
-      border: 1px solid var(--session-line-2);
-      background: var(--bg);
       color: var(--session);
       font-size: 10px;
-      line-height: 1;
-      letter-spacing: 0;
+      font-variant-numeric: tabular-nums;
+      opacity: 0.75;
     }
     .collection-stop {
       -webkit-app-region: no-drag;
       flex-shrink: 0;
-      width: 22px;
-      height: 22px;
+      width: 18px;
+      height: 18px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -1900,8 +1856,8 @@
       transition: color var(--t-quick), background var(--t-quick);
     }
     .collection-stop svg {
-      width: 16px;
-      height: 16px;
+      width: 13px;
+      height: 13px;
       display: block;
       fill: none;
       stroke: currentColor;
@@ -2110,8 +2066,7 @@
        So it runs when something has just happened and stops when nothing has.
        Paused, not cancelled: it holds its shape rather than snapping back. */
     body.still .rail-item .rec,
-    body.still .collection-pot-body,
-    body.still .collection-pot-lid {
+body.still .collection-dot {
       animation-play-state: paused;
     }
 
@@ -2781,24 +2736,10 @@
 
     <div class="paused-banner">clipboard capture paused</div>
     <div class="collection-banner" id="collectionBanner">
-      <span class="collection-main">
-        <span class="collection-capture-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24">
-            <g class="collection-pot-body">
-              <path d="M2 12h20"></path>
-              <path d="M20 12v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8"></path>
-            </g>
-            <g class="collection-pot-lid">
-              <path d="m4 8 16-4"></path>
-              <path d="m8.86 6.78-.45-1.81a2 2 0 0 1 1.45-2.43l1.94-.48a2 2 0 0 1 2.43 1.46l.45 1.8"></path>
-            </g>
-          </svg>
-        </span>
-        <span class="collection-copy">
-          <span class="collection-label">Collecting into</span>
-          <span class="collection-line"><b id="collectionBannerName"></b><span class="collection-count" id="collectionBannerCount">0</span></span>
-        </span>
-      </span>
+      <span class="collection-dot" aria-hidden="true"></span>
+      <span class="collection-label">collecting</span>
+      <b class="collection-name" id="collectionBannerName"></b>
+      <span class="collection-count" id="collectionBannerCount">0</span>
       <button class="collection-stop" id="collectionStopBtn" type="button" aria-label="Stop collecting" title="stop collecting">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <rect x="6.5" y="6.5" width="11" height="11" rx="2"></rect>

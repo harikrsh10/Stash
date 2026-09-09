@@ -9,6 +9,8 @@
     "start": "electron .",
     "dev": "electron . --dev",
     "test": "node test/run.js",
+    "harness": "node scripts/make-harness.js",
+    "harness:serve": "node scripts/make-harness.js && node scripts/harness-server.js",
     "build:ocr": "node scripts/build-mac-ocr.js",
     "pack": "npm run build:ocr && electron-builder --dir",
     "dist": "npm run build:ocr && electron-builder",

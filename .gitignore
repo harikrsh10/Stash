@@ -49,4 +49,8 @@ build/
 *.certSigningRequest
 stash-signing.key
 p12-base64.txt
-_harness.html
+
+# Generated browser harness for the renderer. Build it with `npm run harness`
+# (scripts/make-harness.js); it is derived from src/renderer.html, so committing
+# it would just go stale.
+src/_harness.html
