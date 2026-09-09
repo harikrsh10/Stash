@@ -1783,6 +1783,35 @@
        shape as a collection filled -- wrong for something always on screen.
        Full-bleed on 18px like .paused-banner and .controls, so the name lines
        up with the search field under it. */
+    /* Appearing moves the search field and the list, because the banner is a
+       real row above them -- so the wrapper owns that space and animates it,
+       while the banner itself only ever moves by transform.
+       Decided from proto/collecting-motion (Settle), against three others.
+       Rejected: "unfold" (the row opens and the content fades up behind it)
+       was the calm answer and animated height for the whole duration rather
+       than half of it; "wipe" (revealing from the right edge, where both the
+       collect button and the stop button live) tied the motion to its cause
+       nicely but the direction only reads if you noticed which control you
+       pressed; leaving it instant reads as a glitch, because nothing else in
+       the drawer changes state without saying so.
+       In and out are deliberately not mirrors. Arriving overshoots and comes
+       back; leaving lifts straight up, faster and without the bounce, because
+       undoing something should not swagger. */
+    .collection-wrap {
+      flex-shrink: 0;
+      height: 0;
+      overflow: hidden;
+      /* the space opens in half the time the strip takes to fall into it, so
+         the row is waiting rather than chasing */
+      transition: height calc(var(--t-mid) * 0.5) var(--e-out);
+    }
+    /* auto is the fallback if the measure came back 0 -- an unlaid-out window
+       still gets a correct final state, it just does not animate to it */
+    .collection-wrap.is-in { height: var(--collect-h, auto); }
+    .collection-wrap.is-out {
+      transition: height calc(var(--t-quick) * 0.6) var(--e-out) calc(var(--t-quick) * 0.4);
+    }
+
     .collection-banner {
       display: none;
       align-items: center;
@@ -1792,8 +1821,19 @@
       border-bottom: 1px solid var(--session-line);
       font-family: var(--font-mono);
       font-size: 10px;
+      /* sits above its own top edge until the wrapper has made room */
+      transform: translateY(-100%);
+      transition: transform var(--t-mid) var(--e-overshoot) 60ms;
     }
     .collection-banner.show { display: flex; }
+    .collection-wrap.is-in .collection-banner { transform: none; }
+    .collection-wrap.is-out .collection-banner {
+      transition: transform var(--t-quick) var(--e-out);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .collection-wrap,
+      .collection-wrap .collection-banner { transition: none; }
+    }
     /* The only moving part left, in place of the simmering pot the card
        carried: at 22px that icon was two thirds of a 31px row, and the row
        being short is the whole point. Same idea as the rail's .rec dot. */
@@ -2735,17 +2775,19 @@ body.still .collection-dot {
     </div>
 
     <div class="paused-banner">clipboard capture paused</div>
-    <div class="collection-banner" id="collectionBanner">
-      <span class="collection-dot" aria-hidden="true"></span>
-      <span class="collection-label">collecting</span>
-      <b class="collection-name" id="collectionBannerName"></b>
-      <span class="collection-count" id="collectionBannerCount">0</span>
-      <button class="collection-stop" id="collectionStopBtn" type="button" aria-label="Stop collecting" title="stop collecting">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <rect x="6.5" y="6.5" width="11" height="11" rx="2"></rect>
-          <rect x="10" y="10" width="4" height="4" rx="0.8" fill="currentColor" stroke="none"></rect>
-        </svg>
-      </button>
+    <div class="collection-wrap" id="collectionWrap">
+      <div class="collection-banner" id="collectionBanner">
+        <span class="collection-dot" aria-hidden="true"></span>
+        <span class="collection-label">collecting</span>
+        <b class="collection-name" id="collectionBannerName"></b>
+        <span class="collection-count" id="collectionBannerCount">0</span>
+        <button class="collection-stop" id="collectionStopBtn" type="button" aria-label="Stop collecting" title="stop collecting">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="6.5" y="6.5" width="11" height="11" rx="2"></rect>
+            <rect x="10" y="10" width="4" height="4" rx="0.8" fill="currentColor" stroke="none"></rect>
+          </svg>
+        </button>
+      </div>
     </div>
 
     <div class="controls">
@@ -3028,6 +3070,7 @@ body.still .collection-dot {
     // app icons, keyed by the name shown on a row, sent whole from main
     let sourceIcons = {};
     let activeSessionId = null;
+    const collectionWrapEl = document.getElementById('collectionWrap');
     const collectionBannerEl = document.getElementById('collectionBanner');
     const collectionBannerNameEl = document.getElementById('collectionBannerName');
     const collectionBannerCountEl = document.getElementById('collectionBannerCount');
@@ -3365,13 +3408,58 @@ body.still .collection-dot {
       return sessions.find(s => s.id === activeSessionId) || null;
     }
 
-    function updateCollectionBanner() {
-      const active = activeSession();
-      if (!active) {
+    // The banner animates in and out, so showing it is no longer one class.
+    // updateCollectionBanner runs on every render; only a real change of state
+    // should move anything, or the strip re-drops itself every time a clip
+    // lands. collectionShowing is what makes it idempotent.
+    //
+    // COLLECT_EXIT_MS must match the longest exit above: the transform runs
+    // for --t-quick, and the height runs for 0.6 of it after a 0.4 delay, so
+    // both land together at --t-quick. Same arrangement as INSPECTOR_EXIT_MS.
+    const COLLECT_EXIT_MS = 140;
+    const collectReduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let collectionShowing = false;
+    let collectionExitTimer = null;
+
+    function showCollectionBanner() {
+      clearTimeout(collectionExitTimer);
+      // synchronous, because a render is expected to leave the banner shown
+      collectionBannerEl.classList.add('show');
+      if (collectionShowing) return;
+      collectionShowing = true;
+      collectionWrapEl.classList.remove('is-out');
+      // the wrapper animates to a number, so measure the strip laid out
+      const h = collectionBannerEl.offsetHeight;
+      if (h) collectionWrapEl.style.setProperty('--collect-h', h + 'px');
+      void collectionWrapEl.offsetWidth;
+      collectionWrapEl.classList.add('is-in');
+    }
+
+    function hideCollectionBanner() {
+      if (!collectionShowing) {
         collectionBannerEl.classList.remove('show');
+        return;
+      }
+      collectionShowing = false;
+      collectionWrapEl.classList.add('is-out');
+      void collectionWrapEl.offsetWidth;
+      collectionWrapEl.classList.remove('is-in');
+      clearTimeout(collectionExitTimer);
+      // display:none has to wait for the motion, and the name has to stay
+      // readable while the strip is still on screen leaving
+      collectionExitTimer = setTimeout(() => {
+        collectionBannerEl.classList.remove('show');
+        collectionWrapEl.classList.remove('is-out');
         collectionBannerNameEl.textContent = '';
         collectionBannerCountEl.textContent = '0';
         collectionBannerCountEl.title = '';
+      }, collectReduceMotion.matches ? 0 : COLLECT_EXIT_MS);
+    }
+
+    function updateCollectionBanner() {
+      const active = activeSession();
+      if (!active) {
+        hideCollectionBanner();
         return;
       }
       const collectionCount = sessionClips.filter(c => c.sessionId === active.id).length;
@@ -3379,7 +3467,7 @@ body.still .collection-dot {
       collectionBannerNameEl.textContent = active.name;
       collectionBannerCountEl.textContent = String(collectionCount);
       collectionBannerCountEl.title = `${collectionCount} ${suffix} in this collection`;
-      collectionBannerEl.classList.add('show');
+      showCollectionBanner();
     }
 
     function scopeIsSession(id) {
