@@ -3214,6 +3214,16 @@ function runNativeOcr(filePath) {
 
     // a page of dense text is a lot of JSON, so the default buffer is not enough
     execFile(cmd, args, { maxBuffer: 32 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
+      // A helper that never starts has nothing useful to say for itself.
+      // libuv does not map Darwin's EBADARCH, so a wrong-architecture
+      // binary arrives as "spawn Unknown system error -86" and that string
+      // went straight to the panel. The raw error is still logged by the
+      // caller; what the person reading it needs is what to do about it.
+      if (err && (err.errno === -86 || err.code === 'EBADARCH' || err.code === 'ENOENT')) {
+        return reject(new Error(err.code === 'ENOENT'
+          ? 'the text extraction helper is missing from this copy of Stash'
+          : 'this copy of Stash was built for a different kind of Mac, so text extraction cannot run'));
+      }
       if (err) return reject(new Error((stderr || err.message || '').toString().trim().slice(0, 200)));
       let parsed;
       try {
