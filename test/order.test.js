@@ -231,7 +231,7 @@ app.whenReady().then(async () => {
        document.querySelectorAll('.item.slot, .item.arming').length === 0, '');
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
 
-    // --- Everything: three lists stacked, each reordered on its own ---
+    // --- All: pinned, then history, each reordered on its own ---
     pinned = [
       { id: 'q1', type: 'text', isPrompt: true, ts: 1, content: 'prompt one' },
       { id: 'q2', type: 'text', isPrompt: true, ts: 2, content: 'prompt two' },
@@ -243,32 +243,26 @@ app.whenReady().then(async () => {
       { id: 'h2', type: 'text', ts: 6, content: 'copied two' },
     ];
     activeScope = 'all';
+    pinnedCollapsed = false;
     render();
     await tick(20);
-    ok('everything stacks prompts, pinned and history',
-       ids().join(' ') === 'q1 q2 k1 k2 h1 h2', ids().join(' '));
+    ok('all stacks pinned and history, and leaves prompts to their own place',
+       ids().join(' ') === 'k1 k2 h1 h2', ids().join(' '));
     ok('kept rows offer a reorder',
-       rows().slice(0, 4).every(r => r.classList.contains('orderable')), '');
+       rows().slice(0, 2).every(r => r.classList.contains('orderable')), '');
     ok('and so do history rows now that history is kept',
-       rows().slice(4).every(r => r.classList.contains('orderable')), '');
+       rows().slice(2).every(r => r.classList.contains('orderable')), '');
 
     sentIds = null;
     await dragRow(0, 1, true);
-    ok('a prompt can be reordered inside everything',
-       ids().join(' ') === 'q2 q1 k1 k2 h1 h2', ids().join(' '));
-    ok('and only its own block is sent', (sentIds || []).join(' ') === 'q2 q1',
-       (sentIds || []).join(' '));
-
-    sentIds = null;
-    await dragRow(2, 3, true);
     ok('a pinned clip reorders within the pinned run',
-       ids().join(' ') === 'q2 q1 k2 k1 h1 h2', ids().join(' '));
+       ids().join(' ') === 'k2 k1 h1 h2', ids().join(' '));
     ok('and sends only the pinned ids', (sentIds || []).join(' ') === 'k2 k1',
        (sentIds || []).join(' '));
 
-    // dragging a prompt far past the pinned rows must not let it leave its run
+    // dragging a pinned clip far past the history must not let it leave its run
     sentIds = null;
-    const pr = rows()[0], last = rows()[5];
+    const pr = rows()[0], last = rows()[3];
     const pb = pr.getBoundingClientRect();
     pr.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0,
       clientX: pb.left + 120, clientY: pb.top + 8 }));
@@ -277,11 +271,100 @@ app.whenReady().then(async () => {
       clientY: last.getBoundingClientRect().bottom + 200 }));
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     await tick(320);
-    ok('a prompt cannot be dragged out of the prompt run',
-       ids().join(' ') === 'q1 q2 k2 k1 h1 h2', ids().join(' '));
+    ok('a pinned clip cannot be dragged out of the pinned run',
+       ids().join(' ') === 'k1 k2 h1 h2', ids().join(' '));
+
+    // what the list holds, headers included, in the order it is drawn
+    const layout = () => [...document.getElementById('list').children]
+      .map(n => n.dataset.id || (n.classList.contains('pinned-head') ? 'PINNED'
+        : n.classList.contains('recent-head') ? 'RECENT' : n.className)).join(' ');
+    ok('the history is labelled where the pinned run ends',
+       layout() === 'PINNED k1 k2 RECENT h1 h2', layout());
+    ok('and the label counts the history',
+       document.querySelector('.recent-head').textContent.includes('2'),
+       document.querySelector('.recent-head').textContent);
+    ok('the label is not something to press',
+       document.querySelector('.recent-head').tagName !== 'BUTTON', document.querySelector('.recent-head').tagName);
+
+    // --- the pinned run folds away under its header ---
+    const head = () => document.querySelector('.pinned-head');
+    ok('all heads the pinned run with a header that counts it',
+       !!head() && head().textContent.includes('2'), head() ? head().textContent : 'no header');
+    ok('and it starts open', head().getAttribute('aria-expanded') === 'true',
+       head().getAttribute('aria-expanded'));
+    head().click();
+    await tick(20);
+    ok('folding it hides the pinned rows and keeps the history',
+       ids().join(' ') === 'h1 h2', ids().join(' '));
+    ok('the header says it is folded', head().getAttribute('aria-expanded') === 'false',
+       head().getAttribute('aria-expanded'));
+    ok('keyboard focus stays on the header it was rebuilt as', document.activeElement === head(),
+       String(document.activeElement && document.activeElement.className));
+    render();
+    await tick(20);
+    ok('a redraw keeps it folded', ids().join(' ') === 'h1 h2', ids().join(' '));
+    ok('folded, the recent label sits right under the pinned header',
+       layout() === 'PINNED RECENT h1 h2', layout());
+
+    // select-all takes what is on screen, not what is folded out of sight
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }));
+    await tick(20);
+    ok('select-all leaves folded pinned clips out',
+       !selected.has('k1') && selected.has('h1') && selected.has('h2'), [...selected].join(' '));
+    clearSelection();
+
+    // a search is asking where something is; a folded section must not hide it
+    searchQuery = 'pinned';
+    render();
+    await tick(20);
+    ok('searching finds pinned clips even while the section is folded',
+       ids().join(' ') === 'k1 k2' && !head(), ids().join(' '));
+    ok('and a search result is one list, with no labels in it',
+       !document.querySelector('.recent-head'), layout());
+    searchQuery = '';
+    render();
+    await tick(20);
+    ok('and the fold is still there when the search is cleared',
+       ids().join(' ') === 'h1 h2', ids().join(' '));
+
+    activeScope = 'pinned';
+    render();
+    await tick(20);
+    ok('the pinned place itself has no header to fold', !head(), '');
+    ok('nor a recent label', !document.querySelector('.recent-head'), layout());
+    activeScope = 'all';
+    render();
+    await tick(20);
+    head().click();
+    await tick(20);
+    ok('unfolding brings the pinned rows back', ids().join(' ') === 'k1 k2 h1 h2', ids().join(' '));
+
+    // dragging the last pinned clip down onto the label must leave it above it
+    sentIds = null;
+    await dragRow(0, 2, true);
+    ok('a pinned clip dropped on the history stays above the label',
+       layout() === 'PINNED k2 k1 RECENT h1 h2', layout());
+    // and the last history row dragged up past it lands at the top of history
+    await dragRow(3, 1, true);
+    ok('a history clip dragged up past the label stays below it',
+       layout() === 'PINNED k2 k1 RECENT h2 h1', layout());
+    await dragRow(2, 3, true);
+    await dragRow(0, 1, true);
+    ok('and both runs can be put back', layout() === 'PINNED k1 k2 RECENT h1 h2', layout());
+
+    // with nothing pinned there is one run, and nothing to label
+    const keptPinned = pinned;
+    pinned = [];
+    render();
+    await tick(20);
+    ok('with nothing pinned, history has no label over it',
+       !document.querySelector('.recent-head') && !head(), layout());
+    pinned = keptPinned;
+    render();
+    await tick(20);
 
     // history keeps no order, so holding one does nothing at all
-    const hrow = rows()[4];
+    const hrow = rows()[2];
     const hb = hrow.getBoundingClientRect();
     hrow.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0,
       clientX: hb.left + 120, clientY: hb.top + 8 }));

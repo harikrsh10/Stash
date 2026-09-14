@@ -144,7 +144,9 @@ app.whenReady().then(async () => {
        !!document.querySelector('.rail-item[data-scope=\\"prompts\\"]'), '');
     ok('no section headers anywhere', document.querySelectorAll('.section-label').length === 0,
        document.querySelectorAll('.section-label').length + '');
-    ok('everything shows all of it', rows().length === 4, rows().length + '');
+    // prompts are a place of their own; "all" is what you kept and what you copied
+    ok('all shows the pinned clip and the history, not the prompts',
+       rows().map(r => r.dataset.id).join(' ') === 'pn1 h1', rows().map(r => r.dataset.id).join(' '));
 
     goTo('prompts');
     ok('the prompts place holds both prompts', rows().length === 2, rows().length + '');
@@ -201,9 +203,11 @@ app.whenReady().then(async () => {
        document.getElementById('footerInfo').textContent.includes('1 pinned'),
        document.getElementById('footerInfo').textContent);
 
-    // prompts still take part in the stack
+    // prompts still take part in the stack, from the place they live in
+    goTo('prompts');
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }));
-    ok('prompts can be stacked', selected.size === 4, selected.size + '');
+    ok('prompts can be stacked', selected.size === 2 && selected.has('pr1') && selected.has('pr2'),
+       [...selected].join(' '));
 
     return out;
   })()`;
