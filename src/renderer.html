@@ -1540,7 +1540,18 @@
     /* ---------- selection stack ----------
        Selecting clips gathers them into a physical little deck above the
        footer. The deck is the drag target, so "collect, then throw" is one
-       continuous gesture rather than an abstract selection state. */
+       continuous gesture rather than an abstract selection state.
+       Kept as it is, decided from proto/stack-tray against three others.
+       Rejected: a "strip" of the real things (thumbnails and words, each with
+       its own remove) made a stack of 40 legible but stood 115px tall to the
+       deck's 75, and a scrolling row of tiles is a list inside the list, not
+       something you pick up and throw. A floating "bar" with copy / collect /
+       delete covered the foot of the list and made selection a mode with
+       verbs; none of those verbs is why anyone gathers a stack, and it turned
+       the gesture into a toolbar. Folding the count into the scope line
+       ("12 selected · drag any one") cost no space at all, because a selected
+       row already drags the whole selection, but it lost the gathering
+       entirely: nothing lands anywhere, so nothing says it worked. */
     .stack-tray {
       display: none;
       align-items: center;
@@ -2394,6 +2405,20 @@ body.still .collection-dot {
 
        This used to live inside a light-only media query, with .card set to
        display:contents everywhere else so dark kept a single flat surface.
+
+       Kept as it is, decided from proto/drawer-shell against three others.
+       The cards cost the list room -- 340x549 where the alternatives measured
+       up to 434x646 in the same window -- and that was judged worth paying.
+       Rejected: a "slab" (one sheet, hairlines for the gaps, same rail) gained
+       29px across and 52 down but read as any sidebar, and put back the single
+       flat surface this block replaced. "Tabs" moved every place into a
+       scrolling row under the search field and the type pills into a menu in
+       it; collection names became readable, but past the first few they
+       scrolled out of sight, where the rail keeps every one on screen.
+       "Command" led with one search bar holding the place and type as menus,
+       status controls dropped to the foot: the most room for clips, but places
+       and types were out of sight until asked for, the footer had to truncate
+       its own counts, and the titlebar went with it.
        --------------------------------------------------------------------- */
     /* The background covers the whole window, and is clipped to whatever part
        of it is actually in use.
