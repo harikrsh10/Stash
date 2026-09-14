@@ -54,3 +54,6 @@ p12-base64.txt
 # (scripts/make-harness.js); it is derived from src/renderer.html, so committing
 # it would just go stale.
 src/_harness.html
+
+# Throwaway design-exploration surface (emil-prototype); deleted in Phase 7.
+proto/

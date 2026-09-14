@@ -72,6 +72,15 @@ app.whenReady().then(async () => {
     await tick(60);
     ok('enter copies the row the cursor is on', copied === 'c0', String(copied));
 
+    // A focused button is what Enter presses. The pinned header is one, and
+    // Enter used to copy whatever row the cursor had been left on instead.
+    copied = null;
+    document.getElementById('settingsBtn').focus();
+    press('Enter');
+    await tick(60);
+    ok('enter on a focused button leaves the cursor row alone', copied === null, String(copied));
+    document.activeElement.blur();
+
     // ---- keeping out of the way ----
     copied = null;
     const search = document.getElementById('search');

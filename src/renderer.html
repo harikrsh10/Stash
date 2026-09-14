@@ -1060,6 +1060,61 @@
       transition: color var(--t-quick), border-color var(--t-quick);
     }
     .list-more:hover { color: var(--text-2); border-color: var(--border); }
+
+    /* The two runs in "all": pinned, which folds, and recent, which does not.
+       Set like the scope line above the list -- mono, small, uppercase -- one
+       step quieter, because they label part of the place rather than the
+       place. */
+    .pinned-head,
+    .list-head {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: 100%;
+      min-height: 32px;
+      padding: 6px 18px 6px 12px;
+      background: transparent;
+      border: 0;
+      /* rows are divided by their bottom edge; so is this, or a folded
+         header runs straight into the first history row */
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      text-align: left;
+    }
+    .pinned-head {
+      cursor: pointer;
+      transition: color var(--t-quick);
+    }
+    /* no chevron, so the name is pushed to where the pinned header's name
+       starts: its 12px inset, the 14px chevron and the 6px gap */
+    .list-head { padding-left: 32px; user-select: none; }
+    .pinned-head:hover { color: var(--text-2); }
+    .pinned-head:focus-visible { outline: 2px solid var(--select); outline-offset: -2px; border-radius: 6px; }
+    .pinned-head-chev {
+      width: 14px;
+      height: 14px;
+      flex: none;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      transition: transform var(--t-quick) var(--e-out);
+    }
+    .pinned-head[aria-expanded="false"] .pinned-head-chev { transform: rotate(-90deg); }
+    .pinned-head-count,
+    .list-head-count {
+      color: var(--muted2);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .pinned-head-chev { transition: none; }
+    }
     .empty .empty-sub {
       display: block;
       margin-top: 14px;
@@ -1540,7 +1595,18 @@
     /* ---------- selection stack ----------
        Selecting clips gathers them into a physical little deck above the
        footer. The deck is the drag target, so "collect, then throw" is one
-       continuous gesture rather than an abstract selection state. */
+       continuous gesture rather than an abstract selection state.
+       Kept as it is, decided from proto/stack-tray against three others.
+       Rejected: a "strip" of the real things (thumbnails and words, each with
+       its own remove) made a stack of 40 legible but stood 115px tall to the
+       deck's 75, and a scrolling row of tiles is a list inside the list, not
+       something you pick up and throw. A floating "bar" with copy / collect /
+       delete covered the foot of the list and made selection a mode with
+       verbs; none of those verbs is why anyone gathers a stack, and it turned
+       the gesture into a toolbar. Folding the count into the scope line
+       ("12 selected · drag any one") cost no space at all, because a selected
+       row already drags the whole selection, but it lost the gathering
+       entirely: nothing lands anywhere, so nothing says it worked. */
     .stack-tray {
       display: none;
       align-items: center;
@@ -2394,6 +2460,20 @@ body.still .collection-dot {
 
        This used to live inside a light-only media query, with .card set to
        display:contents everywhere else so dark kept a single flat surface.
+
+       Kept as it is, decided from proto/drawer-shell against three others.
+       The cards cost the list room -- 340x549 where the alternatives measured
+       up to 434x646 in the same window -- and that was judged worth paying.
+       Rejected: a "slab" (one sheet, hairlines for the gaps, same rail) gained
+       29px across and 52 down but read as any sidebar, and put back the single
+       flat surface this block replaced. "Tabs" moved every place into a
+       scrolling row under the search field and the type pills into a menu in
+       it; collection names became readable, but past the first few they
+       scrolled out of sight, where the rail keeps every one on screen.
+       "Command" led with one search bar holding the place and type as menus,
+       status controls dropped to the foot: the most room for clips, but places
+       and types were out of sight until asked for, the footer had to truncate
+       its own counts, and the titlebar went with it.
        --------------------------------------------------------------------- */
     /* The background covers the whole window, and is clipped to whatever part
        of it is actually in use.
@@ -3038,7 +3118,10 @@ body.still .collection-dot {
     // What the last render was showing. Changing place, search, filter or tag
     // is a new list, and a new list starts at the top again.
     let renderKey = '';
-    // Section collapse state — in-memory only, resets on app restart
+    // Whether the pinned section at the top of "all" is folded away. In memory
+    // only: the drawer hides rather than closes, so it holds for as long as
+    // Stash runs, and a restart opens it again with the pinned clips showing.
+    let pinnedCollapsed = false;
 
     // Multi-select state. `selected` holds clip ids; `renderedOrder` is the
     // flat top-to-bottom order of what's currently on screen, which is what
@@ -3490,13 +3573,15 @@ body.still .collection-dot {
       if (id === 'prompts') return pinned.filter(c => c.isPrompt);
       if (id === 'pinned') return pinned.filter(c => !c.isPrompt);
       if (scopeIsSession(id)) return clipsInSession(id);
-      // everything: kept things first, then the running history
-      return [...pinned.filter(c => c.isPrompt), ...pinned.filter(c => !c.isPrompt), ...history];
+      // all: pinned first, then the running history. Prompts stay in their own
+      // place -- a library you reach for on purpose, not rows to scroll past
+      // on the way to what you just copied.
+      return [...pinned.filter(c => !c.isPrompt), ...history];
     }
 
-    // Which run of rows a clip belongs to. Everything shows three lists stacked
-    // — prompts, then pinned, then the running history — and each is its own
-    // array, so a row can only be reordered among its own kind.
+    // Which run of rows a clip belongs to. "All" stacks two lists -- pinned,
+    // then the running history -- and each is its own array, so a row can only
+    // be reordered among its own kind.
     function blockOf(clip, isPinned, sessionId) {
       if (sessionId) return 'session';
       if (clip.isPrompt) return 'prompt';
@@ -5762,10 +5847,31 @@ body.still .collection-dot {
         return;
       }
 
-      const shown = visible.slice(0, renderLimit);
-      shown.forEach(c => listEl.appendChild(buildItemEl(c, activeScope === 'pinned' || (!sessionScope && !!c.pinnedAt), sessionScope)));
+      // In "all", the pinned clips sit under a header that folds them away.
+      // Not while searching: a search is asking where something is, and a
+      // match hidden inside a folded section is a match that was not found.
+      const pinnedIds = new Set(pinned.map(p => p.id));
+      const pinnedRun = (activeScope === 'all' && !searchQuery)
+        ? visible.filter(c => pinnedIds.has(c.id)) : [];
+      const rowsToShow = pinnedRun.length && pinnedCollapsed
+        ? visible.filter(c => !pinnedIds.has(c.id)) : visible;
+      if (pinnedRun.length) listEl.appendChild(buildPinnedHead(pinnedRun.length));
 
-      const rest = visible.length - shown.length;
+      const shown = rowsToShow.slice(0, renderLimit);
+      // Once the pinned run has a header, the history under it needs one too,
+      // or an open section has no visible end. Placed before the first history
+      // row actually drawn, so a pinned run longer than a page does not get a
+      // label with nothing under it.
+      let recentLabelled = !pinnedRun.length;
+      shown.forEach(c => {
+        if (!recentLabelled && !pinnedIds.has(c.id)) {
+          listEl.appendChild(buildRecentHead(visible.length - pinnedRun.length));
+          recentLabelled = true;
+        }
+        listEl.appendChild(buildItemEl(c, activeScope === 'pinned' || (!sessionScope && !!c.pinnedAt), sessionScope));
+      });
+
+      const rest = rowsToShow.length - shown.length;
       if (rest > 0) listEl.appendChild(buildMoreEl(rest));
 
       listEl.scrollTop = restoreScroll;
@@ -5774,6 +5880,38 @@ body.still .collection-dot {
       // row it was on has been filtered away or deleted
       syncCursor();
       markEditingRow();
+    }
+
+    // The header over the pinned run in "all". A real button, so it is in the
+    // tab order and Enter or Space folds it; the count stays visible while it
+    // is folded, so a folded section still says what it is holding.
+    function buildPinnedHead(count) {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'pinned-head';
+      el.setAttribute('aria-expanded', String(!pinnedCollapsed));
+      el.title = pinnedCollapsed ? 'show pinned clips' : 'hide pinned clips';
+      el.innerHTML = '<svg class="pinned-head-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10l4 4 4-4"/></svg>'
+        + '<span class="pinned-head-name">pinned</span>'
+        + `<span class="pinned-head-count">${count}</span>`;
+      el.addEventListener('click', () => {
+        pinnedCollapsed = !pinnedCollapsed;
+        render();
+        // the header is rebuilt with the list; keep keyboard focus on it
+        listEl.querySelector('.pinned-head')?.focus();
+      });
+      return el;
+    }
+
+    // The label over the history in "all". Only a label: history is what the
+    // place is for, so there is nothing here to fold. It sits on the same
+    // text edge as the pinned header's name, past where that one's chevron is.
+    function buildRecentHead(count) {
+      const el = document.createElement('div');
+      el.className = 'list-head recent-head';
+      el.innerHTML = '<span class="list-head-name">recent</span>'
+        + `<span class="list-head-count">${count}</span>`;
+      return el;
     }
 
     // The foot of a windowed list. It says how much is still down there, so a
@@ -5957,6 +6095,9 @@ body.still .collection-dot {
                  || el.isContentEditable)) return;
 
       if (e.key === 'Enter') {
+        // a focused button -- the pinned header, a rail place -- is what Enter
+        // is pressing, not the row the cursor happens to be on
+        if (el && el.tagName === 'BUTTON') return;
         const row = cursorRow();
         if (!row) return;
         e.preventDefault();

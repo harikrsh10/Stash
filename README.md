@@ -38,7 +38,7 @@ See [all releases](https://github.com/harikrsh10/Stash/releases) for older versi
 - Drag any entry from the drawer into any other app — Notion, VS Code, Figma, Finder, browser address bar, anywhere that accepts file or text drops
 - Click an entry to re-copy it (then ⌘V elsewhere as normal). Styled text keeps its formatting — a clip that carries any is marked `styled`. Hold **⌥/Alt** while clicking to copy it as plain text instead
 - **Preview and name any clip** — press **view** to see it in full and give it a title of your own; the derived headline moves out of the way rather than disappearing
-- **Pin items** (★) to keep them across restarts — pinned clips live in their own section at the top and don't count toward the 10,000-item cap
+- **Pin items** (★) to keep them across restarts — pinned clips sit in their own section at the top of **all**, which folds away with its header when you'd rather see what you just copied, and don't count toward the 10,000-item cap. A search still finds them while the section is folded
 - **Updates itself** — new versions download in the background; the titlebar badge becomes a restart when one is ready
 - **Catches the screenshots you take** (macOS) — screenshots saved to disk turn up in Stash like anything you copy
 - **Pull colours out of an image** — hover a screenshot, press **color**, and get its palette as clickable swatches with hex values
@@ -139,7 +139,7 @@ showing. Two ways to look at one clip, and only one of them could edit it.
 The clips you reuse shouldn't age out behind a hundred screenshots.
 
 - Hover a clip and press **✦** to mark it a prompt. That single act makes it permanent — there's no separate pin step, and a prompt that could expire wouldn't be a library
-- Prompts live in their own section at the top, with their own filter
+- Prompts live in their own place on the rail, with their own filter. They stay out of **all**, so the library doesn't sit between you and what you just copied
 - Editing a prompt is editing a clip: the info button opens the preview panel, same as anywhere else. See [Fixing the words in a clip](#fixing-the-words-in-a-clip)
 - **Tag** prompts (`image gen`, `mobile`, `review`) from the panel, and filter by tag from the prompts header. The picker offers tags you already use, so a library doesn't drift into three spellings of the same idea
 - Unmarking a prompt returns it to ordinary history, where it ages out again
